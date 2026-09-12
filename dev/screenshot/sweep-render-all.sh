@@ -86,7 +86,15 @@ SURFACES=(
   # render probe either. Same gap as the axe table, found the same way: by
   # putting the two lists side by side.
   "desktop-shell /|/consent|/waypointer|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest|/?menumock|/@@shell-workspace-overlay|/_jobstest@@shell-jobs-refuse-cancel|/_jobstest@@shell-jobs-failed-install|/waypointer@@waypointer-refuses-copy|/consent@@shell-consent-request|/waypointer@@waypointer-refuses-run|/waypointer@@waypointer-refuses-openurl"
-  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/@@files-refuses-op"
+  # `?view=grid` ON THE THUMBNAIL HARNESS, because a view MODE is a surface the
+  # table could not otherwise name. `FileBrowser` renders one of three - list,
+  # grid, miller - and a sweep row drives one click, which reaches a place but
+  # never a mode behind a menu. So the grid and the column views went unswept in
+  # both apps that mount it, and the column view's invalid `role="grid"` surfaced
+  # on 13 September only because knowledge pins that mode unconditionally. This
+  # route already had the switch (`?view=grid`, its own line); it just was not
+  # asked for.
+  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/_thumbtest?view=grid|/@@files-refuses-op"
   "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest|/@@greeter-refuses-login"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]|/@@knowledge-refuses-pause|/@@knowledge-refuses-search-save"
   # THE THREE REFUSALS, added 10 September once `probe-host.sh` could run them at

@@ -78,7 +78,7 @@ SURFACES=(
   # The kit's own keyboard/a11y fixture, rendered for real. Its jsdom gate cannot
   # measure contrast and cannot see a component in a box; this can.
   "ui-kit /_a11y"
-  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/?locale=de@@files-refuses-op"
+  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/_thumbtest?view=grid|/?locale=de@@files-refuses-op"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/?locale=de@@terminal-quick-connect|/?locale=de::#terminal-history-open@@terminal-history-refused"
   # THE OTHER NINETEEN SETTINGS PAGES, and they were missing for the reason
   # this header keeps naming: the list IS the coverage. Settings has 38 route
