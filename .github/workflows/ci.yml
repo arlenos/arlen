@@ -458,6 +458,8 @@ jobs:
           node dev/scripts/test-check-sweep-tables-agree.mjs
           python3 dev/scripts/check-routes-are-swept.py
           node dev/scripts/test-check-routes-are-swept.mjs
+          python3 dev/scripts/check-dev-server-warms-components.py
+          node dev/scripts/test-check-dev-server-warms-components.mjs
           python3 dev/scripts/check-listener-started.py
           node dev/scripts/test-check-listener-started.mjs
           python3 dev/scripts/check-default-handlers.py
