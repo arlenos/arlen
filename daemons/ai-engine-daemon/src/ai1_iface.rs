@@ -13,7 +13,7 @@
 //! Both are read-only, on-demand and bounded; nothing here runs in the background.
 
 use crate::agent_iface::{resolve_dbus_caller, user_surface_admitted};
-use crate::pi_run::{run_ephemeral_answer, run_ephemeral_explain, SessionBinder};
+use crate::pi_run::{run_ephemeral_answer, run_ephemeral_explain, RunKind, SessionBinder};
 use crate::sidecar::PiSidecar;
 use arlen_ai_skills::behaviour::Behaviour;
 use arlen_ai_skills::loader::{behaviour_sources, load, Provenance};
@@ -91,6 +91,9 @@ pub struct Ai1Interface {
     ask: Option<Arc<Behaviour>>,
     engine: Engine,
     binder: Arc<dyn SessionBinder>,
+    /// Where each run's dispatch and completion entries go. Held here rather
+    /// than built per call so a run cannot start without somewhere to record it.
+    audit: Arc<dyn audit_proto::sink::AuditSink>,
 }
 
 impl Ai1Interface {
@@ -101,8 +104,9 @@ impl Ai1Interface {
         ask: Option<Arc<Behaviour>>,
         engine: Engine,
         binder: Arc<dyn SessionBinder>,
+        audit: Arc<dyn audit_proto::sink::AuditSink>,
     ) -> Self {
-        Self { behaviour, ask, engine, binder }
+        Self { behaviour, ask, engine, binder, audit }
     }
 
 }
@@ -144,7 +148,7 @@ impl Ai1Interface {
             ));
         };
         let engine = self.engine.ready()?;
-        run_ephemeral_explain(skill, None, engine, &*self.binder)
+        run_ephemeral_explain(skill, None, engine, &*self.binder, &*self.audit)
             .await
             .map_err(|e| zbus::fdo::Error::Failed(format!("explanation unavailable: {e}")))
     }
@@ -186,7 +190,7 @@ impl Ai1Interface {
             ));
         };
         let engine = self.engine.ready()?;
-        run_ephemeral_answer(skill, None, question, engine, &*self.binder)
+        run_ephemeral_answer(skill, None, question, engine, &*self.binder, &*self.audit, RunKind::Ask)
             .await
             .map_err(|e| zbus::fdo::Error::Failed(format!("no answer: {e}")))
     }
