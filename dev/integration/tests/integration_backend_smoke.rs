@@ -1246,6 +1246,123 @@ async fn revoke_narrows_a_target_profiles_read_scope() {
     );
 }
 
+/// IT-1 enumeration (the `0x12` op): a scoped caller lists one enumerable
+/// label's handles and gets an id AND a display name back. The field half is
+/// what this proves in the assembled system - the daemon blanks a display name
+/// the caller's grant does not cover, and a gate that over-rejected would hand
+/// back nameless handles while every unit test still passed. So the grant names
+/// `system.Project.name` and the assertion insists on it.
+///
+/// Unprivileged, or the grant proves nothing: `0x12` has no system-anchored
+/// exemption today, but a FirstParty caller would leave that unmeasured.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built"]
+async fn an_enumerable_label_answers_handles_under_a_field_grant() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack.as_unprivileged();
+    let fixture = stack.runtime_dir().join("list-fixture");
+    std::fs::create_dir_all(fixture.join(".git")).expect("create .git fixture");
+    stack
+        .seed_project_watch_dir(&fixture)
+        .expect("point the watcher at the fixture");
+    stack
+        .seed_read_profile(&["system.Project.id", "system.Project.name"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_ready("event-bus-producer.sock")
+        .expect("producer socket");
+    stack
+        .wait_ready("event-bus-consumer.sock")
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        if let Ok(handles) = client.list_identities("system.Project", 10).await {
+            if let Some(handle) = handles.first() {
+                assert!(!handle.id.is_empty(), "a handle carries the id it is for");
+                assert_eq!(
+                    handle.name, "list-fixture",
+                    "the granted display field comes back, not a blank"
+                );
+                return;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the detected project never appeared as a listed handle within 20s"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
+/// The other half of `0x12`, and the one that is a boundary: the same listing
+/// under a grant that covers the id and NOT the display field. The handle still
+/// comes back - being allowed to enumerate and being allowed to read a field are
+/// different questions - and its name is blank. Asserted against a real daemon
+/// because a gate that silently stopped blanking would leave every unit test
+/// green.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built"]
+async fn a_handle_comes_back_nameless_when_the_field_is_not_granted() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack.as_unprivileged();
+    let fixture = stack.runtime_dir().join("nameless-fixture");
+    std::fs::create_dir_all(fixture.join(".git")).expect("create .git fixture");
+    stack
+        .seed_project_watch_dir(&fixture)
+        .expect("point the watcher at the fixture");
+    // The engine's real shape: the id and the root path, not the name.
+    stack
+        .seed_read_profile(&["system.Project.id", "system.Project.root_path"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_ready("event-bus-producer.sock")
+        .expect("producer socket");
+    stack
+        .wait_ready("event-bus-consumer.sock")
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        if let Ok(handles) = client.list_identities("system.Project", 10).await {
+            if let Some(handle) = handles.first() {
+                assert!(!handle.id.is_empty(), "the id is the payload and it is there");
+                assert!(
+                    handle.name.is_empty(),
+                    "an ungranted display field comes back blank, got {:?}",
+                    handle.name
+                );
+                return;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the detected project never appeared as a listed handle within 20s"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
 /// IT-1 project detection: a directory bearing a project signal (a `.git` entry)
 /// is detected by the knowledge daemon's project watcher and promoted to a graph
 /// `Project` node. Exercises the detection pipeline end-to-end (watcher scan ->
