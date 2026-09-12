@@ -304,7 +304,7 @@ mod tests {
             behaviour: Some("auto-tag".into()),
             capability_context: CapabilityContext {
                 generic_tools: vec!["bash".into()],
-                proxy_tools: vec!["graph.read".into(), "graph.write".into()],
+                proxy_tools: vec!["graph.ask".into(), "graph.write".into()],
             },
             project_anchor: Some("proj-1".into()),
             read_tier: ReadTier::Standard,
@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn report_and_screen_verdict_round_trip() {
         let r = Report {
-            tool_name: "graph.read".into(),
+            tool_name: "graph.ask".into(),
             tool_call_id: "call-7".into(),
             result: json!({"text": "rows"}),
             is_error: false,

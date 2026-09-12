@@ -7,7 +7,7 @@
 //! touches them. The gate/executor/reporter seams are wired to the real Rust:
 //! the gate is `CapabilityGate` (`Capability::decide`), the reporter is
 //! `ScreeningReporter` (content-free audit + S17/S18 screening), and the
-//! executor is a `ProxyExecutor` routing graph.read/graph.write. graph.read runs
+//! executor is a `ProxyExecutor` routing graph.ask/graph.write. graph.ask runs
 //! over the live `CypherPipeline` when AI is enabled and a provider is configured
 //! (else the fail-closed `DeniedRunner`); graph.write over the live
 //! `UnixRelationWriter` when `[agent] executor_live` is on (else `DeniedWriter`).
@@ -28,7 +28,7 @@ use arlen_run_consent_token::RUN_COMMAND_TOOL;
 use arlen_ai_engine_daemon::settings_executor::SettingsExecutor;
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
 use arlen_ai_engine_daemon::find_executor::{GraphFindExecutor, SocketFinder};
-use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
+use arlen_ai_engine_daemon::ask_executor::{DeniedRunner, GraphAskExecutor};
 use arlen_ai_core::pipeline::{CypherPipeline, GraphQuerier, QueryRunner};
 use arlen_ai_core::provider::AIProvider;
 use arlen_ai_engine_daemon::graph_adapter::OsSdkGraphQuerier;
@@ -175,18 +175,18 @@ fn current_uid() -> u32 {
 }
 
 /// The system prompt for the shell-driven engine: Arlen's local, KG-grounded
-/// assistant, NOT a coding agent. It steers the model to the `graph.read` tool for
+/// assistant, NOT a coding agent. It steers the model to the `graph.ask` tool for
 /// the user's own files/projects/activity and tells it plainly that there is no
 /// shell here, so it stops reaching for `bash` (which fails `spawn sh ENOENT` in
 /// the `--unshare-net` sandbox and loops the turn). `--system-prompt` REPLACES pi's
 /// default coding-assistant prompt; tool schemas are passed to the model
-/// independently, so the model still sees `graph.read` and chooses it.
+/// independently, so the model still sees `graph.ask` and chooses it.
 const SHELL_ENGINE_SYSTEM_PROMPT: &str = "You are the assistant built into Arlen, a \
 local desktop operating system. You help the user understand their own files, \
 projects and recent activity, which live in Arlen's knowledge graph on this machine.\n\
 \n\
 When the user asks about their files, projects, recent activity or what they were \
-working on, call the graph.read tool to query the knowledge graph, and ground your \
+working on, call the graph.ask tool to query the knowledge graph, and ground your \
 answer in the rows it returns. Do not invent files or projects.\n\
 \n\
 You cannot run shell commands: there is no shell in this environment, so never call \
@@ -271,7 +271,7 @@ fn resolve_knowledge_socket() -> String {
     "/run/arlen/knowledge.sock".to_string()
 }
 
-/// Build the `graph.read` runner. Live ONLY when AI is enabled AND a provider is
+/// Build the `graph.ask` runner. Live ONLY when AI is enabled AND a provider is
 /// configured AND the session bus + proxy client come up; any of those missing
 /// falls back to the fail-closed [`DeniedRunner`] (the read then reports
 /// provider-unavailable rather than reading). The live runner is the ai-core
@@ -279,22 +279,22 @@ fn resolve_knowledge_socket() -> String {
 /// the `ProxiedProvider` (forwarded through ai-proxy, which peer-auths this
 /// daemon's binary as `org.arlen.AI1`) and runs it against the Knowledge Daemon,
 /// so the read is bounded by the scope the gate already resolved. Only reachable
-/// when pi is running (AI enabled) and a `graph.read` Execute presents a valid
+/// when pi is running (AI enabled) and a `graph.ask` Execute presents a valid
 /// HIGH-1 proof, so wiring it live carries no autonomy of its own.
-async fn build_read_runner(connection: Option<&zbus::Connection>) -> Arc<dyn QueryRunner> {
+async fn build_ask_runner(connection: Option<&zbus::Connection>) -> Arc<dyn QueryRunner> {
     if !engine_config::ai_enabled() {
         return Arc::new(DeniedRunner);
     }
     let settings = engine_config::provider_settings();
     if settings.name.is_empty() {
-        tracing::warn!("no ai.provider configured; graph.read stays fail-closed");
+        tracing::warn!("no ai.provider configured; graph.ask stays fail-closed");
         return Arc::new(DeniedRunner);
     }
     // The ProxiedProvider must forward on the connection that OWNS `org.arlen.AI1`:
     // the ai-proxy authorizes an LLM forward by the owned name (planner ruling, pi
-    // as the drop-in ai-daemon). Without that connection, graph.read fails closed.
+    // as the drop-in ai-daemon). Without that connection, graph.ask fails closed.
     let Some(connection) = connection else {
-        tracing::warn!("no org.arlen.AI1 connection; graph.read stays fail-closed");
+        tracing::warn!("no org.arlen.AI1 connection; graph.ask stays fail-closed");
         return Arc::new(DeniedRunner);
     };
     let provider: Arc<dyn AIProvider> = match ProxiedProvider::with_connection(
@@ -310,12 +310,12 @@ async fn build_read_runner(connection: Option<&zbus::Connection>) -> Arc<dyn Que
     {
         Ok(p) => Arc::new(p),
         Err(e) => {
-            tracing::warn!(error = %e, "read provider build failed; graph.read stays fail-closed");
+            tracing::warn!(error = %e, "read provider build failed; graph.ask stays fail-closed");
             return Arc::new(DeniedRunner);
         }
     };
     let graph: Arc<dyn GraphQuerier> = Arc::new(OsSdkGraphQuerier::new(resolve_knowledge_socket()));
-    tracing::info!("graph.read wired to the live CypherPipeline over the proxied provider");
+    tracing::info!("graph.ask wired to the live CypherPipeline over the proxied provider");
     Arc::new(CypherPipeline::new(provider, graph))
 }
 
@@ -507,8 +507,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Screener::from_config(&engine_config::ai_config_text()),
     );
     // The executor seam is a router so the daemon hosts several proxy tools
-    // (graph.read + graph.write now; OS/MCP tools as they land), each enforcing
-    // its own scope. graph.read runs over the LIVE CypherPipeline when AI is
+    // (graph.ask + graph.write now; OS/MCP tools as they land), each enforcing
+    // its own scope. graph.ask runs over the LIVE CypherPipeline when AI is
     // enabled + a provider is configured (else the fail-closed DeniedRunner);
     // graph.write over the LIVE UnixRelationWriter when executor_live (else
     // DeniedWriter). The write executor AUDITS before it applies and registers the
@@ -524,7 +524,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match build_ai1_connection().await {
             Ok(c) => Some(c),
             Err(e) => {
-                warn!(error = %e, "could not own org.arlen.AI1; graph.read + explain fail-closed");
+                warn!(error = %e, "could not own org.arlen.AI1; graph.ask + explain fail-closed");
                 None
             }
         }
@@ -562,8 +562,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(e) => warn!(error = %e, "could not serve the AIAgent1 surface"),
         }
     }
-    let read_executor: Arc<dyn Executor> =
-        Arc::new(GraphReadExecutor::new(build_read_runner(ai_connection.as_ref()).await));
+    let ask_executor: Arc<dyn Executor> =
+        Arc::new(GraphAskExecutor::new(build_ask_runner(ai_connection.as_ref()).await));
     // The deterministic half of the read verb. It needs no provider, so it works
     // whether or not the ask verb's pipeline is wired.
     let find_executor: Arc<dyn Executor> = Arc::new(GraphFindExecutor::new(Arc::new(
@@ -624,7 +624,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // irreversible action would auto-apply autonomously. Only reversible edge
     // writes are wired below.
     let executor = ProxyExecutor::new()
-        .register("graph.read", read_executor)
+        .register("graph.ask", ask_executor)
         .register("graph.find", find_executor)
         // D2 (pi-gate-class-registry.md): the fine-grained reversible graph-write
         // tools route to the same write executor as the coarse graph.write, so each

@@ -46,12 +46,12 @@ test("Allow lets the call run (empty result) and authorizes with the tool name +
   const pi = fakePi();
   makeGate({ connect: async () => mock.client, externalTriggered: true })(pi.api);
 
-  const result = await pi.fire(event("graph.read", { query: "x" }));
+  const result = await pi.fire(event("graph.ask", { query: "x" }));
   assert.deepEqual(result, {});
   assert.equal(mock.calls.length, 1);
   assert.deepEqual(mock.calls[0], {
     call: "authorize",
-    tool_name: "graph.read",
+    tool_name: "graph.ask",
     tool_input: { query: "x" },
     external_triggered: true,
   });
@@ -68,7 +68,7 @@ test("Modify substitutes the arguments in place and lets the call run", async ()
   const mock = mockClient({ reply: "authorize", decision: "modify", args: { query: "SAFE" } });
   const pi = fakePi();
   makeGate({ connect: async () => mock.client })(pi.api);
-  const ev = event("graph.read", { query: "RAW", extra: 1 });
+  const ev = event("graph.ask", { query: "RAW", extra: 1 });
   const result = await pi.fire(ev);
   assert.deepEqual(result, {});
   // The old args are gone; only the daemon's substitution remains.
@@ -119,7 +119,7 @@ test("an unexpected reply blocks fail-closed", async () => {
   const mock = mockClient({ reply: "error", code: "internal" });
   const pi = fakePi();
   makeGate({ connect: async () => mock.client })(pi.api);
-  const r = await pi.fire(event("graph.read", {}));
+  const r = await pi.fire(event("graph.ask", {}));
   assert.equal(r.block, true);
 });
 
@@ -132,10 +132,10 @@ test("an unreachable daemon blocks fail-closed and allows a later retry", async 
       throw new Error("ECONNREFUSED");
     },
   })(pi.api);
-  const r = await pi.fire(event("graph.read", {}));
+  const r = await pi.fire(event("graph.ask", {}));
   assert.equal(r.block, true);
   assert.match(r.reason ?? "", /daemon unavailable/);
   // A second call retries the connection (not stuck on the first rejection).
-  await pi.fire(event("graph.read", {}));
+  await pi.fire(event("graph.ask", {}));
   assert.equal(attempts, 2);
 });

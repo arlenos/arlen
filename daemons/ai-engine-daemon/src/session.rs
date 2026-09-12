@@ -223,7 +223,7 @@ mod tests {
             behaviour: None,
             capability_context: CapabilityContext {
                 generic_tools: vec!["bash".into()],
-                proxy_tools: vec!["graph.read".into()],
+                proxy_tools: vec!["graph.ask".into()],
             },
             project_anchor: Some("proj-1".into()),
             read_tier: ReadTier::Standard,
@@ -242,7 +242,7 @@ mod tests {
         let grant = store.grant_for_checked(&token, 4242, 100).unwrap();
         assert_eq!(grant.project_anchor.as_deref(), Some("proj-1"));
         assert_eq!(grant.read_tier, ReadTier::Standard);
-        assert_eq!(grant.capability_context.proxy_tools, vec!["graph.read".to_string()]);
+        assert_eq!(grant.capability_context.proxy_tools, vec!["graph.ask".to_string()]);
 
         // Right token, WRONG pid (a stolen token from another process): refused.
         assert_eq!(store.grant_for_checked(&token, 9999, 100), Err(SessionError::PidMismatch));

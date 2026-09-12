@@ -10,7 +10,7 @@
 // - the AUDIT shim (`tool_result` -> Report + screen): every tool result is
 //   audited and screened before it re-enters the model's context.
 //
-// - the PROXY tools (graph.read/graph.write as model-callable tools that forward
+// - the PROXY tools (graph.ask/graph.write as model-callable tools that forward
 //   to the daemon's Execute verb): defined in `proxy.ts` (`makeProxyTools`, Execute
 //   round-trip e2e-proven) and now registered here. Each forwards to the daemon's
 //   Execute presenting the proof the gate shim minted; the daemon runs the READ
@@ -29,7 +29,7 @@ export type ArlenExtensionAPI = GateExtensionAPI & AuditExtensionAPI & ProxyExte
 export function installArlenShims(pi: ArlenExtensionAPI): void {
   makeGate()(pi);
   makeAudit()(pi);
-  // The privileged proxy tools (graph.read/write, ...) the model may call; each
+  // The privileged proxy tools (graph.ask/write, ...) the model may call; each
   // forwards to the daemon's Execute, presenting the proof the gate shim minted.
   makeProxyTools()(pi);
 }

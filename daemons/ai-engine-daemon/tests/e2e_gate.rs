@@ -26,7 +26,7 @@ use ai_engine_contract::{
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
 use arlen_ai_engine_daemon::dispatch::{Dispatcher, Executor, Reporter};
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
-use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
+use arlen_ai_engine_daemon::ask_executor::{DeniedRunner, GraphAskExecutor};
 use arlen_ai_engine_daemon::session::SessionGrant;
 use arlen_ai_engine_daemon::wire::serve_connection;
 use arlen_ai_engine_daemon::write_executor::{DeniedWriter, GraphWriteExecutor};
@@ -265,7 +265,7 @@ async fn the_real_audit_shim_reports_a_tool_result_and_clean_content_passes_end_
     // REAL reporter was reached - a no-session Report fails closed to Block ->
     // WITHHELD content, so an empty result only happens when the session bound and
     // the reporter both resolved over the actual socket.
-    let v = run_driver(UnusedExecutor, CleanReporter, &["audit", "graph.read"], false).await;
+    let v = run_driver(UnusedExecutor, CleanReporter, &["audit", "graph.ask"], false).await;
     let result = &v["result"];
     assert!(
         result.get("content").is_none(),
@@ -284,20 +284,20 @@ async fn the_real_proxy_tool_forwards_execute_and_fails_closed_end_to_end() {
         return;
     }
     // The KG read proxy tool's execute() forwards to the daemon's Execute verb. The
-    // daemon routes graph.read through the REAL ProxyExecutor -> GraphReadExecutor
+    // daemon routes graph.ask through the REAL ProxyExecutor -> GraphAskExecutor
     // -> the fail-closed DeniedRunner (the live read provider lands at the Phase-2
     // cutover), so the proxy tool surfaces a tool error. The "provider-unavailable"
     // message is the load-bearing distinguisher: it comes only from the real runner
     // reached PAST the session bound and the read-scope check - not from the
     // no-session or no-scope fallbacks - so it proves the Execute verb round-trips
     // through the real executor end to end.
-    let read_executor: Arc<dyn Executor> = Arc::new(GraphReadExecutor::new(Arc::new(DeniedRunner)));
+    let ask_executor: Arc<dyn Executor> = Arc::new(GraphAskExecutor::new(Arc::new(DeniedRunner)));
     let write_executor: Arc<dyn Executor> = Arc::new(GraphWriteExecutor::new(Arc::new(DeniedWriter)));
     let executor = ProxyExecutor::new()
-        .register("graph.read", read_executor)
+        .register("graph.ask", ask_executor)
         .register("graph.write", write_executor);
 
-    let v = run_driver(executor, UnusedReporter, &["execute", "graph.read"], false).await;
+    let v = run_driver(executor, UnusedReporter, &["execute", "graph.ask"], false).await;
     let result = &v["result"];
     assert_eq!(
         result["isError"],
@@ -307,6 +307,6 @@ async fn the_real_proxy_tool_forwards_execute_and_fails_closed_end_to_end() {
     let text = result["content"][0]["text"].as_str().unwrap_or("");
     assert!(
         text.contains("provider-unavailable") || text.contains("Phase-2"),
-        "the REAL ProxyExecutor -> GraphReadExecutor -> DeniedRunner was reached (not a session/scope fallback): {text:?}",
+        "the REAL ProxyExecutor -> GraphAskExecutor -> DeniedRunner was reached (not a session/scope fallback): {text:?}",
     );
 }

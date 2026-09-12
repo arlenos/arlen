@@ -112,7 +112,7 @@ pub fn grant_to_capability(
 /// Resolve a session's grant into the [`QueryScope`] a graph read is bounded
 /// by (`pi-agent-adoption.md` Phase 1, "graph_query read-scope incl. GAP-21 is
 /// re-pointed"). This is the read-side companion to [`grant_to_capability`]: the
-/// daemon runs a `graph.read` proxy tool through the scope this returns, never
+/// daemon runs a `graph.ask` proxy tool through the scope this returns, never
 /// trusting the engine to self-restrict.
 ///
 /// The grant's read tier maps through [`read_tier_to_access_tier`] to the tier's
@@ -249,7 +249,7 @@ pub(crate) fn consent_class_for_tool(tool: &str) -> ConsentClass {
 /// Zero false positives, by construction: a tool name is a capability the engine
 /// selects, never a string echoed from content into a tool position, so no honest
 /// path feeds a honeytool name here. Kept deliberately un-owned by any real tool -
-/// none of these is a routed pi tool (`graph.read`, `graph.write`, `bash`,
+/// none of these is a routed pi tool (`graph.ask`, `graph.write`, `bash`,
 /// `fs.create`, `fs.move`, `run_command`, the egress set).
 const HONEYTOOL_TOOLS: &[&str] = &[
     "export_all_secrets",
@@ -493,7 +493,7 @@ pub fn gate_class_for_tool(tool: &str) -> GateClass {
         // half of the read verb - keyword to ranked ids, no provider call and no
         // generated Cypher - and is bounded by the same caller scope, enforced in
         // the knowledge daemon where the search runs.
-        "graph.read" | "graph.find" => GateClass::Read,
+        "graph.ask" | "graph.find" => GateClass::Read,
         // Reversible graph + fs + settings actions: Allow autonomous. A settings
         // write captures the prior value (RestoreValue), so undo restores it.
         "graph.assert_edge" | "graph.retract_edge" | "fs.move" | "fs.trash"
@@ -514,7 +514,7 @@ pub fn gate_class_for_tool(tool: &str) -> GateClass {
         // (standing autonomy for these comes only via the heavy consent surface).
         "install" | "uninstall" | "send" | "email" | "post" | "fetch" | "http"
         | "run_command" | "exec" | "eval" | "sudo" | "pkexec" => GateClass::Confirm,
-        // Reading a terminal's blocks: Confirm, NOT Read. `graph.read` is Read
+        // Reading a terminal's blocks: Confirm, NOT Read. `graph.ask` is Read
         // because its scope is already bounded by the caller's read tier; a
         // terminal carries whatever the user typed into it, including things they
         // would never hand an assistant, and no tier bounds that. The confirmation
@@ -705,7 +705,7 @@ mod tests {
         // decoy ever collided with a routed tool, that tool would become
         // permanently un-authorizable AND every honest use would read as a hijack.
         for real in [
-            "graph.read",
+            "graph.ask",
             "graph.write",
             "bash",
             "run_command",
@@ -774,7 +774,7 @@ mod tests {
     #[test]
     fn gate_class_table_classifies_by_name() {
         // Reads short-circuit to a scope-bounded Allow.
-        assert_eq!(gate_class_for_tool("graph.read"), GateClass::Read);
+        assert_eq!(gate_class_for_tool("graph.ask"), GateClass::Read);
         // Reversible actions (graph + fs) are autonomous.
         assert_eq!(gate_class_for_tool("graph.assert_edge"), GateClass::ReversibleAction);
         assert_eq!(gate_class_for_tool("graph.retract_edge"), GateClass::ReversibleAction);
@@ -818,7 +818,7 @@ mod tests {
         // Residual (classifier-level, not this guard's): a sub-word segment like
         // `mailer` != the `mail` segment, so it is not recognised - closing that
         // needs unifying the three egress lists at the classifier, a wider change.
-        assert!(!is_egress_tool("graph.read"));
+        assert!(!is_egress_tool("graph.ask"));
         assert!(!is_egress_tool("fs.move"));
         assert!(!is_egress_tool("graph.assert_edge"));
     }

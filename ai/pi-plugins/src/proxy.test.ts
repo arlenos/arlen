@@ -38,12 +38,12 @@ function manySpecs(n: number): ProxyToolSpec[] {
 
 test("registers the default privileged tools (graph read + write)", () => {
   const tools = collect(async () => ({ call: async (): Promise<Reply> => ({ reply: "ack" }) }));
-  assert.ok(tools.has("graph.read"));
+  assert.ok(tools.has("graph.ask"));
   assert.ok(tools.has("graph.write"));
-  // graph.read declares its `query` argument so the model provides it (a permissive
+  // graph.ask declares its `query` argument so the model provides it (a permissive
   // schema had the model call it with `{}`, which the daemon refuses, looping the
   // turn). The daemon still re-validates; the schema is a model-facing hint only.
-  assert.deepEqual(tools.get("graph.read")!.parameters, {
+  assert.deepEqual(tools.get("graph.ask")!.parameters, {
     type: "object",
     properties: {
       query: {
@@ -82,12 +82,12 @@ test("an Ok execute outcome surfaces the daemon result and forwards the args", a
       return { reply: "execute", outcome: "ok", result: { rows: 1 } };
     },
   }));
-  const r = await tools.get("graph.read")!.execute("id-1", { q: "MATCH (n) RETURN n" });
+  const r = await tools.get("graph.ask")!.execute("id-1", { q: "MATCH (n) RETURN n" });
   assert.equal(r.isError, undefined);
   assert.match(r.content[0]?.text ?? "",/rows/);
   assert.deepEqual(seen, {
     call: "execute",
-    tool_name: "graph.read",
+    tool_name: "graph.ask",
     tool_input: { q: "MATCH (n) RETURN n" },
     proof: "test-proof",
   });
@@ -107,7 +107,7 @@ test("an error outcome surfaces a tool error (fail-closed, never silent success)
 
 test("an unexpected daemon reply is a tool error", async () => {
   const tools = collect(async () => ({ call: async (): Promise<Reply> => ({ reply: "ack" }) }));
-  const r = await tools.get("graph.read")!.execute("id-1", {});
+  const r = await tools.get("graph.ask")!.execute("id-1", {});
   assert.equal(r.isError, true);
 });
 
@@ -139,7 +139,7 @@ test("searchTools matches by keyword over name/label/description; empty query re
 
 test("a small catalogue dumps each tool directly (no meta-tools)", () => {
   const tools = collect(async () => ({ call: async (): Promise<Reply> => ({ reply: "ack" }) }));
-  assert.ok(tools.has("graph.read"));
+  assert.ok(tools.has("graph.ask"));
   assert.equal(tools.has("search_tools"), false);
   assert.equal(tools.has("call_tool"), false);
 });
@@ -202,7 +202,7 @@ test("a daemon-unreachable connect failure is a tool error and retries on the ne
           : { reply: "execute", outcome: "ok", result: {} },
     };
   };
-  const tool = collect(connect).get("graph.read")!;
+  const tool = collect(connect).get("graph.ask")!;
   const first = await tool.execute("id-1", {});
   assert.equal(first.isError, true);
   const second = await tool.execute("id-2", {});

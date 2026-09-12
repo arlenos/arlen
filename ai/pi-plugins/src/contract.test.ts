@@ -93,7 +93,7 @@ test("ContractClient sends a framed call and parses the framed reply", async () 
 
   try {
     const client = await ContractClient.connect(sockPath, "tok-xyz");
-    const reply = await client.call(calls.authorize("graph.read", { query: "x" }, true));
+    const reply = await client.call(calls.authorize("graph.ask", { query: "x" }, true));
     client.close();
 
     assert.deepEqual(reply, { reply: "authorize", decision: "allow" });
@@ -101,7 +101,7 @@ test("ContractClient sends a framed call and parses the framed reply", async () 
     assert.equal(seen.token, "tok-xyz");
     assert.deepEqual(seen.call, {
       call: "authorize",
-      tool_name: "graph.read",
+      tool_name: "graph.ask",
       tool_input: { query: "x" },
       external_triggered: true,
     });

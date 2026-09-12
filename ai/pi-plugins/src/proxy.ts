@@ -1,4 +1,4 @@
-// The Arlen KG/OS proxy-tools plugin: registers privileged tools (graph.read,
+// The Arlen KG/OS proxy-tools plugin: registers privileged tools (graph.ask,
 // graph.write, ... OS mutations as they land) as pi custom tools whose execute()
 // does NOT touch the KG/OS inside pi. Each forwards to the daemon's Execute verb,
 // which runs the real action in trusted Rust, re-validates the args server-side,
@@ -65,7 +65,7 @@ export interface ProxyToolSpec {
   description: string;
   /** The tool's JSON-schema parameters. When omitted the tool registers with the
    *  permissive schema; declare it so the model knows the required arguments (e.g.
-   *  graph.read's `query`), otherwise the model calls the tool with `{}` and the
+   *  graph.ask's `query`), otherwise the model calls the tool with `{}` and the
    *  daemon refuses it for a missing argument, looping the turn. */
   parameters?: unknown;
 }
@@ -95,7 +95,7 @@ export const TOOL_DISCLOSURE_THRESHOLD = 12;
  *  land as their daemon-side executors do). */
 export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
   {
-    name: "graph.read",
+    name: "graph.ask",
     label: "Knowledge graph read",
     description:
       "Read the user's knowledge graph to answer ANY question about THEIR OWN " +
@@ -105,7 +105,7 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
       "activity, whereas a raw `ls` only sees one directory's mtimes and misses " +
       "the access history, project structure, and scope the graph tracks. For " +
       "\"what did I work on\", \"my recent files\", \"which files did I open\", " +
-      "\"my active projects\" and the like, reach for graph.read, never the shell. " +
+      "\"my active projects\" and the like, reach for graph.ask, never the shell. " +
       "Pass a plain natural-language `query` of what you want to know (e.g. \"the " +
       "user's most recently accessed files\" or \"the user's active projects\"); " +
       "the daemon translates it into a scoped graph query, runs it bounded by this " +
@@ -133,7 +133,7 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
       "a file to the project it belongs to. Entity types are NAMESPACED as " +
       "system.<Type> - use that exact form (from_type \"system.File\", to_type " +
       "\"system.Project\", relation_type \"FILE_PART_OF\"), not the bare label. The " +
-      "ids are the concrete node ids you got from graph.read (a File's id is its " +
+      "ids are the concrete node ids you got from graph.ask (a File's id is its " +
       "path). Both nodes must already exist. The daemon validates, gates, audits " +
       "and (when permitted) applies it, registering an undo; pi never writes " +
       "directly.",

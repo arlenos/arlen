@@ -1,6 +1,6 @@
 //! The Execute-seam router.
 //!
-//! The daemon is the trusted runner for several proxy tools (`graph.read` now;
+//! The daemon is the trusted runner for several proxy tools (`graph.ask` now;
 //! `graph.write`, OS proxy tools, and our own knowledge-mcp/file-manager-mcp
 //! surfaced as gated custom tools later - `pi-agent-adoption.md` Phase 1). The
 //! contract has one [`Executor`] seam, so this routes an [`Execute`] to the
@@ -84,10 +84,10 @@ mod tests {
     #[tokio::test]
     async fn it_routes_to_the_registered_sub_executor() {
         let router = ProxyExecutor::new()
-            .register("graph.read", Arc::new(MarkerExecutor { marker: "read" }))
+            .register("graph.ask", Arc::new(MarkerExecutor { marker: "read" }))
             .register("graph.write", Arc::new(MarkerExecutor { marker: "write" }));
 
-        match router.execute(&exec("graph.read"), &grant()).await {
+        match router.execute(&exec("graph.ask"), &grant()).await {
             ExecuteOutcome::Ok { result } => assert_eq!(result["ran"], "read"),
             other => panic!("expected the read executor, got {other:?}"),
         }
@@ -100,7 +100,7 @@ mod tests {
     #[tokio::test]
     async fn an_unregistered_tool_is_unknown() {
         let router = ProxyExecutor::new()
-            .register("graph.read", Arc::new(MarkerExecutor { marker: "read" }));
+            .register("graph.ask", Arc::new(MarkerExecutor { marker: "read" }));
         assert!(matches!(
             router.execute(&exec("rm.rf"), &grant()).await,
             ExecuteOutcome::Error { code: ContractError::UnknownTool, .. },
@@ -111,7 +111,7 @@ mod tests {
     async fn an_empty_router_refuses_every_tool() {
         let router = ProxyExecutor::new();
         assert!(matches!(
-            router.execute(&exec("graph.read"), &grant()).await,
+            router.execute(&exec("graph.ask"), &grant()).await,
             ExecuteOutcome::Error { code: ContractError::UnknownTool, .. },
         ));
     }

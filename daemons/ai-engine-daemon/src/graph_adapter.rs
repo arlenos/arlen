@@ -3,7 +3,7 @@
 //! Bridges the os-sdk [`UnixGraphClient`] (which speaks the Knowledge Daemon's
 //! Unix-socket Cypher protocol) onto the ai-core [`GraphQuerier`] trait the
 //! [`CypherPipeline`](arlen_ai_core::pipeline::CypherPipeline) depends on, so the
-//! Phase-1 [`GraphReadExecutor`](crate::read_executor::GraphReadExecutor) can run
+//! Phase-1 [`GraphAskExecutor`](crate::ask_executor::GraphAskExecutor) can run
 //! a bounded read against the real graph.
 //!
 //! This mirrors the ai-daemon's adapter and is kept daemon-local on purpose:

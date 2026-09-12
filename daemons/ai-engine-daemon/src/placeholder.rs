@@ -2,7 +2,7 @@
 //!
 //! Production wires the real seams in `main.rs`: the gate is `CapabilityGate`
 //! (`Capability::decide`), the executor is a `ProxyExecutor` routing
-//! graph.read/graph.write, and the reporter is `ScreeningReporter` (content-free
+//! graph.ask/graph.write, and the reporter is `ScreeningReporter` (content-free
 //! audit + S17/S18 screening). These three - a gate that denies every call, an
 //! executor that runs nothing, a reporter that blocks every result from
 //! re-entering the engine's context - are the safe-default impls the
@@ -79,7 +79,7 @@ mod tests {
         assert!(matches!(g, AuthorizeDecision::Deny { .. }));
 
         let e = UnavailableExecutor
-            .execute(&Execute { tool_name: "graph.read".into(), tool_input: serde_json::json!({}), proof: None }, &grant())
+            .execute(&Execute { tool_name: "graph.ask".into(), tool_input: serde_json::json!({}), proof: None }, &grant())
             .await;
         assert!(matches!(e, ExecuteOutcome::Error { code: ContractError::Unavailable, .. }));
 

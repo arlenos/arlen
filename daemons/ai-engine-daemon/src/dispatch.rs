@@ -553,7 +553,7 @@ mod tests {
         assert_eq!(e.load(Ordering::SeqCst), 1, "a consumed proof does not reach the executor");
 
         let ack = d.report(&token, std::process::id(), &Report {
-            tool_name: "graph.read".into(),
+            tool_name: "graph.ask".into(),
             tool_call_id: "c1".into(),
             result: serde_json::json!({}),
             is_error: false,
@@ -937,10 +937,10 @@ mod tests {
         Authorize { tool_name: "bash".into(), tool_input: serde_json::json!({}), external_triggered: false }
     }
     fn exec() -> Execute {
-        Execute { tool_name: "graph.read".into(), tool_input: serde_json::json!({}), proof: None }
+        Execute { tool_name: "graph.ask".into(), tool_input: serde_json::json!({}), proof: None }
     }
     fn report() -> Report {
-        Report { tool_name: "graph.read".into(), tool_call_id: "c".into(), result: serde_json::json!({}), is_error: false }
+        Report { tool_name: "graph.ask".into(), tool_call_id: "c".into(), result: serde_json::json!({}), is_error: false }
     }
     #[allow(non_snake_case)]
     fn SessionToken_for_test() -> SessionToken {
