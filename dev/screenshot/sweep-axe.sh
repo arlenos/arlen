@@ -296,6 +296,14 @@ for entry in "${SURFACES[@]}"; do
   # Xvfb. The refusal was right and its reason was unreadable; the message should
   # say no title came back, which is what happened.
   #
+  # AND AN INDENTED LINE IS NEVER A TITLE, which is the rule that replaces
+  # chasing words. Filtering `Xvfb` caught the process listing and missed the
+  # PROSE in the same refusal ("intermittently - a flat frame or no answer at
+  # all. It is:"), which refused the mail app on the next run. Every line that
+  # message prints is indented and `document.title` never is, so the shape is the
+  # filter and the next sentence somebody adds to that refusal is covered
+  # already.
+  #
   # MEASURED, and it was worse than a risk: `wrote /dev/null` is printed AFTER
   # the answer on every run, so `tail -1` never returned a title at all. Every app
   # with an `*.app.title` key was refused as "another server holds it" and the
@@ -305,7 +313,7 @@ for entry in "${SURFACES[@]}"; do
     served=$(timeout 240 dev/screenshot/headless.sh \
       --url "http://localhost:$PORT$route" --out /dev/null --width "$WIDTH" \
       --timeout 180 --settle 4 --probe "document.title" 2>/dev/null \
-      | grep -vE '^(MESA|Note:|libEGL|Gdk-|note:|wrote |viewport:)|DRI3|Xvfb|^$' | tail -1)
+      | grep -vE '^(MESA|Note:|libEGL|Gdk-|note:|wrote |viewport:)|DRI3|Xvfb|^[[:space:]]|^$' | tail -1)
     [ -n "$served" ] && break
   done
   if [ -n "$want" ] && [ "$served" != "$want" ]; then
