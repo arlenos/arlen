@@ -138,7 +138,10 @@
                   style="padding-inline-start: {8 + entry.depth * 14}px"
                   onclick={() => entry.page && onjump(entry.page)}
                 >
-                  <span class="truncate">{entry.title}</span>
+                  <!-- Ellipsed on purpose, and reachable anyway: a heading long
+                       enough to clip clips at every window width, because the
+                       sidebar is a fixed column and indents with its depth. -->
+                  <span class="truncate" title={entry.title}>{entry.title}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             {/each}
