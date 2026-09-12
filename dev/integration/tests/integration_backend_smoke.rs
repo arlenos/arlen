@@ -1116,6 +1116,19 @@ async fn a_connecting_app_sees_only_its_own_capability_grant() {
 #[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host (~30s)"]
 async fn a_promoted_file_materializes_into_a_capsule_slice() {
     let mut stack = EphemeralStack::new().expect("private runtime root");
+    // Unprivileged, so the grant below is doing the work rather than the tier.
+    // The capsule op has no system-anchored exemption, but a FirstParty caller
+    // would leave that unproven here, and every other read verb in this suite is
+    // measured the same way.
+    stack.as_unprivileged();
+    // The capsule op is caller-scoped like the other reads: a label the caller
+    // may not read is not in its slice. Without this grant the poll below would
+    // time out on an empty slice rather than on a missing node, which is the
+    // gate working and not the pipeline failing.
+    stack
+        .seed_read_profile(&["system.File.id", "system.File.path"])
+        .expect("seed read profile");
+
     stack
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");

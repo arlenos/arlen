@@ -76,6 +76,7 @@ const CAPSULE_LABELS: &[(&str, &[&str])] = &[
 pub(crate) async fn materialize_slice(
     graph: &GraphHandle,
     scope: &CapsuleScope,
+    readable_labels: &[String],
 ) -> Result<FrozenSlice> {
     let manifest = capsule_expand(graph, scope).await?;
     let mut nodes = Vec::new();
@@ -85,6 +86,15 @@ pub(crate) async fn materialize_slice(
         // so at most one matches). A manifest id that loads as neither is skipped,
         // and its edges are excluded by loading relations over the loaded ids.
         for (label, fields) in CAPSULE_LABELS {
+            // A label this caller may not read is not in its capsule. The op used
+            // to load both regardless, which made it the one read verb an app with
+            // no graph grant could still get answers from - name a path and learn
+            // that the file exists, which app touched it and when, and then one hop
+            // to its project and back out to every other file in it. The other four
+            // read verbs all refuse that caller; this one answered.
+            if !readable_labels.iter().any(|l| l == label) {
+                continue;
+            }
             if let Some(node) = load_node_fields(graph, label, id, fields).await? {
                 nodes.push(node);
                 break;
@@ -275,6 +285,11 @@ pub(crate) async fn load_node_fields(
 
 #[cfg(test)]
 mod tests {
+
+    /// Both capsule labels readable, the shape a granted caller has.
+    fn both_labels() -> Vec<String> {
+        vec!["File".to_string(), "Project".to_string()]
+    }
     use super::*;
 
     #[test]
@@ -376,7 +391,7 @@ mod tests {
             .await
             .unwrap();
 
-        let slice = materialize_slice(&graph, &CapsuleScope { roots: vec!["p1".into()], expand_hops: 1 })
+        let slice = materialize_slice(&graph, &CapsuleScope { roots: vec!["p1".into()], expand_hops: 1 }, &both_labels())
             .await
             .unwrap();
 
@@ -394,7 +409,7 @@ mod tests {
             vec![SliceRelation { from: "f1".into(), rel_type: "FILE_PART_OF".into(), to: "p1".into() }]
         );
         // Determinism: re-materializing yields identical canonical bytes.
-        let again = materialize_slice(&graph, &CapsuleScope { roots: vec!["p1".into()], expand_hops: 1 })
+        let again = materialize_slice(&graph, &CapsuleScope { roots: vec!["p1".into()], expand_hops: 1 }, &both_labels())
             .await
             .unwrap();
         assert_eq!(slice.canonical_bytes(), again.canonical_bytes());
@@ -501,4 +516,45 @@ mod tests {
             .unwrap();
         assert!(capsule_neighbors(&graph, "p1").await.unwrap().is_empty());
     }
+
+    /// The gap this closed: a caller with no graph grant could name a path and
+    /// get the file back, then hop to its project and out to every sibling file.
+    /// Every other read verb refuses that caller; this one answered.
+    #[tokio::test]
+    async fn an_unreadable_label_is_not_in_the_capsule() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        graph
+            .write(
+                "CREATE (f:File {id:'f1', path:'/proj/a.rs', app_id:'ed', last_accessed:5})"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        graph
+            .write("CREATE (p:Project {id:'p1', name:'Proj', root_path:'/proj', status:'active', created_at:1})".into())
+            .await
+            .unwrap();
+        graph
+            .write("MATCH (f:File {id:'f1'}), (p:Project {id:'p1'}) CREATE (f)-[:FILE_PART_OF]->(p)".into())
+            .await
+            .unwrap();
+        let scope = CapsuleScope { roots: vec!["p1".into()], expand_hops: 1 };
+
+        // No readable label: nothing loads, and with no loaded node there is no
+        // relation either, so the hop discloses nothing on its own.
+        let empty = materialize_slice(&graph, &scope, &[]).await.unwrap();
+        assert!(empty.nodes.is_empty(), "an ungranted caller gets no nodes");
+        assert!(empty.relations.is_empty(), "and no edges to read them off");
+
+        // One readable label: that label only, and the membership edge goes with
+        // the endpoint that did not load.
+        let projects_only =
+            materialize_slice(&graph, &scope, &["Project".to_string()]).await.unwrap();
+        assert_eq!(projects_only.nodes.len(), 1);
+        assert_eq!(projects_only.nodes[0].label, "Project");
+        assert!(projects_only.relations.is_empty());
+    }
+
 }
