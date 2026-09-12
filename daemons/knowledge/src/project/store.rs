@@ -318,6 +318,25 @@ impl ProjectStore {
         Ok(parse_project(&rs, 0))
     }
 
+    /// How many active projects live strictly INSIDE `root`.
+    ///
+    /// The test behind "a container of projects is not a project"
+    /// (`project-system.md`). Strictly inside: a project AT `root` is not one of
+    /// its own contents, which is why the prefix carries the separator.
+    pub async fn count_projects_under(&self, root: &str) -> Result<usize> {
+        let prefix = escape_cypher(&format!("{}/", root.trim_end_matches('/')));
+        let rs = self
+            .graph
+            .query_rows(format!(
+                "MATCH (p:Project)
+                 WHERE p.status = 'active'
+                   AND starts_with(p.root_path, '{prefix}')
+                 RETURN count(p) AS n"
+            ))
+            .await?;
+        Ok(rs.rows.first().and_then(|r| r.first()).map(|c| c.as_i64()).unwrap_or(0).max(0) as usize)
+    }
+
     /// List all active projects.
     pub async fn list_active(&self) -> Result<Vec<Project>> {
         let rs = self
