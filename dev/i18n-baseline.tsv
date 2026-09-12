@@ -65,7 +65,6 @@ apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
-apps/harness/src/lib/components/HarnessSidebar.svelte	This removes the chat and its messages. You cannot undo this.
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Refresh
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	Diagram source (
@@ -300,7 +299,7 @@ apps/system-monitor/src/lib/stores/detail.ts	read the knowledge graph
 apps/system-monitor/src/lib/stores/detail.ts	read your notes
 apps/system-monitor/src/lib/stores/detail.ts	the query tier you set
 apps/system-monitor/src/lib/stores/detail.ts	the whole graph
-apps/system-monitor/src/lib/stores/perf.ts	Package
+apps/system-monitor/src/lib/stores/perf.ts	Package id 0
 apps/terminal/src/lib/components/TerminalSidebar.svelte	{} (last command exited {})
 apps/viewers/src/lib/mock.ts	Nightswim
 apps/viewers/src/routes/+page.svelte	TypeError: undefined is not an object (evaluating 'window.__TAURI_INTERNALS__.invoke')
