@@ -51,6 +51,24 @@ pub fn read_tier_to_access_tier(tier: ReadTier) -> AccessTier {
     }
 }
 
+/// Map the configured `[ai] access_level` (0..=4, Foundation §8.4) to the
+/// contract [`ReadTier`] a session reads under.
+///
+/// Both scales are five-level and ordinally aligned, so this is the same
+/// order-preserving correspondence [`read_tier_to_access_tier`] and
+/// `read_tier_for_scope` keep: no read to no read, session to session, project to
+/// standard, time-windowed to extended, full to full. Anything above the top
+/// clamps rather than widening.
+pub fn read_tier_for_level(level: u8) -> ReadTier {
+    match level {
+        0 => ReadTier::None,
+        1 => ReadTier::Minimal,
+        2 => ReadTier::Standard,
+        3 => ReadTier::Extended,
+        _ => ReadTier::Full,
+    }
+}
+
 /// Resolve a session's grant into the [`Capability`] the gate decides against.
 ///
 /// The read tier comes from the grant (mapped through
@@ -610,6 +628,17 @@ pub(crate) fn fs_create_target_is_sensitive(tool_input: &serde_json::Value) -> b
 
 #[cfg(test)]
 mod tests {
+
+    /// The configured level reaches a tier, ordinally, and clamps at the top.
+    #[test]
+    fn every_read_level_maps_to_its_tier() {
+        assert_eq!(read_tier_for_level(0), ReadTier::None);
+        assert_eq!(read_tier_for_level(1), ReadTier::Minimal);
+        assert_eq!(read_tier_for_level(2), ReadTier::Standard);
+        assert_eq!(read_tier_for_level(3), ReadTier::Extended);
+        assert_eq!(read_tier_for_level(4), ReadTier::Full);
+        assert_eq!(read_tier_for_level(255), ReadTier::Full);
+    }
 
     #[test]
     fn reading_a_terminal_confirms_rather_than_being_a_plain_read() {

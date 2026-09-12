@@ -29,6 +29,11 @@ struct RawAi {
     /// other AI components; the model/window/token live in `[provider]`.
     #[serde(default)]
     provider: String,
+    /// The read scope the user picked, 0..=4 (Foundation §8.4). `None` means the
+    /// file declares none; see [`read_level`] for why that is the widest rather
+    /// than the floor.
+    #[serde(default)]
+    access_level: Option<u8>,
 }
 
 fn default_model() -> String {
@@ -247,6 +252,47 @@ pub fn executor_live() -> bool {
         .unwrap_or(false)
 }
 
+/// The widest read level, the value an absent setting resolves to.
+///
+/// The generous default is settled (`ai-agent-design.md`): the assistant reads the
+/// user's OWN observation graph, which carries no authority or secret labels, so
+/// out of the box it can answer "what was I working on". Restriction is opt-out.
+pub const WIDEST_READ_LEVEL: u8 = 4;
+
+/// The read level declared in the given `ai.toml` text, clamped to 0..=4.
+///
+/// Absent resolves to [`WIDEST_READ_LEVEL`], and so does an unparseable document -
+/// which is the opposite direction from the security switches beside it, on
+/// purpose. This level governs how much of the user's own activity the assistant
+/// sees, not whether it may act; the floor is what a person CHOSE, and a file that
+/// declares no choice has not chosen the floor. The malformed case cannot widen
+/// anything in practice either, because `ai_enabled_from_text` reads the same
+/// document fail-closed, so a broken config has no assistant to grant a tier to.
+pub fn read_level_from_text(text: &str) -> u8 {
+    toml::from_str::<RawConfig>(text)
+        .ok()
+        .and_then(|c| c.ai.access_level)
+        .unwrap_or(WIDEST_READ_LEVEL)
+        .min(WIDEST_READ_LEVEL)
+}
+
+/// The read level in force: the config-broker when reached, else the on-disk
+/// `ai.toml`, else [`WIDEST_READ_LEVEL`].
+///
+/// Until 12 September this setting reached nothing - the session grant hardcoded
+/// the widest tier - so Settings displayed a control that governed nothing, which
+/// in a security surface is a false statement (ruled, `ai-agent-design.md`, "The
+/// read level is a control that does not govern"). One accessor, read where the
+/// grant is built.
+pub fn read_level() -> u8 {
+    if let Some(v) = from_broker(|s| s.access_level) {
+        return v.min(WIDEST_READ_LEVEL);
+    }
+    std::fs::read_to_string(ai_config_path())
+        .map(|t| read_level_from_text(&t))
+        .unwrap_or(WIDEST_READ_LEVEL)
+}
+
 /// The names of the behaviours enabled in the given `ai.toml` text (`[agent]
 /// enabled = [...]`). A malformed document yields an empty list (fail-closed):
 /// nothing is dispatched rather than guessing.
@@ -394,6 +440,27 @@ mod tests {
         assert!(!ai_enabled_from_text("[ai]\nenabled = false\n"));
         // Absent flag / absent section -> disabled.
         assert!(!ai_enabled_from_text("[ai]\naccess_level = 2\n"));
+    }
+
+    /// The setting governs, and a file that declares nothing has declared no
+    /// restriction. Both halves of the ruling, pinned: a level reaches the tier,
+    /// and the generous default survives it.
+    #[test]
+    fn a_declared_read_level_is_read_and_an_absent_one_is_the_widest() {
+        assert_eq!(read_level_from_text("[ai]\naccess_level = 0\n"), 0);
+        assert_eq!(read_level_from_text("[ai]\naccess_level = 2\n"), 2);
+        assert_eq!(read_level_from_text("[ai]\nenabled = true\n"), WIDEST_READ_LEVEL);
+        assert_eq!(read_level_from_text(""), WIDEST_READ_LEVEL);
+    }
+
+    /// Above the top clamps rather than widening into a tier that does not exist,
+    /// and a broken document keeps the assistant it cannot enable anyway.
+    #[test]
+    fn an_out_of_range_level_clamps_and_a_broken_file_stays_generous() {
+        assert_eq!(read_level_from_text("[ai]\naccess_level = 9\n"), WIDEST_READ_LEVEL);
+        assert_eq!(read_level_from_text("[ai"), WIDEST_READ_LEVEL);
+        // The same broken file has no assistant to grant that tier to.
+        assert!(!ai_enabled_from_text("[ai"));
         assert!(!ai_enabled_from_text(""));
         // Other sections present, no [ai] enabled -> disabled.
         assert!(!ai_enabled_from_text("[agent]\nexecutor_live = true\n"));
