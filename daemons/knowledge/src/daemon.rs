@@ -3593,6 +3593,44 @@ async fn handle_client(
             continue;
         }
 
+        // Enumeration mode: a leading 0x12 byte answers the HANDLES of one label -
+        // an id and a display name per row, nothing else. It stands beside the
+        // anchored 0x08 rather than undermining it, because 0x08's anchor
+        // requirement is about CONTENT and this op has none
+        // (`pi-gate-class-registry.md`). Three fences: the label must be on the
+        // `ENUMERABLE` list (a judgement made once, in the open - a message or a
+        // contact never joins it, because for those the names ARE the content),
+        // the caller's own read scope must include it (RS-R1, unchanged), and the
+        // limit is clamped before the query is built. 0x01-0x11 are taken; see
+        // `mode_bytes_are_uniquely_assigned`.
+        if buf.first() == Some(&0x12) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                match tokio::time::timeout(
+                    Duration::from_millis(500),
+                    handle_list(&buf[1..], peer.as_ref(), &app_id, &auth, &graph),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_elapsed) => PROVENANCE_OUT_OF_SCOPE.to_string(),
+                }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
         // Structured typed read mode: a leading 0x08 byte selects RS-R2, the only
         // bypass-proof read for sensitive labels - the daemon owns the entire query
         // shape (the caller supplies no Cypher), so a value cannot smuggle clause
@@ -4544,6 +4582,40 @@ fn scrub_sensitive_columns_json(json: &str) -> String {
 /// process via the write path's PID-reuse guard. An unprovisioned or recycled peer
 /// (or one with no graph access) yields the empty set, NOT an error - the
 /// fail-closed default, so a caller with no scope can read nothing labelled.
+/// Answer the handles of one enumerable label, or the uniform denial.
+///
+/// Every refusal is the SAME answer - a label that is not enumerable, a label
+/// this caller may not read, and a body that does not parse are indistinguishable
+/// - so the op cannot be used to ask whether something exists.
+async fn handle_list(
+    body: &[u8],
+    peer: Option<&WritePeer>,
+    app_id: &str,
+    auth: &Arc<Mutex<Authenticator>>,
+    graph: &GraphHandle,
+) -> String {
+    let Ok(req) = serde_json::from_slice::<crate::list::ListRequest>(body) else {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    };
+    let (Some(label), Some(field)) =
+        (crate::list::enumerable_label(&req.label), crate::list::display_field(&req.label))
+    else {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    };
+    // The caller's own scope, on top of the label being enumerable at all. Being
+    // listable is a property of the label; being allowed to list it is this
+    // caller's grant, and the two are different questions.
+    let readable = caller_readable_labels(peer, app_id, auth).await;
+    if !readable.iter().any(|l| l == label) {
+        return PROVENANCE_OUT_OF_SCOPE.to_string();
+    }
+    let limit = crate::list::clamp_limit(req.limit);
+    match crate::list::list_identities(graph, label, field, limit).await {
+        Ok(rows) => serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string()),
+        Err(_) => PROVENANCE_OUT_OF_SCOPE.to_string(),
+    }
+}
+
 async fn caller_readable_labels(
     peer: Option<&WritePeer>,
     app_id: &str,
