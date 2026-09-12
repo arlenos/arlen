@@ -9,28 +9,18 @@
     meetings,
     meetingsMocked,
     meetingsUnavailable,
-    meetingsFailure,
-    meetingsFailureKey,
   } from "$lib/stores/meeting";
 </script>
 
 <div class="home" dir={$dir}>
   <div class="home-center">
-    <!-- NO sample caveat here, and the rail's own comment is the argument: the
-         example rows are beside the list, "and a reader scanning them has no
-         reason to look at the pane that says pick one". This pane carried a
-         second copy of that sentence anyway, so the screen said it twice - the
-         shape knowledge's Library was fixed for in August. The read-failure line
-         below stays: that one IS about this pane, which is where somebody looks
-         when the list is empty. -->
-    {#if $meetingsUnavailable}
-      <p class="sample">
-        {$t(meetingsFailureKey($meetingsFailure))}
-      </p>
-    {/if}
-    <!-- Same three states. When the read failed the sentence above already says
-         so, and adding "No meetings yet" underneath would answer a question we
-         just said we could not answer. -->
+    <!-- NO sample caveat here, and no refusal either: both are about the list,
+         and the rail says each once, beside the rows (design-system.md 6.11,
+         thread two: the refusal sits at the top of the surface that failed).
+         This pane used to repeat the refusal in grey, so the screen said it
+         twice. What stays is this pane's own offer. When the read failed,
+         "No meetings" would answer a question the rail just said it could not
+         answer, so the hint goes and the button stands alone. -->
     {#if !$meetingsUnavailable}
       <p class="hint">{$meetings.length === 0 ? $t("mt.empty") : $t("mt.pickHint")}</p>
     {/if}
@@ -53,11 +43,6 @@
     max-width: 26rem;
     padding: 1rem;
     text-align: center;
-  }
-  .sample {
-    margin: 0;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .hint {
     margin: 0;

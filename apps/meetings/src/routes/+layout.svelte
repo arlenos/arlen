@@ -187,9 +187,7 @@
                  not tell a daemon that is down from a permission you do not have
                  from a store that is corrupt - three different things to do about
                  it, rendered as one shrug. -->
-            <p class="mt-sample">
-              {$t(meetingsFailureKey($meetingsFailure))}
-            </p>
+            <div class="mt-note"><Notice tone="error" text={$t(meetingsFailureKey($meetingsFailure))} /></div>
           {/if}
           <SidebarMenu>
             {#each $meetings as m (m.id)}
@@ -262,12 +260,6 @@
 <style>
   .mt-note {
     margin: 0 8px 6px;
-  }
-  .mt-sample {
-    margin: 0 8px 4px;
-    font-size: 11px;
-    line-height: 1.35;
-    color: color-mix(in srgb, currentColor 55%, transparent);
   }
 
   .rec-dot {
