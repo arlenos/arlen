@@ -7,6 +7,7 @@
 //! a missing, unreadable or malformed config leaves AI disabled, so pi is never
 //! spawned by accident.
 
+use arlen_ai_core::capability::BaselineMode;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -34,6 +35,11 @@ struct RawAi {
     /// than the floor.
     #[serde(default)]
     access_level: Option<u8>,
+    /// The baseline action mode (`suggest` / `supervised`). Anything else,
+    /// `autonomous` included, floors to `suggest`: autonomy is per-application and
+    /// cannot be declared globally.
+    #[serde(default)]
+    action_mode: Option<String>,
 }
 
 fn default_model() -> String {
@@ -293,6 +299,39 @@ pub fn read_level() -> u8 {
         .unwrap_or(WIDEST_READ_LEVEL)
 }
 
+/// The baseline action mode declared in the given `ai.toml` text.
+///
+/// Absent, unparseable, or unrecognised all resolve to
+/// [`BaselineMode::Suggest`] - the floor, and the opposite direction from
+/// [`read_level`] because this one governs whether the assistant ACTS. A literal
+/// `autonomous` floors here too: autonomy is a per-application grant, never a
+/// global setting, which is what `BaselineMode::parse` already enforces.
+pub fn action_mode_from_text(text: &str) -> BaselineMode {
+    toml::from_str::<RawConfig>(text)
+        .ok()
+        .and_then(|c| c.ai.action_mode)
+        .map(|m| BaselineMode::parse(&m))
+        .unwrap_or(BaselineMode::Suggest)
+}
+
+/// The baseline action mode in force: the config-broker when reached, else the
+/// on-disk `ai.toml`, else [`BaselineMode::Suggest`].
+///
+/// Like [`read_level`], this setting reached nothing until 12 September - the gate
+/// hardcoded its own baseline - so Settings offered a mode the system did not
+/// keep.
+pub fn action_mode() -> BaselineMode {
+    if let Some(m) = from_broker(|s| s.action_mode) {
+        return match m {
+            arlen_config_broker::ActionMode::Supervised => BaselineMode::Supervised,
+            arlen_config_broker::ActionMode::Suggest => BaselineMode::Suggest,
+        };
+    }
+    std::fs::read_to_string(ai_config_path())
+        .map(|t| action_mode_from_text(&t))
+        .unwrap_or(BaselineMode::Suggest)
+}
+
 /// The names of the behaviours enabled in the given `ai.toml` text (`[agent]
 /// enabled = [...]`). A malformed document yields an empty list (fail-closed):
 /// nothing is dispatched rather than guessing.
@@ -461,6 +500,18 @@ mod tests {
         assert_eq!(read_level_from_text("[ai"), WIDEST_READ_LEVEL);
         // The same broken file has no assistant to grant that tier to.
         assert!(!ai_enabled_from_text("[ai"));
+    }
+
+    /// The mode the user picked is read, and everything else floors to Suggest -
+    /// including a global `autonomous`, which is not a thing a person can declare
+    /// for the whole system.
+    #[test]
+    fn the_action_mode_is_read_and_anything_unrecognised_floors() {
+        assert_eq!(action_mode_from_text("[ai]\naction_mode = \"supervised\"\n"), BaselineMode::Supervised);
+        assert_eq!(action_mode_from_text("[ai]\naction_mode = \"suggest\"\n"), BaselineMode::Suggest);
+        assert_eq!(action_mode_from_text("[ai]\naction_mode = \"autonomous\"\n"), BaselineMode::Suggest);
+        assert_eq!(action_mode_from_text("[ai]\nenabled = true\n"), BaselineMode::Suggest);
+        assert_eq!(action_mode_from_text("[ai"), BaselineMode::Suggest);
         assert!(!ai_enabled_from_text(""));
         // Other sections present, no [ai] enabled -> disabled.
         assert!(!ai_enabled_from_text("[agent]\nexecutor_live = true\n"));

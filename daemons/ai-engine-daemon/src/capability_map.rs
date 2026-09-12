@@ -8,12 +8,16 @@
 //! lives in the daemon, never the contract crate, so the contract stays
 //! engine-neutral.
 //!
-//! The action side is `suggest_only` by default (every action a proposal). The
-//! `[agent] executor_live` switch lifts it: with executor-live on, the engine app
-//! is granted per-application Autonomy, so an authorized ordinary/reversible
-//! action resolves to Allow - but the non-configurable overrides still hold, so a
-//! high-impact or externally-triggered action is a confirmation even then, never
-//! silent autonomous execution.
+//! The action side is `suggest_only` by default (every action a proposal). Two
+//! switches govern it and they answer different questions: `[agent]
+//! executor_live` is the human gate, and `[ai] action_mode` is the baseline the
+//! person chose. With the gate off, every action is a proposal whatever the mode
+//! says; with it on, the mode governs - Suggest still proposes, Supervised
+//! resolves an ordinary action to a preview the user confirms. Nothing here
+//! resolves to autonomy: the engine is no longer written into its own
+//! `autonomous_apps` list, so silent execution needs a named grant that does not
+//! exist yet. The non-configurable overrides hold throughout, so a high-impact or
+//! externally-triggered action is a confirmation whatever the mode.
 
 use crate::dispatch::Gate;
 use crate::session::SessionGrant;
@@ -28,10 +32,15 @@ use std::path::{Path, PathBuf};
 use arlen_consent_contract::ConsentClass;
 use async_trait::async_trait;
 
-/// The app identity actions are attributed to under an engine session. Under the
-/// `executor_live` lift this id is placed in the capability's `autonomous_apps`,
-/// so the engine's authorized ordinary/reversible actions resolve to Autonomous
-/// (Allow); without the lift it is the Suggest baseline.
+/// The app identity actions are attributed to under an engine session.
+///
+/// It is NOT placed in the capability's `autonomous_apps`. It used to be, under
+/// the `executor_live` lift, which meant the daemon wrote its own id into the
+/// user's autonomy list - a default is a starting value somebody can change, and
+/// a daemon inserting itself is the system overruling a decision already made,
+/// silently, towards more authority (ruled, `ai-agent-design.md`). If
+/// `executor_live` needs the daemon to act on its own behalf, that is a distinct
+/// grant with its own name, visible and revocable where grants are.
 const ENGINE_APP_ID: &str = "ai-engine";
 
 /// Map the contract's coarse [`ReadTier`] to the graph layer's [`AccessTier`].
@@ -72,17 +81,28 @@ pub fn read_tier_for_level(level: u8) -> ReadTier {
 /// Resolve a session's grant into the [`Capability`] the gate decides against.
 ///
 /// The read tier comes from the grant (mapped through
-/// [`read_tier_to_access_tier`]). The action side depends on `executor_live`:
-/// when false (default) it is the conservative [`ActionPermissions::suggest_only`]
-/// baseline, so every action is at most a proposal. When true (the executor-live
-/// flip), the engine app [`ENGINE_APP_ID`] is granted per-application Autonomy, so
-/// an authorized ordinary/reversible action resolves to Allow - but the
-/// non-configurable overrides still hold: a HIGH-IMPACT action (permanent delete,
-/// external send, package/system change, elevated privilege) and any EXTERNALLY-
-/// TRIGGERED action still require confirmation even under executor-live.
-pub fn grant_to_capability(grant: &SessionGrant, executor_live: bool) -> Capability {
+/// [`read_tier_to_access_tier`]). The action side takes BOTH switches, and they
+/// answer different questions: `executor_live` is the human gate - when false
+/// (the default) the baseline is [`ActionPermissions::suggest_only`] whatever the
+/// mode says, so every action is at most a proposal. When it is true, `baseline`
+/// is the mode the user chose, and Supervised resolves an ordinary action to a
+/// preview the user confirms.
+///
+/// `autonomous_apps` stays EMPTY here. The engine id used to be written into it
+/// under the lift, which made the daemon its own autonomy grant; that is refused
+/// (see [`ENGINE_APP_ID`]), so nothing resolves to Autonomy without a named grant
+/// that does not exist yet.
+///
+/// The non-configurable overrides hold throughout: a HIGH-IMPACT action (permanent
+/// delete, external send, package/system change, elevated privilege) and any
+/// EXTERNALLY-TRIGGERED action still require confirmation.
+pub fn grant_to_capability(
+    grant: &SessionGrant,
+    executor_live: bool,
+    baseline: BaselineMode,
+) -> Capability {
     let actions = if executor_live {
-        ActionPermissions::new(BaselineMode::Suggest, [ENGINE_APP_ID])
+        ActionPermissions::new(baseline, Vec::<String>::new())
     } else {
         ActionPermissions::suggest_only()
     };
@@ -250,6 +270,10 @@ pub struct CapabilityGate {
     /// effect without a restart. The production gate reads `[agent] executor_live`
     /// from `ai.toml`; tests inject a fixed value.
     executor_live: fn() -> bool,
+    /// The baseline action mode, read per call for the same reason
+    /// `executor_live` is: a Settings change takes effect without a restart. The
+    /// production gate reads `[ai] action_mode`.
+    baseline: fn() -> BaselineMode,
     /// Where a honeytool trip is recorded as a policy violation for the anomaly
     /// detector to surface. `None` in tests and the wire harness, which assert the
     /// Deny (the containment) without a live ledger; the production gate in `main`
@@ -262,6 +286,7 @@ impl Default for CapabilityGate {
     fn default() -> Self {
         Self {
             executor_live: crate::engine_config::executor_live,
+            baseline: crate::engine_config::action_mode,
             audit: None,
         }
     }
@@ -273,15 +298,24 @@ impl CapabilityGate {
         Self::default()
     }
 
-    /// A gate with a FIXED executor-live source rather than the on-disk config.
-    /// Used by tests and the e2e harness so gate behaviour is deterministic and
-    /// does not depend on the developer's `ai.toml`; production always uses
-    /// [`Self::new`], which reads `[agent] executor_live` per call.
+    /// A gate with a FIXED executor-live source rather than the on-disk config,
+    /// and the Suggest baseline. Used by tests and the e2e harness so gate
+    /// behaviour is deterministic and does not depend on the developer's
+    /// `ai.toml`; production always uses [`Self::new`], which reads both switches
+    /// per call.
     pub fn with_executor_live(executor_live: fn() -> bool) -> Self {
         Self {
             executor_live,
+            baseline: || BaselineMode::Suggest,
             audit: None,
         }
+    }
+
+    /// The same fixed-source gate with an explicit baseline mode, for the tests
+    /// that drive the mode rather than the human gate.
+    pub fn with_baseline(mut self, baseline: fn() -> BaselineMode) -> Self {
+        self.baseline = baseline;
+        self
     }
 
     /// Attach the audit sink a honeytool trip is recorded to. Only `main` calls
@@ -371,7 +405,7 @@ impl Gate for CapabilityGate {
         if req.tool_name == crate::file_executor::FS_CREATE_TOOL
             && !fs_create_target_is_sensitive(&req.tool_input)
         {
-            let capability = grant_to_capability(grant, (self.executor_live)());
+            let capability = grant_to_capability(grant, (self.executor_live)(), (self.baseline)());
             let decision = capability.decide(ENGINE_APP_ID, ActionKind::Ordinary, external_triggered);
             return decision_to_authorize(decision, &req.tool_name);
         }
@@ -382,7 +416,7 @@ impl Gate for CapabilityGate {
         // replace today's coarse names (`graph.write`), a hard Deny-for-unknown here
         // would wrongly refuse the live coarse tools, so the coarse path stands.
         let kind = action_kind_for_tool(&req.tool_name);
-        let capability = grant_to_capability(grant, (self.executor_live)());
+        let capability = grant_to_capability(grant, (self.executor_live)(), (self.baseline)());
         let decision = capability.decide(ENGINE_APP_ID, kind, external_triggered);
         decision_to_authorize(decision, &req.tool_name)
     }
@@ -810,7 +844,7 @@ mod tests {
 
     #[test]
     fn a_grant_resolves_its_read_tier_and_a_suggest_only_action_baseline() {
-        let cap = grant_to_capability(&grant(ReadTier::Standard), false);
+        let cap = grant_to_capability(&grant(ReadTier::Standard), false, BaselineMode::Suggest);
         assert_eq!(cap.read_tier, AccessTier::ProjectScoped);
 
         // Suggest-only baseline: an ordinary action is a proposal, never an
@@ -833,7 +867,7 @@ mod tests {
 
     #[test]
     fn the_no_read_tier_resolves_to_no_graph_access() {
-        let cap = grant_to_capability(&grant(ReadTier::None), false);
+        let cap = grant_to_capability(&grant(ReadTier::None), false, BaselineMode::Suggest);
         assert_eq!(cap.read_tier, AccessTier::Minimal);
     }
 
@@ -944,33 +978,59 @@ mod tests {
         assert!(scope.permits("Session"));
     }
 
-    /// The full Suggest pipeline a Phase-1 RealGate composes: a session's grant
-    /// resolves to a Capability, an ordinary action under the suggest baseline
-    /// decides to Propose, and that maps to a Deny the engine cannot execute.
+    /// The lift hands the user's chosen mode to the engine, and never autonomy.
+    ///
+    /// The engine id is no longer written into `autonomous_apps`, so under the
+    /// executor-live lift an ordinary action resolves to whatever the person
+    /// picked - a proposal under Suggest, a preview they confirm under Supervised
+    /// - and never to a silent Proceed. That was the ruling: a daemon appending
+    /// its own id to the user's autonomy list is the system overruling a decision
+    /// already made.
     #[test]
-    fn executor_live_lifts_ordinary_to_proceed_but_overrides_still_confirm() {
-        // The executor-live lift grants the engine app per-app Autonomy: an
-        // ordinary reversible action Proceeds (-> Allow).
-        let cap = grant_to_capability(&grant(ReadTier::Standard), true);
-        assert_eq!(cap.decide(ENGINE_APP_ID, ActionKind::Ordinary, false), ActionDecision::Proceed);
+    fn the_lift_hands_over_the_chosen_mode_and_never_grants_itself_autonomy() {
+        let suggest_live =
+            grant_to_capability(&grant(ReadTier::Standard), true, BaselineMode::Suggest);
+        assert_eq!(
+            suggest_live.decide(ENGINE_APP_ID, ActionKind::Ordinary, false),
+            ActionDecision::Propose,
+            "the lift alone must not make the engine autonomous"
+        );
+        assert!(
+            !suggest_live.actions.is_autonomous(ENGINE_APP_ID),
+            "the engine must not appear in its own autonomy list"
+        );
+
+        let supervised =
+            grant_to_capability(&grant(ReadTier::Standard), true, BaselineMode::Supervised);
+        assert_eq!(
+            supervised.decide(ENGINE_APP_ID, ActionKind::Ordinary, false),
+            ActionDecision::PreviewThenExecute,
+            "the mode the user chose is the mode that governs"
+        );
         // The non-configurable overrides still hold under the lift: a high-impact
         // action and any externally-triggered action confirm, never auto-run.
         assert_eq!(
-            cap.decide(ENGINE_APP_ID, ActionKind::PermanentDelete, false),
+            supervised.decide(ENGINE_APP_ID, ActionKind::PermanentDelete, false),
             ActionDecision::RequireConfirmation
         );
         assert_eq!(
-            cap.decide(ENGINE_APP_ID, ActionKind::Ordinary, true),
+            supervised.decide(ENGINE_APP_ID, ActionKind::Ordinary, true),
             ActionDecision::RequireConfirmation
         );
-        // Default (executor_live=false): even an ordinary action is a proposal.
-        let suggest = grant_to_capability(&grant(ReadTier::Standard), false);
-        assert_eq!(suggest.decide(ENGINE_APP_ID, ActionKind::Ordinary, false), ActionDecision::Propose);
+
+        // The human gate still comes first: with executor_live off, the chosen
+        // mode cannot lift anything.
+        let gated =
+            grant_to_capability(&grant(ReadTier::Standard), false, BaselineMode::Supervised);
+        assert_eq!(
+            gated.decide(ENGINE_APP_ID, ActionKind::Ordinary, false),
+            ActionDecision::Propose
+        );
     }
 
     #[test]
     fn the_suggest_pipeline_denies_an_ordinary_action_end_to_end() {
-        let cap = grant_to_capability(&grant(ReadTier::Standard), false);
+        let cap = grant_to_capability(&grant(ReadTier::Standard), false, BaselineMode::Suggest);
         let decision = cap.decide("any.app", ActionKind::Ordinary, false);
         assert_eq!(decision, ActionDecision::Propose);
         assert!(matches!(
@@ -1127,16 +1187,28 @@ mod tests {
         (fs_create(path.to_str().unwrap()), td)
     }
 
+    /// Under the lift a create at a plain data location is reversible curation,
+    /// so it takes the mode the user chose - a preview they confirm under
+    /// Supervised - rather than running unasked.
+    ///
+    /// It used to Allow outright, because the gate wrote the engine id into its
+    /// own autonomy list. That is refused now (see [`ENGINE_APP_ID`]), so no path
+    /// reaches Allow until a named autonomy grant exists. The safe/sensitive split
+    /// still decides which confirmation the person sees.
     #[tokio::test]
-    async fn a_safe_fs_create_runs_autonomously_under_executor_live() {
-        // Under the live executor a create at a plain data location is reversible
-        // curation: it Allows without a confirm.
+    async fn a_safe_fs_create_previews_under_supervised_rather_than_running_unasked() {
         let base = nondot_tempdir();
         let (req, _td) = safe_create_under(base.path());
         let d = CapabilityGate::with_executor_live(|| true)
+            .with_baseline(|| BaselineMode::Supervised)
             .authorize(&req, &grant(ReadTier::Standard))
             .await;
-        assert!(matches!(d, AuthorizeDecision::Allow { .. }), "safe create should be autonomous, got {d:?}");
+        match d {
+            AuthorizeDecision::Confirm { ref prompt } => {
+                assert!(prompt.contains("Review it before it runs"), "got {prompt}");
+            }
+            other => panic!("a safe create should preview, got {other:?}"),
+        }
     }
 
     #[tokio::test]
