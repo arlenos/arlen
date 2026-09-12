@@ -59,6 +59,11 @@ pub async fn retrieve(
 /// one list carrying no signal does not fuse to nothing, it fuses to noise
 /// weighted like evidence.
 ///
+/// `count(DISTINCT s.id)`, not `count(*)`: parallel edges are NORMAL in this
+/// graph. `FILE_PART_OF` is close-then-append, so a file that moved between
+/// projects keeps its closed edges beside the live one, and counting EDGES would
+/// let one seed's history outrank a neighbour two different seeds actually share.
+///
 /// Shared-seed count is the one-hop form of the intuition personalised PageRank
 /// generalises: a node adjacent to three of the query's hits is more likely to be
 /// what was meant than one adjacent to a single hit. It is not PPR and does not
@@ -76,7 +81,7 @@ async fn neighbours(graph: &GraphHandle, seeds: &[String]) -> Result<Vec<String>
     let list = crate::cypher::id_list(seeds.iter());
     let cypher = format!(
         "MATCH (s) WHERE s.id IN [{list}] MATCH (s)-[]-(n) \
-         RETURN n.id AS id, count(*) AS shared ORDER BY shared DESC LIMIT {MAX_NEIGHBOURS}"
+         RETURN n.id AS id, count(DISTINCT s.id) AS shared ORDER BY shared DESC LIMIT {MAX_NEIGHBOURS}"
     );
     let rs = graph.query_rows(cypher).await?;
     Ok(rs
@@ -371,6 +376,59 @@ mod tests {
                 "the neighbour two seeds touch must rank ahead of {lonely}: {ranked:?}"
             );
         }
+    }
+
+    /// Parallel edges are NORMAL here: `FILE_PART_OF` is close-then-append, so a
+    /// file that moved between projects keeps its closed edges beside the live
+    /// one. Counting edges would let one seed's history outrank a neighbour two
+    /// different seeds actually share, which is the opposite of what the ranking
+    /// is for.
+    #[tokio::test]
+    async fn edge_multiplicity_from_one_seed_does_not_beat_two_real_seeds() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        for id in ["/a/one.rs", "/a/two.rs"] {
+            graph
+                .write(format!("CREATE (:File {{id: '{id}', path: '{id}'}})"))
+                .await
+                .unwrap();
+        }
+        for id in ["shared", "repeated"] {
+            graph.write(format!("CREATE (:Project {{id: '{id}'}})")).await.unwrap();
+        }
+        // `shared` is touched by BOTH seeds, once each.
+        for file in ["/a/one.rs", "/a/two.rs"] {
+            graph
+                .write(format!(
+                    "MATCH (f:File {{id: '{file}'}}), (p:Project {{id: 'shared'}}) \
+                     CREATE (f)-[:FILE_PART_OF]->(p)"
+                ))
+                .await
+                .unwrap();
+        }
+        // `repeated` is touched three times by ONE seed, the shape a file that
+        // moved in and out of a project leaves behind.
+        for _ in 0..3 {
+            graph
+                .write(
+                    "MATCH (f:File {id: '/a/one.rs'}), (p:Project {id: 'repeated'}) \
+                     CREATE (f)-[:FILE_PART_OF]->(p)"
+                        .into(),
+                )
+                .await
+                .unwrap();
+        }
+
+        let seeds = vec!["/a/one.rs".to_string(), "/a/two.rs".to_string()];
+        let ranked = neighbours(&graph, &seeds).await.unwrap();
+        let shared = ranked.iter().position(|id| id == "shared").expect("shared is a neighbour");
+        let repeated =
+            ranked.iter().position(|id| id == "repeated").expect("repeated is a neighbour");
+        assert!(
+            shared < repeated,
+            "two seeds beat three edges from one: {ranked:?}"
+        );
     }
 
     #[tokio::test]
