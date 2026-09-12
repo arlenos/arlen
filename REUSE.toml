@@ -130,7 +130,48 @@ path = [
     "apps/terminal/src-tauri/icons/**",
     "apps/text-editor/src-tauri/icons/**",
     "apps/viewers/src-tauri/icons/**",
+    "daemons/xdg-portal/picker-ui/src-tauri/icons/**",
+    "apps/greeter/static/favicon.png",
+    "apps/harness/static/favicon.png",
+    "apps/terminal/static/favicon.png",
 ]
 precedence = "closest"
 SPDX-FileCopyrightText = "Tauri Programme within The Commons Conservancy"
 SPDX-License-Identifier = "MIT"
+
+# The SvelteKit template favicon: the Svelte logo, written by `create-svelte` and
+# never replaced. Same shape of claim as the Tauri icons above and the same
+# answer - it is their mark, declared as theirs. Svelte ships MIT.
+[[annotations]]
+path = [
+    "apps/desktop-shell/static/favicon.png",
+    "sdk/ui-kit/static/favicon.png",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "The Svelte contributors"
+SPDX-License-Identifier = "MIT"
+
+# Screenshots of our own surfaces, taken in the verification VM. First-party by
+# construction: every pixel is this project's UI. Declared explicitly rather than
+# left to the catch-all because a picture is exactly where the catch-all stops
+# being an approximation - the rule is that artwork is named, and these are ours
+# to name.
+[[annotations]]
+path = "dev/vm/**.png"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+# Codec test fixtures. Synthetic minimal encodes - a few hundred bytes each, a
+# handful of pixels - made to exercise a decoder, not photographs of anything.
+# Nothing was lifted: at that size there is nothing to lift.
+[[annotations]]
+path = [
+    "ai/ai-sandbox/test-fixtures/**",
+    "apps/files/core/test-fixtures/**",
+    "apps/viewers/decode-heic/tests/fixtures/**",
+    "apps/viewers/decode-jxl/tests/fixtures/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Tim Kicker"
+SPDX-License-Identifier = "AGPL-3.0-only"
