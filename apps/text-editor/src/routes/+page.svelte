@@ -20,6 +20,7 @@
   import { ioWhyKey } from "@arlen/ui-kit/io-why";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -178,7 +179,11 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   }
   /// What the print portal last said, so the person is told rather than left
   /// guessing whether anything happened.
-  let printStatus = $state<string | null>(null);
+  /// The print's outcome is a value for the title bar's slot; a print that
+  /// did not happen is a refusal, and refusals have one shape, the Notice at
+  /// the top of the editor (design-system.md 6.11, thread two).
+  let printOutcome = $state<string | null>(null);
+  let printFailure = $state<string | null>(null);
 
   /// Hand the open file to the print portal.
   ///
@@ -188,22 +193,22 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   async function print() {
     const target = $openDocument;
     if (!target) return;
-    printStatus = $t("te.print.pending");
+    printOutcome = $t("te.print.pending");
+    printFailure = null;
     try {
       const r = await invoke<{ outcome: string }>("plugin:arlen-shell|print_file", {
         path: target.path,
       });
-      printStatus =
-        r.outcome === "sent"
-          ? $t("te.print.sent")
-          : r.outcome === "cancelled"
-            ? $t("te.print.cancelled")
-            : r.outcome === "refused"
-              ? $t("te.print.refused")
-              : $t("te.print.noAnswer");
+      if (r.outcome === "sent") printOutcome = $t("te.print.sent");
+      else if (r.outcome === "cancelled") printOutcome = $t("te.print.cancelled");
+      else {
+        printOutcome = null;
+        printFailure = r.outcome === "refused" ? $t("te.print.refused") : $t("te.print.noAnswer");
+      }
     } catch (e) {
       const p = printProblem(String(e));
-      printStatus =
+      printOutcome = null;
+      printFailure =
         p.key === "te.print.noPortal"
           ? $t("te.print.noPortal")
           : p.key === "te.print.noBus"
@@ -303,6 +308,18 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   }
 
   /// The host's errno text as a sentence of the reader's, or nothing.
+  /// The open failure as one finished text. Three of the causes are whole
+  /// sentences on their own; only the unnamed one needs "could not be opened"
+  /// in front of it.
+  const openText = $derived.by(() => {
+    const e = $openError;
+    if (!e) return "";
+    if (e.problem === "not-absolute") return $t("te.open.notAbsolute");
+    if (e.problem === "not-text") return $t("te.open.notText");
+    if (e.problem === "unreadable") return $t("te.open.unreadable", { why: whyText(e.why) });
+    return `${$t("te.open.failed")} ${$t("te.open.otherReason")}`;
+  });
+
   const whyText = (text: string): string => {
     const key = ioWhyKey(text);
     return key ? $kt(key) : "";
@@ -333,12 +350,10 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
          driving a surface rather than reading it. -->
     {#if editable}
       <span class="savestate" aria-live="polite">
-        {#if printStatus}
-          <!-- Not `ss-bad`: a cancelled print, or a dialog still open, is not a
-               failure and must not be coloured as one. -->
-          <span class="ss-ok" role="status">{printStatus}</span>
-        {:else if saveError}
-          <span class="ss-bad" role="alert">{$t(saveError)}</span>
+        {#if printOutcome}
+          <!-- A cancelled print, or a dialog still open, is an outcome rather
+               than a failure; the failures are Notices over the editor. -->
+          <span class="ss-ok" role="status">{printOutcome}</span>
         {:else if dirty}
           <span class="ss-dirty">{$t("te.save.unsaved")}</span>
         {:else if savedAt}
@@ -389,16 +404,6 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     <WindowButtons />
   </header>
 
-  {#if changedOnDisk}
-    <div class="disk-bar" role="alert">
-      <span>{$t("te.save.changedOnDisk")}</span>
-      <button type="button" onclick={() => save(true)}>{$t("te.save.overwrite")}</button>
-      <button type="button" class="quiet" onclick={() => (changedOnDisk = false)}>
-        {$t("te.save.keepEditing")}
-      </button>
-    </div>
-  {/if}
-
   <div class="body">
     <main class="editor">
       <!-- The page's one level-one heading. Every app in this tree had none, so a
@@ -408,19 +413,30 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
            changes as you move; hidden, because the bar already shows that and a
            second visible title would be the same fact twice. -->
       <h1 class="sr-only">{$t("te.app.title")}</h1>
+      <!-- Every refusal of this surface, in one shape at its top (design-system.md
+           6.11, thread two): the file that could not be opened, the save that
+           was refused, the print that did not happen, and the one question with
+           an answer, a file that changed on disk. -->
       {#if $openError}
-        <!-- The editor was asked to open a file and could not. The host's message
-             names the path and the reason; showing anything else here would mean
-             putting text on screen under a filename that is not its text. -->
-        <div class="open-failed" role="alert">
-          <p class="of-title">{$t("te.open.failed")}</p>
-          <p class="of-detail">
-            {#if $openError.problem === "not-absolute"}{$t("te.open.notAbsolute")}
-            {:else if $openError.problem === "not-text"}{$t("te.open.notText")}
-            {:else if $openError.problem === "unreadable"}{$t("te.open.unreadable", { why: whyText($openError.why) })}
-            {:else}{$t("te.open.otherReason")}{/if}
-          </p>
+        <!-- The editor was asked to open a file and could not; nothing goes on
+             the canvas under a filename that is not its text. -->
+        <div class="note"><Notice tone="error" text={openText} /></div>
+      {/if}
+      {#if saveError}
+        <div class="note"><Notice tone="error" text={$t(saveError)} /></div>
+      {/if}
+      {#if printFailure}
+        <div class="note"><Notice tone="error" text={printFailure} /></div>
+      {/if}
+      {#if changedOnDisk}
+        <div class="note note-row">
+          <Notice tone="caution" text={$t("te.save.changedOnDisk")} />
+          <Button size="sm" onclick={() => save(true)}>{$t("te.save.overwrite")}</Button>
+          <Button variant="ghost" size="sm" onclick={() => (changedOnDisk = false)}>{$t("te.save.keepEditing")}</Button>
         </div>
+      {/if}
+      {#if $openError}
+        <!-- The canvas stays empty. -->
       {:else if editable}
         <!-- A real file gets the real buffer. The demo documents below keep the
              reading canvas: they are not on disk, and an editor that let you type
@@ -455,52 +471,23 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
 <style>
   /* The changed-on-disk bar: a question, so it sits across the width where the
      whole sentence fits, rather than in the toolbar strip that truncates it. */
-  .disk-bar {
+
+  .note {
+    margin: 0 0 var(--space-3);
+  }
+  /* A refusal with an answer: the Notice takes the line, the buttons follow. */
+  .note-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    font-size: 12px;
-    background: color-mix(in srgb, var(--color-fg-warning, #eab308) 12%, transparent);
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-warning, #eab308) 35%, transparent);
-    color: var(--color-fg-primary, #fafafa);
+    gap: 0.6rem;
   }
-  .disk-bar span {
+  .note-row :global(.notice) {
     flex: 1;
   }
-  .disk-bar button {
-    border: 1px solid var(--color-border-default, #333);
-    background: var(--color-bg-card, #171717);
-    color: inherit;
-    border-radius: 5px;
-    padding: 3px 9px;
-    font: inherit;
-  }
-  .disk-bar button.quiet {
-    background: transparent;
-  }
-
-
   .demo-note {
     margin: 0 0 var(--space-3);
     color: var(--color-fg-secondary);
     font-size: var(--text-sm);
-  }
-  .open-failed {
-    padding: 2.5rem 2rem;
-    max-width: 34rem;
-  }
-  .of-title {
-    margin: 0 0 0.4rem;
-    font-size: 0.95rem;
-    font-weight: 600;
-  }
-  .of-detail {
-    margin: 0;
-    font-size: 0.85rem;
-    line-height: 1.5;
-    color: color-mix(in srgb, var(--color-fg-primary) 62%, transparent);
-    word-break: break-word;
   }
   .app {
     display: flex;
@@ -520,19 +507,11 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   /* The cap is right for a status and wrong for a refusal, so the refusal lifts
      it and wraps instead. It keeps the ellipsis machinery off rather than
      widening the cap, because no number is wide enough for every language. */
-  .savestate:has(.ss-bad) {
-    max-width: none;
-    white-space: normal;
-    overflow: visible;
-  }
   .ss-dirty {
     color: color-mix(in srgb, var(--color-fg-primary, #fafafa) 55%, transparent);
   }
   .ss-ok {
     color: color-mix(in srgb, var(--color-fg-primary, #fafafa) 40%, transparent);
-  }
-  .ss-bad {
-    color: var(--color-error, #ef4444);
   }
   /* `min-height` and wrap, for the one state on this bar that is a sentence.
      Everything else it shows is two words - "Gespeichert", "Nicht gespeichert" -
