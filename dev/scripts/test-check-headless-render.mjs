@@ -67,6 +67,19 @@ const ONLY_MENTIONED = `#!/usr/bin/env bash
 echo "see the comment above"
 `;
 
+// A gate that explains itself names the renderer in its own docstring, and a
+// docstring is as much prose as a `#` line. This reported one as a bare render
+// on 12 September, which is how the `#`-only rule showed its shape.
+const DOCSTRING_MENTION = `#!/usr/bin/env python3
+"""Check a thing.
+
+The renderer render-wide.py refuses a page that has one, which is the other
+half of this check.
+"""
+import sys
+print("ok")
+`;
+
 const cases = [
   ["the repository as it stands passes", () => REPO, (code) => code === 0, false],
   [
@@ -96,6 +109,12 @@ const cases = [
   [
     "a comment naming the renderer is not a finding",
     () => tree({ "advice.sh": ONLY_MENTIONED }),
+    (code) => code === 0,
+    true,
+  ],
+  [
+    "a python docstring naming the renderer is not a finding",
+    () => tree({ "check-thing.py": DOCSTRING_MENTION }),
     (code) => code === 0,
     true,
   ],
