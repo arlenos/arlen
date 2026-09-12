@@ -123,17 +123,34 @@ pub struct ValidatedRead {
     pub limit: i64,
 }
 
-/// Validate a typed read against the caller's readable labels. Enforces the three
-/// axes: the LABEL must be in `readable_labels` (and a safe identifier); every
-/// filter and select FIELD must be a safe identifier (no `properties(n)`, no alias,
-/// no `*` - the caller supplies no query text); and at least one anchoring filter
-/// is required (the OWNER axis v1 approximation, pending an `_owner` column). Errors
-/// carry an internal reason for logging; the handler maps any error to the single
-/// uniform denial (no existence oracle).
+/// Validate a typed read against the caller's read SCOPES. Enforces the three
+/// axes: the LABEL must be one the scopes make readable (and a safe identifier);
+/// every filter and select FIELD must be a safe identifier (no `properties(n)`,
+/// no alias, no `*` - the caller supplies no query text) **and inside the grant
+/// for that label**; and at least one anchoring filter is required (the OWNER
+/// axis v1 approximation, pending an `_owner` column). Errors carry an internal
+/// reason for logging; the handler maps any error to the single uniform denial
+/// (no existence oracle).
+///
+/// THE FIELD AXIS WAS MISSING and this is the verb it mattered most on. The
+/// readable-label gate is LABEL-granular; a permission profile is
+/// FIELD-granular. So a caller granted `system.Project.root_path` could select
+/// `name`, `description`, `confidence` - every field of a label it may read -
+/// and could FILTER on one too, which is worse: `WHERE n.secret = 'x'` returns
+/// rows or none, and that answers a question about the field one guess at a
+/// time. Same shape as the hole found in `graph.list` the same afternoon, on
+/// the bigger verb.
+///
+/// Taking the SCOPES rather than a pre-derived label list is the structural half
+/// of the fix: there is now one input, so a caller cannot be handed a readable
+/// set wider than the grant those labels came from, and the two can no longer
+/// drift apart.
 pub fn validate_typed_read(
     req: TypedReadRequest,
-    readable_labels: &[String],
+    scopes: &[crate::token::EntityScope],
 ) -> Result<ValidatedRead, &'static str> {
+    let readable_labels = crate::daemon::readable_system_labels(scopes);
+    let readable_labels = &readable_labels;
     // Match case-insensitively but bind the GRANTED label's casing (not the
     // caller's), so the built query names the label the caller was actually scoped
     // to - a case-variant request can never select a differently-cased label.
@@ -161,6 +178,21 @@ pub fn validate_typed_read(
     for s in &req.select {
         if !is_valid_identifier(s) {
             return Err("select field is not a safe identifier");
+        }
+    }
+    // The field axis. `readable_system_labels` strips the namespace, so the type
+    // the grant is written against is the label with it put back - the same
+    // reconstruction the handler already makes to record the exercised
+    // capability, so the two cannot disagree about what was read.
+    let entity_type = format!("system.{label}");
+    for f in &req.filters {
+        if !crate::daemon::field_is_granted(scopes, &entity_type, &f.field) {
+            return Err("filter field outside the caller's grant");
+        }
+    }
+    for s in &req.select {
+        if !crate::daemon::field_is_granted(scopes, &entity_type, s) {
+            return Err("select field outside the caller's grant");
         }
     }
     let limit = req.limit.clamp(1, MAX_TYPED_READ_LIMIT);
@@ -255,6 +287,24 @@ mod tests {
         TypedFilter { field: field.into(), value }
     }
 
+    /// A whole-type grant: every field of `entity_type` is readable.
+    fn whole(entity_type: &str) -> Vec<crate::token::EntityScope> {
+        vec![crate::token::EntityScope {
+            entity_type: entity_type.into(),
+            fields: None,
+            exclude_fields: Vec::new(),
+        }]
+    }
+
+    /// A field-scoped grant, the shape a real profile writes.
+    fn only(entity_type: &str, fields: &[&str]) -> Vec<crate::token::EntityScope> {
+        vec![crate::token::EntityScope {
+            entity_type: entity_type.into(),
+            fields: Some(fields.iter().map(|f| (*f).to_string()).collect()),
+            exclude_fields: Vec::new(),
+        }]
+    }
+
     #[test]
     fn validate_accepts_an_in_scope_anchored_read() {
         let r = req(
@@ -262,7 +312,7 @@ mod tests {
             vec![filter("session_id", TypedValue::Text("s1".into()))],
             &["command", "ran_at"],
         );
-        let v = validate_typed_read(r, &["CommandHistory".into()]).unwrap();
+        let v = validate_typed_read(r, &whole("system.CommandHistory")).unwrap();
         assert_eq!(v.label, "CommandHistory");
         assert_eq!(v.filters.len(), 1);
         assert_eq!(v.select, ["command", "ran_at"]);
@@ -277,20 +327,72 @@ mod tests {
             vec![filter("session_id", TypedValue::Text("s".into()))],
             &["command"],
         );
-        let v = validate_typed_read(r, &["CommandHistory".into()]).unwrap();
+        let v = validate_typed_read(r, &whole("system.CommandHistory")).unwrap();
         assert_eq!(v.label, "CommandHistory");
     }
 
     #[test]
     fn validate_denies_out_of_scope_label() {
         let r = req("Secrets", vec![filter("id", TypedValue::Text("x".into()))], &["v"]);
-        assert!(validate_typed_read(r, &["CommandHistory".into()]).is_err());
+        assert!(validate_typed_read(r, &whole("system.CommandHistory")).is_err());
     }
 
     #[test]
     fn validate_denies_unanchored_read() {
         let r = req("CommandHistory", vec![], &["command"]);
-        assert!(validate_typed_read(r, &["CommandHistory".into()]).is_err());
+        assert!(validate_typed_read(r, &whole("system.CommandHistory")).is_err());
+    }
+
+    /// The field axis: a label a caller may read does not make every field of it
+    /// readable. A profile granting two fields of `system.CommandHistory` cannot
+    /// select a third.
+    #[test]
+    fn validate_denies_a_select_field_outside_the_grant() {
+        let scopes = only("system.CommandHistory", &["session_id", "command"]);
+        let ok = req(
+            "CommandHistory",
+            vec![filter("session_id", TypedValue::Text("s".into()))],
+            &["command"],
+        );
+        assert!(validate_typed_read(ok, &scopes).is_ok());
+
+        let reach = req(
+            "CommandHistory",
+            vec![filter("session_id", TypedValue::Text("s".into()))],
+            &["command", "ran_at"],
+        );
+        assert!(validate_typed_read(reach, &scopes).is_err(), "an ungranted field is refused");
+    }
+
+    /// And the filter axis, which is the worse half: an equality on an ungranted
+    /// field answers a question about it one guess at a time even though the
+    /// field is never projected.
+    #[test]
+    fn validate_denies_a_filter_on_an_ungranted_field() {
+        let scopes = only("system.CommandHistory", &["session_id", "command"]);
+        let oracle = req(
+            "CommandHistory",
+            vec![filter("secret", TypedValue::Text("guess".into()))],
+            &["command"],
+        );
+        assert!(validate_typed_read(oracle, &scopes).is_err());
+    }
+
+    /// An exclusion carries through to this verb too: the label stays readable
+    /// and the excluded field does not.
+    #[test]
+    fn validate_denies_an_excluded_field() {
+        let scopes = vec![crate::token::EntityScope {
+            entity_type: "system.CommandHistory".into(),
+            fields: None,
+            exclude_fields: vec!["command".into()],
+        }];
+        let r = req(
+            "CommandHistory",
+            vec![filter("session_id", TypedValue::Text("s".into()))],
+            &["command"],
+        );
+        assert!(validate_typed_read(r, &scopes).is_err());
     }
 
     #[test]
@@ -301,27 +403,27 @@ mod tests {
             vec![filter("session_id", TypedValue::Text("s".into()))],
             &["properties(n)"],
         );
-        assert!(validate_typed_read(r, &["CommandHistory".into()]).is_err());
+        assert!(validate_typed_read(r, &whole("system.CommandHistory")).is_err());
         // A bad filter field.
         let r2 = req(
             "CommandHistory",
             vec![filter("n.email", TypedValue::Text("s".into()))],
             &["command"],
         );
-        assert!(validate_typed_read(r2, &["CommandHistory".into()]).is_err());
+        assert!(validate_typed_read(r2, &whole("system.CommandHistory")).is_err());
     }
 
     #[test]
     fn validate_denies_empty_select() {
         let r = req("CommandHistory", vec![filter("id", TypedValue::Int(1))], &[]);
-        assert!(validate_typed_read(r, &["CommandHistory".into()]).is_err());
+        assert!(validate_typed_read(r, &whole("system.CommandHistory")).is_err());
     }
 
     #[test]
     fn validate_clamps_the_limit() {
         let mut r = req("CommandHistory", vec![filter("id", TypedValue::Int(1))], &["v"]);
         r.limit = 10_000;
-        assert_eq!(validate_typed_read(r, &["CommandHistory".into()]).unwrap().limit, MAX_TYPED_READ_LIMIT);
+        assert_eq!(validate_typed_read(r, &whole("system.CommandHistory")).unwrap().limit, MAX_TYPED_READ_LIMIT);
     }
 
     #[test]
@@ -331,7 +433,7 @@ mod tests {
             vec![filter("session_id", TypedValue::Text("s1".into()))],
             &["command", "ran_at"],
         );
-        let v = validate_typed_read(r, &["CommandHistory".into()]).unwrap();
+        let v = validate_typed_read(r, &whole("system.CommandHistory")).unwrap();
         let cypher = build_cypher(&v).unwrap();
         assert_eq!(
             cypher,
@@ -346,7 +448,7 @@ mod tests {
             vec![filter("session_id", TypedValue::Text("' OR 1=1 RETURN n --".into()))],
             &["command"],
         );
-        let v2 = validate_typed_read(r2, &["CommandHistory".into()]).unwrap();
+        let v2 = validate_typed_read(r2, &whole("system.CommandHistory")).unwrap();
         let c2 = build_cypher(&v2).unwrap();
         assert!(c2.contains("n.session_id = '\\' OR 1=1 RETURN n --'"));
     }
@@ -358,7 +460,7 @@ mod tests {
             vec![filter("session_id", TypedValue::Text("a\u{0}b".into()))],
             &["command"],
         );
-        let v = validate_typed_read(r, &["CommandHistory".into()]).unwrap();
+        let v = validate_typed_read(r, &whole("system.CommandHistory")).unwrap();
         assert!(build_cypher(&v).is_none());
     }
 
