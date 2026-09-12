@@ -254,24 +254,31 @@
           </div>
           <div class="reacher-list">
             {#each r.reachers as reacher (reacher.appId + reacher.line.key)}
-              <AppAvatar appId={reacher.appId} label={reacher.label} size={24} />
-              <span class="who">
-                {reacher.label}{#if !reacher.identityVerified}<span class="warn">{$t("s.priv.unverified")}</span>{/if}
-              </span>
-              <span class="how">{howText(reacher.line)}</span>
-              <span class="reacher-prov">{$t(reacher.line.provenance.id, reacher.line.provenance.params)}</span>
-              {#if reacher.line.revoke.enabled}
-                <button
-                  type="button"
-                  class="remove"
-                  aria-label={$t("s.priv.removeAria", { app: reacher.label, what: reacher.line.text })}
-                  onclick={() => askScope(reacher.label, reacher.line)}
-                >
-                  {$t("s.priv.remove")}
-                </button>
-              {:else}
-                <span class="remove-off">{revokeLabel(reacher.line)}</span>
-              {/if}
+              <!-- One wrapper per reacher so the row can REFLOW. The five cells
+                   used to sit directly in one grid, which made narrow-width
+                   stacking impossible: forcing them into a single column lets
+                   auto-placement pull the next reacher's avatar up into an empty
+                   cell of this one, and the row stops meaning one app. -->
+              <div class="reacher">
+                <AppAvatar appId={reacher.appId} label={reacher.label} size={24} />
+                <span class="who">
+                  {reacher.label}{#if !reacher.identityVerified}<span class="warn">{$t("s.priv.unverified")}</span>{/if}
+                </span>
+                <span class="how">{howText(reacher.line)}</span>
+                <span class="reacher-prov">{$t(reacher.line.provenance.id, reacher.line.provenance.params)}</span>
+                {#if reacher.line.revoke.enabled}
+                  <button
+                    type="button"
+                    class="remove"
+                    aria-label={$t("s.priv.removeAria", { app: reacher.label, what: reacher.line.text })}
+                    onclick={() => askScope(reacher.label, reacher.line)}
+                  >
+                    {$t("s.priv.remove")}
+                  </button>
+                {:else}
+                  <span class="remove-off">{revokeLabel(reacher.line)}</span>
+                {/if}
+              </div>
             {/each}
           </div>
         </Section>
@@ -449,30 +456,55 @@
      then the "how" and Remove as their own columns so they line up down the
      list. */
   .reacher-list {
+    display: flex;
+    flex-direction: column;
+    row-gap: 0.75rem;
+    padding: var(--space-row, 0.75rem) 1rem;
+  }
+
+  /* FIVE TEXT COLUMNS, AND BELOW ~48REM THEY DO NOT FIT. A long reach sentence
+     made the `max-content` "how" column wider than the row and the app name
+     beside it was painted over - the overlap probe read it as `"Files" over
+     "liest und ändert deine"`, which on the one page that answers "what can
+     reach my data" is the worst place for two statements to sit on top of each
+     other.
+
+     Three attempts to fix it by sizing the tracks were all worse, and the report
+     carries the numbers: `justify-self: stretch` with `minmax(0, ...)` tracks
+     cleared every overlap and collapsed the name column to ZERO width at every
+     size; `overflow-wrap: anywhere` rendered "The assistant" one letter per
+     line; a `minmax(5rem, 1fr)` floor put the overlap straight back. All three
+     were trying to make five columns fit a width that does not hold five
+     columns.
+
+     So the row REFLOWS instead: wide, it is the five-column line it always was;
+     narrow, everything but the avatar stacks in one column and the sentences get
+     the full width to wrap into. */
+  .reacher {
     display: grid;
-    /* FIVE TEXT COLUMNS, AND AT 720 THEY DO NOT FIT. This row still has one
-       measured defect: a long reach sentence makes the `max-content` "how"
-       column wider than the row, and the app name beside it is painted over -
-       the overlap probe reads it as `"Files" over "liest und ..."`, at 1280 and
-       above.
-
-       Three attempts to fix it by sizing the tracks were all worse, and the
-       report carries the numbers. `justify-self: stretch` with `minmax(0, ...)`
-       tracks cleared every overlap and collapsed the name column to ZERO width
-       at every size, which the clipped-text probe reads as twenty-four
-       overflows; `overflow-wrap: anywhere` cleared every probe and rendered
-       "The assistant" one letter per line; a `minmax(5rem, 1fr)` floor put the
-       overlap straight back.
-
-       It needs the row to REFLOW below some width, which is a responsive pass
-       rather than a nudge. Left measured and named. The one thing kept from
-       those attempts is `.who` as a wrapping flex line: it took the 1920
-       overlaps from four to one and costs nothing. */
     grid-template-columns: max-content minmax(0, 1fr) max-content max-content max-content;
     align-items: center;
     column-gap: 0.625rem;
-    row-gap: 0.75rem;
-    padding: var(--space-row, 0.75rem) 1rem;
+  }
+
+  @media (max-width: 47.9375rem) {
+    .reacher {
+      grid-template-columns: max-content minmax(0, 1fr);
+      align-items: start;
+      row-gap: 0.125rem;
+    }
+    /* Every cell but the avatar into the second column, so each takes its own
+       row and none of them has to share a line with a sentence. */
+    .reacher .who,
+    .reacher .how,
+    .reacher .reacher-prov,
+    .reacher .remove,
+    .reacher .remove-off {
+      grid-column: 2;
+      justify-self: start;
+      text-align: start;
+      white-space: normal;
+    }
   }
   /* Provenance shows only where it is notable (a location you granted in
      context); a declared reach is the implied default, left blank so the column
