@@ -12,6 +12,7 @@
 
 use crate::fuse::longest_common_dir;
 use crate::graph::GraphHandle;
+use crate::project::signals::SignalDetector;
 use crate::project::store::{Project, ProjectStore};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use tracing::{info, warn};
@@ -310,11 +311,136 @@ pub async fn materialize_clusters(
     Ok(stats)
 }
 
+/// What [`retract_refused_inferences`] did, for the caller to log.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RetractStats {
+    /// Inferred projects withdrawn this run.
+    pub retracted: usize,
+    /// Inferred projects looked at and left alone.
+    pub kept: usize,
+}
+
+/// Does this project still look exactly the way the pass mints one?
+///
+/// The name is the root's basename because that is all `materialize_clusters`
+/// has to name it with, and the three presentation fields are empty because it
+/// fills none of them. A person who renamed it, described it, gave it a colour
+/// or an icon has made it theirs, and what we think of how it was born stops
+/// mattering at that point.
+///
+/// NOT a confidence test, and that is worth writing down because it was the
+/// obvious one. The pass mints at confidence 50 and so does Makefile detection
+/// (`signals.rs`), so an equality there would sweep up signal-detected projects
+/// and would not identify a co-occurrence one anyway. What separates them is
+/// whether a signal actually sits at the root, which [`retract_refused_inferences`]
+/// asks the disk.
+fn is_untouched_inference(p: &Project) -> bool {
+    p.inferred
+        && !p.root_path.is_empty()
+        && p.name == project_name_from_root(&p.root_path)
+        && p.description.is_empty()
+        && p.accent_color.is_empty()
+        && p.icon.is_empty()
+}
+
+/// Withdraw inferred projects no part of the system would mint today, provided
+/// nobody has touched them (`project-system.md`, ruled 12 September: a floor
+/// change stops new umbrellas, the ones already minted stay).
+///
+/// A project is withdrawn only when every one of these holds:
+///
+/// 1. **Nothing on disk says "project here".** `SignalDetector::detect` finds no
+///    marker at the root, so the watcher would not mint it either. This is what
+///    keeps a legitimate repository that happens to contain two sub-projects -
+///    a top-level `Makefile` over two crates - out of the sweep entirely.
+/// 2. **The clustering floor refuses the root**: outside the user's home, or a
+///    container of [`CONTAINER_PROJECT_COUNT`] known projects.
+/// 3. **It is still exactly as minted** ([`is_untouched_inference`]).
+/// 4. **Nobody put a file in it.** Every live membership carries origin `graph`,
+///    the stamp the observation pipeline writes. One `user` or `agent` edge and
+///    somebody has curated this; it is theirs now.
+///
+/// Withdrawing means DELETING the node and its edges, which is the tree's
+/// existing answer for an inference that turned out wrong (`prune_or_archive`
+/// deletes an inferred project whose root is gone, and archives an explicit
+/// one). Nothing observed is lost: the File nodes, their access history and the
+/// event ledger underneath are untouched, and the projection can be rebuilt by
+/// the pass that made it. Archiving instead would leave a graveyard in the
+/// project list, and would fight the person the moment they un-archived one.
+///
+/// Idempotent and self-limiting by construction, which is why it needs no
+/// run-once marker and no migration machinery: it only ever touches roots the
+/// current floor already refuses, so a re-run finds nothing, and a root the
+/// floor accepts is never looked at twice.
+///
+/// An empty `home` withdraws NOTHING, the same refusal `materialize_clusters`
+/// makes: without knowing where home is, the first floor cannot be applied and
+/// every root would read as refused.
+pub async fn retract_refused_inferences(
+    store: &ProjectStore,
+    home: &str,
+) -> anyhow::Result<RetractStats> {
+    let mut stats = RetractStats::default();
+    if home.trim_end_matches('/').is_empty() {
+        return Ok(stats);
+    }
+    // Decide over the whole set BEFORE deleting anything. A retraction changes
+    // what `count_projects_under` answers for an enclosing root, so a delete
+    // mid-scan would make one project's verdict depend on where it happened to
+    // sit in the list.
+    let mut doomed = Vec::new();
+    for project in store.list_active().await? {
+        if !is_untouched_inference(&project) {
+            stats.kept += 1;
+            continue;
+        }
+        if SignalDetector::detect(std::path::Path::new(&project.root_path)).is_some() {
+            stats.kept += 1;
+            continue;
+        }
+        let refused = !is_under_home(&project.root_path, home)
+            || store.count_projects_under(&project.root_path).await? >= CONTAINER_PROJECT_COUNT;
+        if !refused {
+            stats.kept += 1;
+            continue;
+        }
+        if store
+            .member_origins(project.id)
+            .await?
+            .iter()
+            .any(|o| o != crate::provenance::Provenance::Graph.as_key())
+        {
+            stats.kept += 1;
+            continue;
+        }
+        doomed.push(project.id);
+    }
+    for id in doomed {
+        store.delete(id).await?;
+        stats.retracted += 1;
+    }
+    Ok(stats)
+}
+
 /// How often the inference pass runs. Co-occurrence is a slow-moving signal (a
 /// project emerges over hours of work, not seconds), and the pass is a whole-
 /// graph scan, so an hourly cadence keeps it cheap while still surfacing a new
 /// project within the same work session.
 const INFERENCE_INTERVAL_SECS: u64 = 3600;
+
+/// Run the retraction and say what it did. Best-effort like the rest of the
+/// pass: a failed sweep leaves the projects alone and the daemon running.
+async fn retract_and_log(store: &ProjectStore, home: &str) {
+    match retract_refused_inferences(store, home).await {
+        Ok(stats) if stats.retracted > 0 => info!(
+            retracted = stats.retracted,
+            kept = stats.kept,
+            "withdrew inferred projects the floor now refuses"
+        ),
+        Ok(_) => {}
+        Err(e) => warn!(error = %e, "inferred-project retraction failed"),
+    }
+}
 
 /// Run the project-inference pass periodically (foundation §4.2): scan the
 /// graph's co-access history, cluster it, and materialise stable clusters as
@@ -329,11 +455,18 @@ pub async fn run(graph: GraphHandle) -> anyhow::Result<()> {
     // which mints nothing - see `materialize_clusters`.
     let home = std::env::var("HOME").unwrap_or_default();
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(INFERENCE_INTERVAL_SECS));
+    // The retraction runs at startup rather than waiting an hour with it, because
+    // the umbrella it withdraws is already in the person's project list and has
+    // been since before this daemon started.
+    retract_and_log(&store, &home).await;
     // The first tick fires immediately; consume it so the first real scan waits a
     // full interval, giving promotion time to lay down ACCESSED_IN edges first.
     tick.tick().await;
     loop {
         tick.tick().await;
+        // Before minting, withdraw: a root that was a project last hour can have
+        // become a container of projects since, and the pass owns its own output.
+        retract_and_log(&store, &home).await;
         match infer_clusters(&graph, ClusterParams::default()).await {
             Ok(clusters) => match materialize_clusters(&store, &clusters, &home).await {
                 Ok(stats) => info!(
@@ -548,6 +681,145 @@ mod tests {
         let again = materialize_clusters(&store, &clusters, "/home/tim").await.unwrap();
         assert_eq!(again.created, 0, "a re-run mints no duplicate project");
         assert_eq!(again.skipped, 2, "both clusters skip on the second run");
+    }
+
+    /// The retraction fixture: a real home on disk with an umbrella directory
+    /// holding two projects, all three registered in the graph and none of them
+    /// carrying a signal file. Returns (store, home, umbrella root, umbrella id).
+    async fn umbrella_fixture(
+        tmp: &tempfile::TempDir,
+    ) -> (ProjectStore, GraphHandle, String, String, uuid::Uuid) {
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let store = ProjectStore::new(graph.clone());
+        let home = tmp.path().join("home");
+        let umbrella = home.join("Repos");
+        for child in ["a", "b"] {
+            std::fs::create_dir_all(umbrella.join(child)).unwrap();
+            let root = umbrella.join(child).to_string_lossy().to_string();
+            let p = Project::new_inferred(child.to_string(), root, 90);
+            store.create(&p).await.unwrap();
+        }
+        let root = umbrella.to_string_lossy().to_string();
+        let p = Project::new_inferred(
+            project_name_from_root(&root),
+            root.clone(),
+            COOCCURRENCE_CONFIDENCE,
+        );
+        store.create(&p).await.unwrap();
+        (store, graph, home.to_string_lossy().to_string(), root, p.id)
+    }
+
+    /// The third piece of the floor ruling: the umbrella already minted goes.
+    ///
+    /// The floor stops the next one; this is the one sitting in the project list
+    /// on every machine that has it. Nothing on disk says "project" at that root
+    /// and it holds two known projects, so no part of the system would mint it
+    /// today - and nobody has touched it since it was minted.
+    #[tokio::test]
+    async fn an_untouched_umbrella_over_two_projects_is_withdrawn() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (store, _graph, home, root, id) = umbrella_fixture(&tmp).await;
+
+        let stats = retract_refused_inferences(&store, &home).await.unwrap();
+        assert_eq!(stats.retracted, 1, "the umbrella is withdrawn");
+        assert_eq!(stats.kept, 2, "its two real children are left alone");
+        assert!(store.get_by_id(id).await.unwrap().is_none());
+        assert!(store.get_by_root_path(&root).await.unwrap().is_none());
+
+        // Self-limiting: the second run finds nothing left to refuse, so it needs
+        // no marker saying it has already happened.
+        let again = retract_refused_inferences(&store, &home).await.unwrap();
+        assert_eq!(again.retracted, 0);
+    }
+
+    /// A marker on disk keeps the project, whatever is nested under it.
+    ///
+    /// This is the case the sweep exists to not break: a repository with a
+    /// top-level `.git` over two sub-projects is a container by the clustering
+    /// floor's count AND a project by every other measure. The disk decides.
+    #[tokio::test]
+    async fn a_root_carrying_a_signal_is_kept() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (store, _graph, home, root, id) = umbrella_fixture(&tmp).await;
+        std::fs::create_dir_all(std::path::Path::new(&root).join(".git")).unwrap();
+
+        let stats = retract_refused_inferences(&store, &home).await.unwrap();
+        assert_eq!(stats.retracted, 0, "a signalled root is not an umbrella");
+        assert!(store.get_by_id(id).await.unwrap().is_some());
+    }
+
+    /// One file somebody put there and the project is theirs.
+    #[tokio::test]
+    async fn a_member_nobody_observed_keeps_the_project() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (store, graph, home, root, id) = umbrella_fixture(&tmp).await;
+        let file = format!("{root}/asserted.rs");
+        graph
+            .write(format!(
+                "CREATE (f:File {{id: '{file}', path: '{file}', app_id: 't', last_accessed: 0}})"
+            ))
+            .await
+            .unwrap();
+        graph
+            .write(format!(
+                "MATCH (f:File {{id: '{file}'}}), (p:Project {{id: '{id}'}}) \
+                 CREATE (f)-[:FILE_PART_OF {{origin: 'user'}}]->(p)"
+            ))
+            .await
+            .unwrap();
+
+        let stats = retract_refused_inferences(&store, &home).await.unwrap();
+        assert_eq!(stats.retracted, 0, "a user-asserted membership is a touch");
+        assert!(store.get_by_id(id).await.unwrap().is_some());
+    }
+
+    /// An observed membership is not a touch - it is what the pass itself lays
+    /// down, so a linked umbrella still goes.
+    #[tokio::test]
+    async fn an_observed_membership_does_not_save_the_umbrella() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (store, graph, home, root, id) = umbrella_fixture(&tmp).await;
+        let file = format!("{root}/observed.rs");
+        graph
+            .write(format!(
+                "CREATE (f:File {{id: '{file}', path: '{file}', app_id: 't', last_accessed: 0}})"
+            ))
+            .await
+            .unwrap();
+        store.link_file(&file, id).await.unwrap();
+
+        let stats = retract_refused_inferences(&store, &home).await.unwrap();
+        assert_eq!(stats.retracted, 1);
+        assert!(store.get_by_id(id).await.unwrap().is_none());
+    }
+
+    /// A renamed project is not as minted, so it stays whatever the floor says.
+    #[tokio::test]
+    async fn a_renamed_umbrella_is_kept() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (store, _graph, home, _root, id) = umbrella_fixture(&tmp).await;
+        let mut p = store.get_by_id(id).await.unwrap().unwrap();
+        p.name = "My code".into();
+        store.update(&p).await.unwrap();
+
+        let stats = retract_refused_inferences(&store, &home).await.unwrap();
+        assert_eq!(stats.retracted, 0, "a name somebody chose is a touch");
+        assert!(store.get_by_id(id).await.unwrap().is_some());
+    }
+
+    /// Without a home the first floor cannot be applied, and a sweep that cannot
+    /// apply it would read every root as refused. It withdraws nothing.
+    #[tokio::test]
+    async fn no_home_withdraws_nothing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (store, _graph, _home, _root, id) = umbrella_fixture(&tmp).await;
+
+        for home in ["", "/"] {
+            let stats = retract_refused_inferences(&store, home).await.unwrap();
+            assert_eq!(stats.retracted, 0, "no home, no retraction");
+        }
+        assert!(store.get_by_id(id).await.unwrap().is_some());
     }
 
     /// The umbrella, and the rule that refuses it.
