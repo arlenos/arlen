@@ -126,6 +126,38 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
     },
   },
   {
+    name: "graph.find",
+    label: "Knowledge graph search",
+    description:
+      "Find the user's own files and projects BY NAME or by a word in them, and " +
+      "get back their ids, best match first. This is a keyword search, not a " +
+      "question: it costs no model call and interprets nothing, so when you know " +
+      "the word you are looking for - a filename, a project name, a word from a " +
+      "path - reach for this FIRST and keep graph.ask for questions that need " +
+      "reading rather than matching (\"what did I work on yesterday\", \"what " +
+      "changed since Monday\"). It answers ids only; a File's id is its path. It " +
+      "cannot enumerate a category: \"my projects\" is a question, not a word, " +
+      "and belongs to graph.ask. The search is bounded by this session\u2019s read " +
+      "scope, so it never returns something the session may not see.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "The word or words to match. A filename, a project name, or any " +
+            "word from a path or description.",
+        },
+        limit: {
+          type: "number",
+          description: "How many results to return. Defaults to 10, capped at 100.",
+        },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "graph.write",
     label: "Knowledge graph write",
     description:

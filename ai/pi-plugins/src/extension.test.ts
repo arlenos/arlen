@@ -23,5 +23,9 @@ test("the Arlen extension installs the gate, audit, and proxy-tool hooks", () =>
   assert.equal(events.length, 2, "exactly the two shim event hooks");
   // The privileged proxy tools are registered as model-callable tools.
   assert.ok(tools.includes("graph.ask"), "graph.ask proxy tool registered");
+  // The free half of the read verb. A daemon-side executor the model has no tool
+  // for is a verb nothing can reach, which is the shape this project keeps
+  // finding by accident - so the registration is pinned here.
+  assert.ok(tools.includes("graph.find"), "graph.find proxy tool registered");
   assert.ok(tools.includes("graph.write"), "graph.write proxy tool registered");
 });
