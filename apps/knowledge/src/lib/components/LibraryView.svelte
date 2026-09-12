@@ -52,21 +52,21 @@
 
 <div class="li">
   <div class="li-head">
-    <!-- Only the sample badge here. The unavailable case used to print the same
-         sentence in this line AND as the empty-list text below it, and the store
-         makes them inseparable: the catch sets `sources` to `[]` and
-         `libraryUnavailable` together, so both always rendered. The one below
-         stays, because it sits where the missing content would be; a reader
-         looking at an empty pane looks at the pane. Seen for the first time on
-         16 August - this view lives behind a sidebar click, and the no-backend
-         sweep could not click until then. -->
+    <!-- The sample badge and the two refusals, each once, at the top of the
+         surface (design-system.md 6.11, thread two). The refusal used to be the
+         empty-list text below, which dressed "cannot be read" as "nothing here";
+         under a refusal the list now stays empty and says nothing. -->
     {#if $libraryMocked}
       <div class="note"><Notice tone="neutral" text={$t("k.sample")} /></div>
+    {:else if $libraryNoService}
+      <div class="note"><Notice tone="error" text={$t("k.li.noService")} /></div>
+    {:else if $libraryUnavailable}
+      <div class="note"><Notice tone="error" text={$t("k.library.unavailable")} /></div>
     {/if}
   </div>
 
   <div class="li-scroll">
-    {#if $sources && $sources.length === 0}
+    {#if $sources && $sources.length === 0 && !$libraryUnavailable && !$libraryNoService}
       <!-- The empty line names where a source comes from, not only that there
            are none. "No sources bridged in yet" on its own is a dead end with a
            "yet" in it: it implies the reader forgot a step and says nothing
@@ -74,11 +74,7 @@
            (`ExtensionKind::Bridge`) and the Store is where one is installed
            from, so that is the honest second half. It names the place rather
            than promising a button this page does not have. -->
-      <p class="li-empty">{$libraryNoService
-          ? $t("k.li.noService")
-          : $libraryUnavailable
-            ? $t("k.library.unavailable")
-            : $t("k.empty.library")}</p>
+      <p class="li-empty">{$t("k.empty.library")}</p>
     {:else if $sources}
       {#each $sources as src (src.type)}
         <section class="li-source">

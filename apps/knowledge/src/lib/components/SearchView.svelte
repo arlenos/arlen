@@ -90,12 +90,16 @@
   {#if (hasState && $searchMocked) || (!hasState && $savedMocked)}
     <div class="note"><Notice tone="neutral" text={$t("k.sample")} /></div>
   {/if}
+  <!-- Both refusals at the top of the surface they are about: a search that did
+       not run replaces the results the person asked for, and a search that was
+       not saved is gone at the next start. -->
+  {#if $searchUnavailable && hasState}
+    <div class="note"><Notice tone="error" text={$t("k.se.unavailable")} /></div>
+  {/if}
+  {#if $saveFailed}
+    <div class="note"><Notice tone="error" text={$t("k.se.saveFailed")} /></div>
+  {/if}
   <div class="se-head">
-    {#if $searchUnavailable && hasState}
-      <!-- Announced: this replaces results the person asked for, and there is
-           nothing else on screen to say the search did not run. -->
-      <span class="se-sample" role="alert">{$t("k.se.unavailable")}</span>
-    {/if}
     <span class="se-spacer"></span>
     <!-- Guided refinement: three facet chips, each a small picker. -->
     <div class="se-facets">
@@ -199,9 +203,6 @@
             }}
           />
           <button type="button" class="se-save" onclick={confirmSave}>{$t("k.se.saveConfirm")}</button>
-          {#if $saveFailed}
-            <span class="se-save-failed" role="alert">{$t("k.se.saveFailed")}</span>
-          {/if}
         {:else}
           <button type="button" class="se-save" onclick={() => (saving = true)}>
             <Bookmark size={12} strokeWidth={2} />
@@ -277,12 +278,10 @@
     gap: 0.5rem;
     padding: 0.6rem 1.1rem 0.45rem;
   }
+  /* The same inset as the head under it, so the line sits on the surface
+     rather than on the window's edge. */
   .note {
-    margin: 0 0 0.6rem;
-  }
-  .se-sample {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+    margin: 0.6rem 1.1rem 0;
   }
   .se-spacer {
     flex: 1;
@@ -379,10 +378,6 @@
   .se-matchline {
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
-  }
-  .se-save-failed {
-    font-size: 0.75rem;
-    color: var(--color-error);
   }
   .se-save {
     display: inline-flex;

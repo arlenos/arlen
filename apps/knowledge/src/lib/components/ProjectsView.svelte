@@ -46,13 +46,10 @@
   /// built in a plain function would keep the sentence it was first rendered with
   /// when the locale changes, which is the reactivity the i18n gate looks for.
   const emptyLabel = $derived(
-    $path !== "/projects" && $path !== "/"
-      ? $projectsUnavailable
-        ? $t("k.projects.membersUnavailable")
-        : $t("k.projects.noMembers")
-      : $projectsUnavailable
-        ? $t("k.projects.unavailable")
-        : $t("k.empty.projects"),
+    $path !== "/projects" && $path !== "/" ? $t("k.projects.noMembers") : $t("k.empty.projects"),
+  );
+  const unavailableText = $derived(
+    $path !== "/projects" && $path !== "/" ? $t("k.projects.membersUnavailable") : $t("k.projects.unavailable"),
   );
 
   function onselection(entries: FileEntry[]): void {
@@ -100,6 +97,8 @@
 <div class="pr" class:timeTravel={$asOf !== null}>
   {#if $projectsMocked}
     <div class="note"><Notice tone="neutral" text={$t("k.sample")} /></div>
+  {:else if $projectsUnavailable}
+    <div class="note"><Notice tone="error" text={unavailableText} /></div>
   {/if}
   <!-- A refused read leaves the refusal alone on the surface: no time travel
        over a list that could not be read. -->
@@ -136,7 +135,9 @@
     <div class="pr-edge" aria-hidden="true"></div>
   {/if}
 
-  <div class="pr-columns">
+  <!-- Under a refusal the columns go with the head: the browser would draw an
+       empty listing under a sentence saying the listing could not be read. -->
+  <div class="pr-columns" class:hidden={$projectsUnavailable}>
     <FileBrowser
       controller={ctrl}
       {onselection}
@@ -167,10 +168,13 @@
     gap: 0.5rem;
     padding: 0.6rem 1.1rem 0.45rem;
   }
+  /* The same inset as the head under it, so the line sits on the surface
+     rather than on the window's edge. */
   .note {
-    margin: 0 0 0.6rem;
+    margin: 0.6rem 1.1rem 0;
   }
-  .pr-head.hidden {
+  .pr-head.hidden,
+  .pr-columns.hidden {
     display: none;
   }
   .pr-spacer {

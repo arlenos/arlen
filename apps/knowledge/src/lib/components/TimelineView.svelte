@@ -294,10 +294,15 @@
          surface, whether or not the disclosure below is open: both can be
          asked for from the app menu, with the disclosure shut. -->
     {#if deleteFailed}
-      <p class="tl-fail" role="alert">{$t("k.tl.deleteFail")}</p>
+      <div class="note"><Notice tone="error" text={$t("k.tl.deleteFail")} /></div>
     {/if}
     {#if exportFailed}
-      <p class="tl-fail" role="alert">{$t("k.tl.exportFail")}</p>
+      <div class="note"><Notice tone="error" text={$t("k.tl.exportFail")} /></div>
+    {/if}
+    <!-- A pause that did not land is a refusal like the two above, so it sits
+         with them at the top of the surface rather than under the button. -->
+    {#if $pauseUnavailable}
+      <div class="note"><Notice tone="error" text={$t("k.tl.pauseUnavailable")} /></div>
     {/if}
     <div class="tl-head-line">
       <span class="tl-spacer"></span>
@@ -321,9 +326,6 @@
         {$t("k.tl.whats")}
       </button>
     </div>
-    {#if $pauseUnavailable}
-      <p class="tl-paused-line" role="alert">{$t("k.tl.pauseUnavailable")}</p>
-    {/if}
     {#if $paused}
       <p class="tl-paused-line">{$t("k.tl.pausedLine")}</p>
     {/if}
@@ -497,11 +499,6 @@
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
   }
   .tl-statement-menu {
-    margin: 0;
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
-  }
-  .tl-fail {
     margin: 0;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
