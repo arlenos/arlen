@@ -8,7 +8,8 @@ trigger:
   type: schedule
   every_secs: 604800
 tools:
-  graph.query: []
+  graph.ask: []
+  graph.find: []
   fs.list: [~/Downloads]
   fs.move: [~/Downloads, ~/Documents/Projects]
 budget:

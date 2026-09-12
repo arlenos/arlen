@@ -81,7 +81,7 @@ function readCheck() {
 {
   // A carried mismatch passes, because the whole point of the baseline is that
   // the tree as it stands is describable rather than red.
-  const rc = run(tree("  graph.query: []\n"));
+  const rc = run(tree("  fs.list: []\n"));
   rc === 0
     ? ok("a mismatch with a written reason is carried, not failed")
     : bad("a mismatch with a written reason is carried, not failed", `expected 0, got ${rc}`);

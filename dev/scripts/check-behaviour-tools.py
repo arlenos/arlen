@@ -21,10 +21,12 @@ plugin declares them, so a name with no registration is a mistake we made. A gen
 tool is the engine's own (pi ships its own set and can grow it), so this says nothing
 about those rather than guessing.
 
-BASELINE. The three mismatches above are recorded in KNOWN_MISMATCH rather than
-fixed here: which name is canonical is a decision - `graph.query` reads better and
-`graph.read` is what ships - and renaming across six manifests, the gate and the
-registry on a hunch is how a working tree stops working. New ones fail.
+BASELINE. `graph.query` is GONE from this list: the canonical names were ruled on
+12 September (`pi-gate-class-registry.md`) - `graph.ask` for the verb that
+interprets a question and `graph.find` for the one that matches a word - and the six
+manifests now say them, so the rename stopped being a hunch. What remains is
+`tidy-downloads` naming two OS mutation proxies nothing registers yet; those go when
+the executors do. New ones fail.
 """
 
 from __future__ import annotations
@@ -44,10 +46,6 @@ PRIVILEGED = ("graph.", "fs.", "os.")
 #: Declared names that do not resolve, with the reason they are carried. Each
 #: entry is a behaviour/tool pair, so fixing one does not silently excuse another.
 KNOWN_MISMATCH: dict[str, str] = {
-    "graph.query": (
-        "every behaviour declares it and the registered tool is `graph.read`; "
-        "which name is canonical is a planner decision, not a rename to do on a hunch"
-    ),
     "fs.list": "tidy-downloads declares it; no OS mutation proxy is registered yet",
     "fs.move": "tidy-downloads declares it; no OS mutation proxy is registered yet",
 }
