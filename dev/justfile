@@ -629,7 +629,15 @@ integration-nightly:
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
     report="$report_dir/it1-$stamp.log"
     echo "IT-1 nightly $stamp (host $(uname -n))" | tee "$report"
-    for c in daemons/event-bus daemons/knowledge daemons/audit-daemon daemons/code-indexer ai; do
+    # EVERY component the suite spawns or asks `binary_built` about. A scenario
+    # whose binary is missing skips itself with a note and the run still exits 0,
+    # so a component left out of this list is a set of scenarios that quietly
+    # never run - which is what happened to the four consent ones, and to the
+    # config-broker and store-backend ones, while the nightly reported green.
+    # `check-integration-builds.py` holds this list against the suite now.
+    for c in daemons/event-bus daemons/knowledge daemons/audit-daemon daemons/code-indexer \
+             daemons/consent-broker daemons/config-broker daemons/ai-engine-daemon \
+             store-backend ai; do
         echo "== build $c ==" | tee -a "$report"
         cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml" 2>&1 | tee -a "$report"
     done
