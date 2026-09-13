@@ -239,12 +239,18 @@ pub async fn watch(
 
     let mut handle = radio.register(monitor_for(thresholds(sensitivity))).await?;
     let adapter = radio.adapter();
+    tracing::info!("watching for separated finder-tags");
 
     // Asked for, not taken. A denial degrades this watch to seeing that a tag is
     // nearby without being able to say one is following you (§6, fail-soft), and
     // that is the same code path as having no fix: `run_scan` records nothing it
     // cannot place. So the feed is not even opened without consent - a capability
     // you were refused is not one to hold open in case.
+    // Said before the ask, not after. A prompt waits for a person, so this is the
+    // only line for however long they take - and without it the log goes quiet
+    // after "listening" and an operator cannot tell a watch that is waiting from
+    // one that failed to start.
+    tracing::info!("asking whether the tag watch may use your approximate location");
     let consented = crate::consent::ask_for_location(&crate::consent::intake_socket_path()).await;
     let mut asked = std::time::Instant::now();
     let mut feed = match consented {
@@ -337,6 +343,7 @@ pub async fn watch_recording(
 
     let mut handle = radio.register(recording_monitor_for(thresholds(sensitivity), classes)).await?;
     let adapter = radio.adapter();
+    tracing::info!("watching for nearby recording devices");
 
     tokio::pin!(stop);
     loop {
