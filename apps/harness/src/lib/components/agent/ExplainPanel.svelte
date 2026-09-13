@@ -4,6 +4,7 @@
   /// owns the explain call.
   import { t } from "$lib/i18n/messages";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { renderMarkdown } from "$lib/markdown";
   import { externalLinks } from "$lib/externalLinks";
 
@@ -24,6 +25,9 @@
 </script>
 
 <div class="explain">
+  {#if error}
+    <div class="note"><Notice tone="error" text={$t("h.explain.failed")} /></div>
+  {/if}
   {#if aiOff}
     <p class="hint">{$t("h.explain.off")}</p>
   {:else}
@@ -32,9 +36,7 @@
   <Button variant="default" size="sm" disabled={busy || aiOff} onclick={onexplain}>
     {busy ? $t("h.explain.working") : $t("h.explain.button")}
   </Button>
-  {#if error}
-    <p class="error">{$t("h.explain.failed")}</p>
-  {:else if explanation}
+  {#if explanation && !error}
     <!-- Model prose (markdown); rendered the same sanitized way as chat
          answers. -->
     <div class="text markdown" use:externalLinks>{@html renderMarkdown(explanation)}</div>
@@ -42,6 +44,10 @@
 </div>
 
 <style>
+  .note {
+    align-self: stretch;
+  }
+
   .explain {
     display: flex;
     flex-direction: column;
@@ -60,10 +66,5 @@
     font-size: var(--text-sm);
     line-height: 1.55;
     color: var(--foreground);
-  }
-  .error {
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--color-error);
   }
 </style>

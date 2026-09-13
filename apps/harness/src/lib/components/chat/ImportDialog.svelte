@@ -8,6 +8,7 @@
   import { goto } from "$app/navigation";
   import Dialog from "@arlen/ui-kit/components/ui/dialog/dialog.svelte";
   import { Upload } from "@lucide/svelte";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { importOpen, closeImportChat } from "$lib/stores/importChat";
   import { importConversation } from "$lib/stores/conversation";
 
@@ -52,6 +53,10 @@
       </p>
     </header>
 
+    {#if error}
+      <div class="imp-note"><Notice tone="error" text={error} /></div>
+    {/if}
+
     <button
       type="button"
       class="drop"
@@ -68,10 +73,6 @@
       <span class="drop-label">{$t("h.import.drop")}</span>
       <span class="drop-hint">A .json file exported from a chat</span>
     </button>
-
-    {#if error}
-      <p class="imp-error" role="alert">{error}</p>
-    {/if}
 
     <input
       bind:this={fileInput}
@@ -136,9 +137,7 @@
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
-  .imp-error {
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--destructive, #c96a6a);
+  .imp-note {
+    margin: 0 0 0.75rem;
   }
 </style>

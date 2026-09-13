@@ -496,6 +496,8 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
       ),
     );
   } catch (e) {
+    // The host's words go to the console; the person gets the catalogue sentence.
+    console.warn("harness: the assistant did not answer", e);
     updateSession(id, (m) =>
       m.map((msg) =>
         msg.id === pendingId
@@ -552,6 +554,8 @@ export async function regenerate(): Promise<void> {
       },
     ]);
   } catch (e) {
+    // The host's words go to the console; the person gets the catalogue sentence.
+    console.warn("harness: the assistant did not answer", e);
     // Failure: keep the old response, turn only the placeholder into an error
     // turn. The previous answer is preserved above it, and the trailing error
     // is itself regeneratable, so the user can retry.
@@ -612,6 +616,8 @@ export async function editAndResend(messageId: number, newText: string): Promise
       },
     ]);
   } catch (e) {
+    // The host's words go to the console; the person gets the catalogue sentence.
+    console.warn("harness: the assistant did not answer", e);
     // Failure: keep the original transcript and the edited question, turning
     // only the placeholder into a retryable error. Nothing is truncated, so the
     // prior conversation is never lost on a daemon error or hang.
