@@ -27,8 +27,9 @@ use std::sync::{Arc, Mutex};
 use audit_proto::sink::{AuditSink, LedgerAuditSink};
 use audit_proto::{AuditKind, IngestRequest, StructuralRecord};
 use zbus::interface;
-use zbus::zvariant::{ObjectPath, OwnedValue, Value};
+use zbus::zvariant::{ObjectPath, OwnedValue};
 
+use crate::interfaces::error_results;
 use crate::interfaces::sender_is_frontend;
 use crate::request::{response, RequestHandle};
 use crate::state::DaemonState;
@@ -111,15 +112,6 @@ impl ScreenCast {
     }
 }
 
-/// A `{"arlen-error": message}` results map for a failed call.
-fn error_results(message: &str) -> HashMap<String, OwnedValue> {
-    let mut map = HashMap::new();
-    if let Ok(owned) = Value::new(message.to_string()).try_to_owned() {
-        map.insert("arlen-error".to_string(), owned);
-    }
-    map
-}
-
 /// Whether `caller` owns the session keyed by `key` (session isolation between
 /// apps: only the app that created a session may configure or start it). A
 /// missing session is not owned.
@@ -176,10 +168,7 @@ impl ScreenCast {
     ) -> (u32, HashMap<String, OwnedValue>) {
         if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
             tracing::warn!("refusing a ScreenCast.CreateSession from a non-frontend sender");
-            return (
-                response::OTHER,
-                error_results("caller is not the xdg-desktop-portal frontend"),
-            );
+            return crate::interfaces::refuse_not_the_frontend();
         }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
@@ -217,10 +206,7 @@ impl ScreenCast {
     ) -> (u32, HashMap<String, OwnedValue>) {
         if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
             tracing::warn!("refusing a ScreenCast.SelectSources from a non-frontend sender");
-            return (
-                response::OTHER,
-                error_results("caller is not the xdg-desktop-portal frontend"),
-            );
+            return crate::interfaces::refuse_not_the_frontend();
         }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
@@ -292,10 +278,7 @@ impl ScreenCast {
     ) -> (u32, HashMap<String, OwnedValue>) {
         if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
             tracing::warn!("refusing a ScreenCast.Start from a non-frontend sender");
-            return (
-                response::OTHER,
-                error_results("caller is not the xdg-desktop-portal frontend"),
-            );
+            return crate::interfaces::refuse_not_the_frontend();
         }
         // The master switch subtracts from every principal at once, so it is
         // checked before the session's own ownership: a caller whose session is

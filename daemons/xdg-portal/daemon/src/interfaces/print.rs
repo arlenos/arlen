@@ -271,7 +271,7 @@ impl Print {
         if !crate::interfaces::sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await
         {
             tracing::warn!("refusing a PreparePrint call from a sender that is not the portal frontend");
-            return (2, HashMap::new());
+            return crate::interfaces::refuse_not_the_frontend();
         }
         // The app's own settings are not what gets used - they are what it would
         // have used if nobody asked. The dialog asks.
@@ -316,7 +316,7 @@ impl Print {
         if !crate::interfaces::sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await
         {
             tracing::warn!("refusing a Print call from a sender that is not the portal frontend");
-            return (2, HashMap::new());
+            return crate::interfaces::refuse_not_the_frontend();
         }
         let staged = options
             .get("token")

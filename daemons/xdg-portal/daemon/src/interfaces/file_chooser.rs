@@ -24,6 +24,7 @@ use zbus::interface;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 use xdg_portal_arlen_protocol::{FileFilter, PickerRequest, PickerResponse};
 
+use crate::interfaces::error_results;
 use crate::document_portal;
 use crate::interfaces::options;
 use crate::interfaces::sender_is_frontend;
@@ -283,10 +284,7 @@ fn caller_identity(method_app_id: &str) -> CallerIdentity {
 /// sender, which is attacker-controlled text.
 fn refuse_unattested_sender() -> (u32, HashMap<String, OwnedValue>) {
     warn!("refusing a FileChooser call from a sender that is not the portal frontend");
-    (
-        response::OTHER,
-        error_results("caller is not the xdg-desktop-portal frontend"),
-    )
+    crate::interfaces::refuse_not_the_frontend()
 }
 
 fn success_results(
@@ -312,13 +310,7 @@ fn success_results(
     map
 }
 
-fn error_results(message: &str) -> HashMap<String, OwnedValue> {
-    let mut map = HashMap::new();
-    if let Ok(owned) = Value::new(message.to_string()).try_to_owned() {
-        map.insert("arlen-error".to_string(), owned);
-    }
-    map
-}
+
 
 /// Bytes that need percent-encoding in the path component of a
 /// `file://` URI per RFC 3986. The `pchar` production allows
