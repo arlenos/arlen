@@ -120,11 +120,11 @@ impl SocketServer {
                     // module's capabilities - and until now it authenticated
                     // nobody, unlike every other daemon in the tree.
                     match admitted_peer(&stream) {
-                        Some(app_id) => {
+                        Ok(app_id) => {
                             debug!(peer = %app_id, "modulesd: admitted a client");
                         }
-                        None => {
-                            warn!("modulesd: refused a client that is not an admitted caller");
+                        Err(reason) => {
+                            warn!("modulesd: refused a client, {reason}");
                             continue;
                         }
                     }
@@ -161,19 +161,76 @@ const ADMITTED: &[&str] = &["dev.arlen.desktop-shell", "dev.arlen.settings"];
 #[cfg(debug_assertions)]
 const ADMITTED_DEV: &[&str] = &["dev.arlen-desktop-shell", "dev.arlen-settings"];
 
-/// Resolve the connecting peer and admit it, or `None` to refuse.
+/// Why a caller was turned away, so the log can say which of these it was.
+///
+/// It used to be one `None` for six different failures and one sentence for all
+/// of them, which left an operator watching their shell fail to reach modules
+/// with no way to tell a cross-uid attempt (a security event) from an
+/// unregistered unit (register it) from a caller this policy simply does not
+/// admit (it never will). The knowledge daemon already answers that question
+/// when it refuses; this is the same courtesy.
+#[derive(Debug)]
+enum Refusal {
+    /// The kernel would not give up the peer credential.
+    NoCredential(std::io::Error),
+    /// Another user's process. Same-uid is the whole boundary here.
+    OtherUser(u32),
+    /// A credential with no pid, so nothing to resolve.
+    NoPid,
+    /// `/proc/<pid>/exe` did not read - usually the process exited mid-handshake.
+    NoBinary(u32, std::io::Error),
+    /// A binary the identity broker has no name for.
+    UnknownBinary(std::path::PathBuf),
+    /// A resolved caller that this daemon does not admit.
+    NotAdmitted(String),
+}
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoCredential(e) => write!(f, "the peer credential could not be read ({e})"),
+            Self::OtherUser(uid) => write!(
+                f,
+                "uid {uid} is not this session's user; the module runtime is same-user only"
+            ),
+            Self::NoPid => write!(f, "the peer credential carries no pid"),
+            Self::NoBinary(pid, e) => write!(
+                f,
+                "/proc/{pid}/exe did not read ({e}); the process usually left mid-handshake"
+            ),
+            Self::UnknownBinary(path) => write!(
+                f,
+                "the identity broker has no name for {}; register the unit the caller runs as",
+                path.display()
+            ),
+            Self::NotAdmitted(app_id) => write!(
+                f,
+                "{app_id} is attested but does not drive the module runtime; only the shell and settings do"
+            ),
+        }
+    }
+}
+
+/// Resolve the connecting peer and admit it, or say why not.
 ///
 /// Same-uid only, from the kernel-attested credential rather than anything the
 /// client says. A `dev.`-prefixed id passes in debug builds, matching the audit
 /// and revoke admissions, so a cargo-run shell works without widening release.
-fn admitted_peer(stream: &UnixStream) -> Option<String> {
-    let cred = stream.peer_cred().ok()?;
+fn admitted_peer(stream: &UnixStream) -> std::result::Result<String, Refusal> {
+    let cred = stream.peer_cred().map_err(Refusal::NoCredential)?;
     if cred.uid() != unsafe { libc::getuid() } {
-        return None;
+        return Err(Refusal::OtherUser(cred.uid()));
     }
-    let exe = std::fs::read_link(format!("/proc/{}/exe", cred.pid()?)).ok()?;
-    let app_id = arlen_permissions::identity::path_to_app_id(&exe).ok()?;
-    is_admitted_id(&app_id).then_some(app_id)
+    let pid = cred.pid().ok_or(Refusal::NoPid)?;
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
+        .map_err(|e| Refusal::NoBinary(pid as u32, e))?;
+    let app_id = arlen_permissions::identity::path_to_app_id(&exe)
+        .map_err(|_| Refusal::UnknownBinary(exe.clone()))?;
+    if is_admitted_id(&app_id) {
+        Ok(app_id)
+    } else {
+        Err(Refusal::NotAdmitted(app_id))
+    }
 }
 
 /// Whether an attested app id may drive the module runtime.
@@ -286,6 +343,49 @@ async fn write_frame(writer: &Mutex<tokio::net::unix::OwnedWriteHalf>, body: &[u
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refusal_says_which_of_the_six_it_was() {
+        // The control for one sentence standing in for six outcomes. Each of
+        // these sends an operator somewhere different - a cross-uid attempt is a
+        // security event, an unknown binary is a unit to register, and a caller
+        // this policy does not admit will never be admitted however long anyone
+        // waits - so the sentences have to differ and each has to name its cause.
+        let cases = [
+            (Refusal::OtherUser(1042), vec!["1042", "same-user"]),
+            (Refusal::NoPid, vec!["no pid"]),
+            (
+                Refusal::UnknownBinary(std::path::PathBuf::from("/usr/bin/python3")),
+                vec!["/usr/bin/python3", "register the unit"],
+            ),
+            (
+                Refusal::NotAdmitted("dev.arlen.files".to_string()),
+                vec!["dev.arlen.files", "shell and settings"],
+            ),
+        ];
+        for (refusal, must_say) in cases {
+            let said = refusal.to_string();
+            for fragment in must_say {
+                assert!(
+                    said.contains(fragment),
+                    "{refusal:?} should name {fragment}, said: {said}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_two_io_refusals_carry_their_error() {
+        // These two only ever happen with an errno behind them, and the errno is
+        // the whole diagnosis: a permission denial and a vanished process read
+        // identically without it.
+        let denied = || std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert!(Refusal::NoCredential(denied()).to_string().contains("denied"));
+        let gone = Refusal::NoBinary(4242, std::io::Error::from(std::io::ErrorKind::NotFound));
+        let said = gone.to_string();
+        assert!(said.contains("4242"), "the pid belongs in it: {said}");
+        assert!(said.contains("/proc/"), "the path belongs in it: {said}");
+    }
 
     #[test]
     fn default_socket_path_resolves_correctly() {
