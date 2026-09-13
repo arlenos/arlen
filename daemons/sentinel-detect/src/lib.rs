@@ -15,7 +15,10 @@
 //! its encrypted store, stamps each sighting with the awake-session it fell in,
 //! prunes the tags on start, and since 13 September registers a real BlueZ
 //! advertisement monitor from [`ble_scan`]'s patterns and drives the whole chain
-//! from what it finds. **[`recording`] and [`usb`] have no caller anywhere.**
+//! from what it finds. [`recording`] joined it the same day - its own monitor, its
+//! own switch, and no history kept, because a stranger's device near you is not
+//! your context. **[`usb`] has no caller anywhere**: that detector is USBGuard's
+//! hands and this machine has no USBGuard on it yet.
 //!
 //! That is deliberate about the order rather than an oversight, and saying which is
 //! the point of this note. The cores were written first because they are the half
