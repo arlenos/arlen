@@ -281,15 +281,34 @@ pub async fn watch(
         let service = device.service_data().await.ok().flatten();
         let Some(advert) = advert_from(manufacturer.as_ref(), service.as_ref()) else { continue };
 
-        // Re-ask when the last answer has gone stale, so a revoke reaches a
+        // Re-ask when the last answer has gone stale, so a change of mind reaches a
         // running watch rather than waiting for a restart.
-        if feed.is_some() && asked.elapsed() >= crate::consent::RECHECK_AFTER {
+        //
+        // BOTH directions, and the first version only did one. It re-checked while
+        // a feed was open, so a revoke arrived - and a grant never did: a watch
+        // that started while the broker was down, or whose prompt was refused, was
+        // unplaced until somebody restarted it. That is the same defect as the one
+        // this was written to fix, pointing the other way.
+        if asked.elapsed() >= crate::consent::RECHECK_AFTER {
             asked = std::time::Instant::now();
-            if crate::consent::still_granted(&crate::consent::intake_socket_path()).await
-                == crate::consent::LocationConsent::Denied
-            {
-                tracing::info!("location consent is gone, so tags are seen but not placed");
-                feed = None;
+            let now_granted = crate::consent::still_granted(&crate::consent::intake_socket_path())
+                .await
+                == crate::consent::LocationConsent::Granted;
+            match (feed.is_some(), now_granted) {
+                (true, false) => {
+                    tracing::info!("location consent is gone, so tags are seen but not placed");
+                    feed = None;
+                }
+                (false, true) => {
+                    // A check answers about a grant that already exists, so this is
+                    // somebody having said yes since - never a prompt this watch
+                    // raised in the background.
+                    feed = crate::location::LocationFeed::open(connection).await.ok();
+                    if feed.is_some() {
+                        tracing::info!("location consent is back, so sightings are placed again");
+                    }
+                }
+                _ => {}
             }
         }
         let fix = match &feed {
