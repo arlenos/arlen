@@ -20,6 +20,14 @@
 //! gates and [`arlen_sentinel_detect::tracker`] is the second, host-side - which is
 //! the split §4.3 asks for and the reason the pattern is allowed to be broad.
 //!
+//! **One radio, one session.** Both watches register through the same
+//! `bluer::Session` and adapter, and the registrations are SERIALISED. Two tasks
+//! each opening their own session and registering at the same moment is what the
+//! first version did, and BlueZ answered `Release` instead of `Activate` on one of
+//! them - the tag watch died at startup with "could not be activated" while the
+//! camera watch ran, on a machine where either registers fine alone. Nothing in
+//! the parameters was wrong; two concurrent `RegisterMonitor` calls were.
+//!
 //! **The correlator is the payload, never the address.** The BLE address in a
 //! `DeviceFound` is a resolvable private address that rotates on its own schedule,
 //! so keying a tag by it would split one tag into many and merge none. What
@@ -110,6 +118,47 @@ fn is_finder_tag_service(short: u16) -> bool {
     matches!(short, x if x == SAMSUNG_UUID || x == TILE_UUID || x == GOOGLE_UUID || x == DULT_UUID)
 }
 
+/// The one Bluetooth session both watches register through.
+///
+/// Shared rather than one per watch, and the registrations are taken one at a
+/// time. Two tasks registering their own monitors concurrently is what the first
+/// version did and BlueZ released one of them: the tag watch reported "could not
+/// be activated" at every start while the camera watch ran, on a machine where
+/// either registers happily on its own. The lock is what makes the ordering true
+/// rather than hoped for.
+pub struct Radio {
+    /// Held, not read: the adapter and every monitor registered through it are
+    /// only valid while the session they came from is alive.
+    _session: bluer::Session,
+    adapter: bluer::Adapter,
+    registering: tokio::sync::Mutex<()>,
+}
+
+impl Radio {
+    /// Open the default adapter, or say why there is none.
+    pub async fn open() -> Result<Self, String> {
+        let session = bluer::Session::new().await.map_err(|e| format!("no bluetooth session: {e}"))?;
+        let adapter = session.default_adapter().await.map_err(|e| format!("no adapter: {e}"))?;
+        Ok(Self { _session: session, adapter, registering: tokio::sync::Mutex::new(()) })
+    }
+
+    /// The adapter, for reading a matched device's properties.
+    pub fn adapter(&self) -> &bluer::Adapter {
+        &self.adapter
+    }
+
+    /// Register one monitor, never concurrently with another.
+    async fn register(&self, monitor: bluer::monitor::Monitor) -> Result<bluer::monitor::MonitorHandle, String> {
+        let _one_at_a_time = self.registering.lock().await;
+        let manager = self
+            .adapter
+            .monitor()
+            .await
+            .map_err(|e| format!("no advertisement monitor: {e}"))?;
+        manager.register(monitor).await.map_err(|e| format!("the monitor was refused: {e}"))
+    }
+}
+
 /// The monitor the nearby-recording indicator registers.
 pub fn recording_monitor_for(
     thresholds: Thresholds,
@@ -176,6 +225,7 @@ pub fn recording_match_from(
 /// relies on: a sighting with an invented place would corrupt the one signal the
 /// criteria rest on.
 pub async fn watch(
+    radio: &Radio,
     store: &crate::sightings::SightingStore,
     sensitivity: arlen_sentinel_detect::ble_scan::Sensitivity,
     connection: &zbus::Connection,
@@ -187,13 +237,8 @@ pub async fn watch(
     use arlen_sentinel_detect::epoch::EpochTracker;
     use futures::StreamExt;
 
-    let session = bluer::Session::new().await.map_err(|e| format!("no bluetooth session: {e}"))?;
-    let adapter = session.default_adapter().await.map_err(|e| format!("no adapter: {e}"))?;
-    let manager = adapter.monitor().await.map_err(|e| format!("no advertisement monitor: {e}"))?;
-    let mut handle = manager
-        .register(monitor_for(thresholds(sensitivity)))
-        .await
-        .map_err(|e| format!("the monitor was refused: {e}"))?;
+    let mut handle = radio.register(monitor_for(thresholds(sensitivity))).await?;
+    let adapter = radio.adapter();
 
     // Asked for, not taken. A denial degrades this watch to seeing that a tag is
     // nearby without being able to say one is following you (§6, fail-soft), and
@@ -280,6 +325,7 @@ pub async fn watch(
 /// one keeps an encrypted, pruned log because the criteria need a span, and this
 /// one needs only "is it here now".
 pub async fn watch_recording(
+    radio: &Radio,
     sensitivity: arlen_sentinel_detect::ble_scan::Sensitivity,
     classes: &[arlen_sentinel_detect::recording::DeviceClass],
     events: &impl os_sdk::event::EventEmitter,
@@ -289,13 +335,8 @@ pub async fn watch_recording(
     use arlen_sentinel_detect::ble_scan::thresholds;
     use futures::StreamExt;
 
-    let session = bluer::Session::new().await.map_err(|e| format!("no bluetooth session: {e}"))?;
-    let adapter = session.default_adapter().await.map_err(|e| format!("no adapter: {e}"))?;
-    let manager = adapter.monitor().await.map_err(|e| format!("no advertisement monitor: {e}"))?;
-    let mut handle = manager
-        .register(recording_monitor_for(thresholds(sensitivity), classes))
-        .await
-        .map_err(|e| format!("the monitor was refused: {e}"))?;
+    let mut handle = radio.register(recording_monitor_for(thresholds(sensitivity), classes)).await?;
+    let adapter = radio.adapter();
 
     tokio::pin!(stop);
     loop {
