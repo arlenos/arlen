@@ -17,6 +17,13 @@
 /// The load-bearing threshold: a tag must appear at >= 2 distinct places to signal
 /// it is travelling with the user rather than fixed in one location.
 pub const MIN_DISTINCT_LOCATIONS: u32 = 2;
+/// A tag must have been seen in at least this many distinct awake-sessions.
+///
+/// Separate from the place count and not a substitute for it. A laptop suspends,
+/// and the plan redefines "duration" from continuous minutes to a span across
+/// sessions precisely because a suspend gap shreds any continuous measure; a tag
+/// seen in two sessions was there before and after you closed the lid.
+pub const MIN_DISTINCT_EPOCHS: u32 = 2;
 /// A tag must be seen at least this many times (separated adverts only).
 pub const MIN_SIGHTINGS: u32 = 3;
 /// The first-to-last sighting window must span at least 30 minutes.
@@ -34,6 +41,8 @@ pub struct TrackerObservation {
     pub sighting_count: u32,
     /// Distinct coarse locations (GeoClue cell / BSSID-set) the device was seen at.
     pub distinct_locations: u32,
+    /// Distinct awake-sessions the device was seen in.
+    pub distinct_epochs: u32,
     /// Seconds between the first and last sighting.
     pub observation_span_secs: u64,
     /// Metres travelled with the user across the sightings.
@@ -58,11 +67,51 @@ impl TrackerObservation {
 /// finite value; a non-finite distance (a bad GeoClue fix) never satisfies it.
 pub fn should_alert(obs: &TrackerObservation) -> bool {
     obs.distinct_locations >= MIN_DISTINCT_LOCATIONS
+        && obs.distinct_epochs >= MIN_DISTINCT_EPOCHS
         && obs.sighting_count >= MIN_SIGHTINGS
         && obs.observation_span_secs >= MIN_OBSERVATION_SPAN_SECS
         && obs.travelled_metres.is_finite()
         && obs.travelled_metres >= MIN_TRAVELLED_METRES
         && obs.cooldown_elapsed()
+}
+
+/// What the sentinel does about one tag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    /// Every criterion met and nothing downgrades it: a safety notification.
+    Alert,
+    /// Worth a person's eyes but not an interruption. The pull-review surface.
+    Review,
+    /// Nothing. The overwhelming majority of adverts.
+    Nothing,
+}
+
+/// Decide what to do about one tag: the criteria, plus the two things that
+/// downgrade a tag no matter how well it scores.
+///
+/// **The home anchor downgrades rather than suppresses.** A tag seen where you live
+/// is a household member's, a neighbour's or your own far more often than a
+/// stalker's - but "far more often" is not "always", and silently dropping it would
+/// make the one case that matters unreachable. So it goes to review, where a person
+/// can look, instead of to a notification or to nothing.
+///
+/// **An allowlisted tag is never alerted on and is still reviewable.** Saying a tag
+/// is yours or a companion's answers the question "should this interrupt me", not
+/// "did it travel with me", and the second answer is the one somebody re-checks when
+/// they change their mind about the first.
+///
+/// The middle state is the laptop form-factor's, not a hedge: a machine that spends
+/// the day shut sees a genuine follower thinly, and the plan's answer to thin
+/// evidence is a review surface rather than a lower bar.
+pub fn verdict(obs: &TrackerObservation, seen_at_home: bool, allowlisted: bool) -> Verdict {
+    if obs.distinct_locations < MIN_DISTINCT_LOCATIONS {
+        // The load-bearing signal is absent: seen in one place, however often.
+        return Verdict::Nothing;
+    }
+    if seen_at_home || allowlisted || !should_alert(obs) {
+        return Verdict::Review;
+    }
+    Verdict::Alert
 }
 
 #[cfg(test)]
@@ -73,6 +122,7 @@ mod tests {
     fn qualifying() -> TrackerObservation {
         TrackerObservation {
             sighting_count: 5,
+            distinct_epochs: 2,
             distinct_locations: 3,
             observation_span_secs: 45 * 60,
             travelled_metres: 900.0,
@@ -125,11 +175,50 @@ mod tests {
         assert!(should_alert(&stale));
     }
 
+    /// One place is the whole discriminator: three sightings at your desk is a
+    /// neighbour's tag, not somebody following you.
+    #[test]
+    fn one_place_is_nothing_however_strong_the_rest() {
+        let mut obs = qualifying();
+        obs.distinct_locations = 1;
+        obs.sighting_count = 50;
+        assert_eq!(verdict(&obs, false, false), Verdict::Nothing);
+    }
+
+    /// Downgraded, not dropped: a person can still look.
+    #[test]
+    fn home_and_the_allowlist_downgrade_rather_than_suppress() {
+        let obs = qualifying();
+        assert_eq!(verdict(&obs, false, false), Verdict::Alert);
+        assert_eq!(verdict(&obs, true, false), Verdict::Review);
+        assert_eq!(verdict(&obs, false, true), Verdict::Review);
+    }
+
+    /// The laptop case: two places, but the evidence is thin. Review, not silence.
+    #[test]
+    fn thin_evidence_across_two_places_is_reviewable() {
+        let mut obs = qualifying();
+        obs.sighting_count = MIN_SIGHTINGS - 1;
+        assert!(!should_alert(&obs));
+        assert_eq!(verdict(&obs, false, false), Verdict::Review);
+    }
+
+    /// A tag seen twice in one session has not been shown to follow you between
+    /// sessions, which is what the span is meant to prove on a machine that suspends.
+    #[test]
+    fn one_session_does_not_alert() {
+        let mut obs = qualifying();
+        obs.distinct_epochs = 1;
+        assert!(!should_alert(&obs));
+        assert_eq!(verdict(&obs, false, false), Verdict::Review);
+    }
+
     #[test]
     fn the_exact_thresholds_qualify() {
         let boundary = TrackerObservation {
             sighting_count: MIN_SIGHTINGS,
             distinct_locations: MIN_DISTINCT_LOCATIONS,
+            distinct_epochs: MIN_DISTINCT_EPOCHS,
             observation_span_secs: MIN_OBSERVATION_SPAN_SECS,
             travelled_metres: MIN_TRAVELLED_METRES,
             secs_since_last_alert: None,

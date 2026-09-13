@@ -1434,19 +1434,19 @@ mod module_reachability {
         //                           nothing yet asks this to bind them.
         //   integration-packages/manifest  IP-R5's manifest, parsed by nothing
         //                           until the installer path reaches it.
-        //   sentinel-detect/tracker the finder-tag classifier `arlen-sentineld`
-        //                           does not run yet, like its siblings below.
         //
         // FALSE WHEN `arlen-sentineld` grows the detector that reads each one.
         // The `sentinel-detect` entries come off as their daemon reaches them, and
         // three did on 4 September. `readout` joined the list that morning and left
         // it the same day: `arlen-sentineld` now composes exposure's surfaces
         // through it and serves the result to the Settings privacy page, which
-        // took `exposure` and `readout` off together. The three below are the
-        // detectors that daemon does not run yet.
+        // took `exposure` and `readout` off together. `tracker` and `movement` came
+        // off on 13 September for a different reason: `sighting` now joins them into
+        // the SEN-4 chain, so they are reached from inside the crate while the
+        // daemon half is still missing - which is what moved the waiting one module
+        // up rather than removing it.
         "daemons/code-indexer/resolve",
         "daemons/integration-packages/manifest",
-        "daemons/sentinel-detect/tracker",
         // Diagnosed rather than assumed: the transfer daemon's live per-uid
         // listeners are deliberately deferred to PR-R1's per-uid sockets, which
         // `main.rs` states while holding a fail-closed `DeniedBroker` in the
@@ -1467,8 +1467,15 @@ mod module_reachability {
         "daemons/knowledge/backup",
         "daemons/knowledge/lifecycle",
         "daemons/knowledge/migration",
-        "daemons/sentinel-detect/movement",
         "daemons/sentinel-detect/recording",
+        // The top of the SEN-4 chain: it accumulates a tag's separated sightings and
+        // reduces them through `movement` into the summary `trigger` decides on. It
+        // is what `arlen-sentineld` will call, and it waits on the two pieces that
+        // would give it something to accumulate - `tracker-sentinel-plan.md` §6 job
+        // 1 (the GeoClue2 portal bridge that puts a fix on a sighting) and job 2
+        // (the encrypted store under `~/.local/state/arlen/tracker-sentinel/` that
+        // keeps a tag between sessions).
+        "daemons/sentinel-detect/sighting",
         "daemons/sentinel-detect/usb",
     ];
 
