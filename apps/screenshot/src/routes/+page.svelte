@@ -27,6 +27,7 @@
     Download,
   } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import FloatingThumbnail from "$lib/components/FloatingThumbnail.svelte";
   import { drawShape, rectOf, type Shape, type ShapeKind, type ToolKind, type Point } from "$lib/annotate";
@@ -621,9 +622,7 @@
     <!-- Above the stage rather than over it: the canvas is what the person is
          deciding about, and a refusal that covers the picture is its own
          problem. It stays until the next attempt settles it. -->
-    <p class="action-failed" role="alert">
-      {actionFailed === "save" ? $t("s.saveFailed") : $t("s.copyFailed")}
-    </p>
+    <div class="note"><Notice tone="error" text={actionFailed === "save" ? $t("s.saveFailed") : $t("s.copyFailed")} /></div>
   {/if}
   <div class="stage">
     <div class="canvas-wrap">
@@ -725,16 +724,19 @@
        thumbnail that would otherwise carry a picture of nowhere. It names the
        cause: a compositor without the screencopy interface and a capture call
        that threw are different problems with different answers. -->
-  <div class="no-capture" role="alert">
-    <p class="no-capture-what">{$t("s.captureUnavailable")}</p>
-    <p class="no-capture-why">{$t(WHY[captureFailure])}</p>
-    <!-- ONLY for `refused`, and that is the point. A compositor with no
-         screencopy interface will refuse the next try for the same reason, and
-         `no-host` is the preview; offering a retry there would be a second
-         sentence this window cannot honour. -->
-    {#if captureFailure === "refused"}
-      <Button variant="outline" size="sm" onclick={retryPrimary}>{$t("s.tryAgain")}</Button>
-    {/if}
+  <div class="no-capture">
+    <!-- The refusal at the top of the empty window, in the one shape, what and
+         why as one text. -->
+    <div class="note note-row">
+      <Notice tone="error" text={`${$t("s.captureUnavailable")} ${$t(WHY[captureFailure])}`} />
+      <!-- ONLY for `refused`, and that is the point. A compositor with no
+           screencopy interface will refuse the next try for the same reason, and
+           `no-host` is the preview; offering a retry there would be a second
+           sentence this window cannot honour. -->
+      {#if captureFailure === "refused"}
+        <Button variant="outline" size="sm" onclick={retryPrimary}>{$t("s.tryAgain")}</Button>
+      {/if}
+    </div>
   </div>
 {:else if phase === "thumbnail" && base}
   <FloatingThumbnail
@@ -794,11 +796,20 @@
     border-radius: var(--radius-card, 12px);
     overflow: hidden;
   }
-  .action-failed {
+  .note {
     margin: 0 0 0.5rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-error, #f87171);
+  }
+  /* Over the stage, inset from the window like the stage itself. */
+  .tool > .note {
+    margin: 1rem 1rem 0.5rem;
+  }
+  .note-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .note-row :global(.notice) {
+    flex: 1;
   }
 
   /* Above the canvas, in the warning colour rather than the error one: nothing
@@ -821,32 +832,11 @@
     color: var(--color-warning, #fbbf24);
   }
 
-  /* The whole window when there is no capture, because there is no picture to
-     put beside it. */
+  /* The window when there is no capture: the refusal at its top, nothing under
+     it, because there is no picture to put beside it. */
   .no-capture {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    align-items: center;
-    justify-content: center;
     height: 100vh;
-    padding: 2rem;
-    text-align: center;
-  }
-
-  .no-capture-what {
-    margin: 0;
-    max-width: 32rem;
-    font-size: 0.95rem;
-    font-weight: 500;
-    color: var(--color-fg-primary, #e6e8ee);
-  }
-
-  .no-capture-why {
-    margin: 0;
-    max-width: 32rem;
-    font-size: 0.85rem;
-    color: var(--color-fg-secondary, #9aa4b2);
+    padding: 1rem;
   }
 
   .board {

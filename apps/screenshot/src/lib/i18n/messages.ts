@@ -26,7 +26,7 @@ const messages: Catalogs = {
     // WHY, under the heading above. These were the compositor's own words and an
     // English sentence written in the bridge, drawn as they came in every locale.
     "s.why.noScreencopy": "This desktop does not offer screen capture to apps.",
-    "s.why.refused": "The capture was refused. Trying again may work; the detail is in the log.",
+    "s.why.refused": "The capture was refused. Trying again may work.",
     "s.tryAgain": "Try again",
     "s.swatch": "Colour {$name}",
     "s.swatch.error": "Red",
@@ -80,7 +80,7 @@ const messages: Catalogs = {
     "s.captureUnavailable": "Von deinem Bildschirm konnte kein Bild gemacht werden.",
     "s.noHost": "Hier ist nichts, womit aufgenommen werden könnte.",
     "s.why.noScreencopy": "Diese Arbeitsumgebung bietet Apps keine Bildschirmaufnahme an.",
-    "s.why.refused": "Die Aufnahme wurde abgelehnt. Ein erneuter Versuch kann klappen; die Einzelheiten stehen im Protokoll.",
+    "s.why.refused": "Die Aufnahme wurde abgelehnt. Ein erneuter Versuch kann klappen.",
     "s.tryAgain": "Erneut versuchen",
     "s.swatch": "Farbe {$name}",
     "s.swatch.error": "Rot",
