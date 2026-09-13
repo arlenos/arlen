@@ -225,6 +225,10 @@ pub async fn watch(
             Some(feed) => feed.fix(connection).await.ok(),
             None => None,
         };
+        // What the page reports as "the tracker has location" is this, measured per
+        // advert: whether the thing that places a sighting answered. A feed that
+        // opened and then stopped answering is not location the tracker has.
+        live.saw_location(fix.is_some());
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())

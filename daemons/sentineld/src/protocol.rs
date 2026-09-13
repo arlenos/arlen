@@ -110,7 +110,15 @@ pub struct SentinelState {
     /// measured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capture_active: Option<bool>,
-    /// Whether the tracker still holds the coarse location grant it needs.
+    /// Whether the tag watch is placing sightings right now.
+    ///
+    /// Named for a grant and measured as a capability, which is a gap worth
+    /// stating on the wire type rather than in one daemon: §6 specifies a coarse
+    /// `location.read` minted through the consent broker, and that path is not
+    /// built - the feed asks GeoClue2 directly. So this answers "are sightings
+    /// being placed", which is what the card needs to decide whether to say the
+    /// tracker cannot confirm a tag is following you. When the broker path lands,
+    /// this is where the two meanings have to be reconciled.
     pub tracker_has_location: bool,
     /// Set when the exposure detector could not read a surface at all, so the
     /// page can say the readout is incomplete rather than presenting what it

@@ -41,6 +41,8 @@ struct Seen<T> {
 pub struct Live {
     recording: Mutex<Option<Seen<(String, String)>>>,
     tracker: Mutex<Option<Seen<(String, String)>>>,
+    /// Whether the last thing the tag watch asked for a fix got one.
+    located: Mutex<Option<Seen<bool>>>,
 }
 
 impl Live {
@@ -62,6 +64,24 @@ impl Live {
                 at: Instant::now(),
             });
         }
+    }
+
+    /// Record whether a coarse fix was available.
+    pub fn saw_location(&self, got_one: bool) {
+        if let Ok(mut slot) = self.located.lock() {
+            *slot = Some(Seen { what: got_one, at: Instant::now() });
+        }
+    }
+
+    /// Whether the tag watch is currently getting fixes.
+    ///
+    /// False when nothing has asked lately, which is the honest answer for a watch
+    /// that is not running: this says "sightings are being placed right now", not
+    /// "a grant exists somewhere". The page pairs it with the detector switch, so
+    /// off-and-unplaced reads as off rather than as a missing permission.
+    pub fn is_located(&self) -> bool {
+        let Ok(guard) = self.located.lock() else { return false };
+        guard.as_ref().is_some_and(|s| s.at.elapsed() < FRESH_FOR && s.what)
     }
 
     /// The recording class currently nearby, or `None` when the last one has gone
@@ -123,6 +143,22 @@ mod tests {
     /// A finding goes quiet on its own. Faked by writing a stale timestamp, which
     /// is the one thing worth reaching inside the type for: the alternative is a
     /// two-minute test.
+    /// Nothing asked, so nothing is being placed - which is what a page should be
+    /// told about a watch that is not running.
+    #[test]
+    fn unasked_is_not_located() {
+        assert!(!Live::default().is_located());
+    }
+
+    #[test]
+    fn a_fix_that_came_back_counts_and_one_that_did_not_does_not() {
+        let live = Live::default();
+        live.saw_location(true);
+        assert!(live.is_located());
+        live.saw_location(false);
+        assert!(!live.is_located(), "a feed that answered nothing is not a fix");
+    }
+
     #[test]
     fn a_stale_finding_is_not_reported() {
         let live = Live::default();
