@@ -131,10 +131,17 @@ pub async fn current_state(cfg: &Config, live: &crate::live::Live) -> SentinelSt
         // capturing right now. "Nothing is using your microphone" is the sharpest
         // sentence on this page and the one it must never say on no evidence.
         capture_active: None,
-        // The tracker's coarse location grant is minted through the broker and
-        // nothing has minted one, so this is a measured false rather than a
-        // placeholder: the card correctly offers to ask for it.
-        tracker_has_location: false,
+        // Measured, and it means what the watch can do rather than what a grant
+        // says: whether the last sighting this watch took was placeable. The
+        // comment here used to claim a measurement it had stopped making - it said
+        // the grant is minted through the broker and none is, which was true until
+        // the coarse feed started asking GeoClue2 directly. Nothing runs, nothing
+        // is placed, and the card pairs this with the detector switch so that
+        // reads as off rather than as a missing permission.
+        //
+        // NOT the broker grant §6 specifies. That path does not exist yet, and the
+        // report for 13 September says so rather than this field implying it.
+        tracker_has_location: live.is_located(),
         posture_incomplete: incomplete.then_some(true),
         // Only while the detector is on. A finding from before somebody switched
         // it off is a page reporting on a watch that stopped, which is the same
