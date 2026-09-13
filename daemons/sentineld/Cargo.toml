@@ -33,6 +33,12 @@ arlen-permissions = { path = "../../sdk/permissions" }
 # Turning a protection off is recorded before it happens.
 audit-proto = { path = "../../contracts/audit-proto" }
 libc = "0.2"
+# The BLE watch. BlueZ's official Rust interface rather than hand-rolled zbus:
+# an AdvertisementMonitor is an object BlueZ calls back INTO, not a proxy, so the
+# D-Bus half is real work somebody has already done correctly.
+bluer = { version = "0.17", features = ["bluetoothd"] }
+futures = "0.3"
+uuid = "1"
 # SEN-4's sighting store. A tag's location history is the most sensitive thing this
 # daemon touches, so it is sealed with the reviewed AEAD record store under a master
 # held by the reviewed key custody, rather than a second hand-rolled pair.
