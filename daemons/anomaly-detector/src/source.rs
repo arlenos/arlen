@@ -293,6 +293,22 @@ impl Detector {
         }
     }
 
+    /// Poll on the timer until `wait` has elapsed, then return.
+    ///
+    /// The waiting half of a subscribe retry. Split out so the two places that
+    /// wait - for a retry, and for the next event - both keep the audit poll
+    /// running, and so the property is testable without a bus.
+    async fn poll_until(&mut self, wait: Duration, interval: &mut tokio::time::Interval) {
+        let deadline = tokio::time::sleep(wait);
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                _ = &mut deadline => return,
+                _ = interval.tick() => self.poll().await,
+            }
+        }
+    }
+
     /// Run forever: subscribe to `audit.*` + `window.*`, poll on a
     /// timer and on `audit.ai.*` events. Re-subscribes if the feed
     /// closes.
@@ -315,10 +331,26 @@ impl Detector {
                 Ok(rx) => rx,
                 Err(e) => {
                     tracing::warn!(
-                        "event bus subscribe failed: {e}; retrying in {}s",
+                        "event bus subscribe failed: {e}; retrying in {}s \
+                         (the audit poll keeps running)",
                         SUBSCRIBE_RETRY.as_secs()
                     );
-                    tokio::time::sleep(SUBSCRIBE_RETRY).await;
+                    // KEEP POLLING WHILE WAITING. The retry used to be a bare
+                    // sleep with `continue`, which put the poll timer inside the
+                    // inner loop that is only reached once a subscribe SUCCEEDS -
+                    // so with no event bus the detector read the audit ledger
+                    // exactly once at startup and never again. Measured: a
+                    // PolicyViolation appended after startup sat unseen through
+                    // a full poll interval while the log showed nothing but
+                    // subscribe retries.
+                    //
+                    // The poll is the path this daemon calls its reliable one -
+                    // the tamper check says so in its own comment, "observed over
+                    // the reliable poll path, so it survives a missed Event Bus
+                    // event" - and it was the half that depended on the bus.
+                    // There is no systemd unit for the event bus today, so this
+                    // is the state a real deployment starts in.
+                    self.poll_until(SUBSCRIBE_RETRY, &mut interval).await;
                     continue;
                 }
             };
@@ -412,6 +444,47 @@ mod tests {
             head,
             matching,
         })
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_audit_poll_runs_while_the_event_bus_is_unreachable() {
+        // The defect this guards: the poll timer used to live inside the loop
+        // that is only entered after a SUCCESSFUL subscribe, so a detector that
+        // could not reach the event bus read the ledger once at startup and never
+        // again - no tamper check, no canary trip, nothing, while the log showed
+        // only subscribe retries. There is no systemd unit for the event bus
+        // today, so that is the state a real deployment starts in.
+        let trip = entry(0, AuditKind::PolicyViolation, 1_000, &[]);
+        let mut d = detector(
+            State {
+                bootstrapped: true, // past the initial catch-up
+                ..State::default()
+            },
+            DetectorConfig::default(),
+            MockSource::new(vec![Ok(ReadPage {
+                entries: vec![trip],
+                tampered: false,
+                head: 1,
+                matching: 1,
+            })]),
+            0,
+        );
+
+        let mut interval = tokio::time::interval(Duration::from_secs(POLL_INTERVAL_SECS));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        // The first tick of a tokio interval completes immediately; that is the
+        // one the retry path used to skip entirely.
+        d.poll_until(SUBSCRIBE_RETRY, &mut interval).await;
+
+        assert_eq!(d.state.hwm_index, 1, "the waiting detector read the ledger");
+        assert!(
+            d.state
+                .alert_cooldowns
+                .keys()
+                .any(|k| k.starts_with("policy-violation:")),
+            "and raised the trip it found: {:?}",
+            d.state.alert_cooldowns
+        );
     }
 
     fn detector(state: State, cfg: DetectorConfig, src: MockSource, grace_until: i64) -> Detector {
