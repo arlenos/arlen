@@ -201,7 +201,7 @@
         <!-- The daemon's own refusal, in place: a desktop app it will not
              remove, or a layer this build cannot remove. It is built to be
              offered Remove and to say no; the page shows the no. -->
-        <p class="refused" role="alert">{$t("st.app.uninstallRefused", { reason: $t(whyKey(removal.cause)) })}</p>
+        <div class="note"><Notice tone="error" text={$t("st.app.uninstallRefused", { reason: $t(whyKey(removal.cause)) })} /></div>
       {/if}
 
       {#if !app.installable && !app.installed}
@@ -556,11 +556,6 @@
     font-size: var(--text-sm);
     line-height: 1.55;
     color: color-mix(in srgb, var(--color-fg-primary) 78%, transparent);
-  }
-  .refused {
-    margin: 0 0 0.75rem;
-    font-size: var(--text-sm);
-    color: var(--color-error, #dc2626);
   }
   .quiet {
     margin: 0 0 1rem;
