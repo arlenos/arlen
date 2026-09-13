@@ -8,8 +8,9 @@
 //! separation state the advert reveals. It is PURE (bytes in, verdict out) so the
 //! per-vendor formats are tested against fixtures without a Bluetooth radio. The
 //! scanning, the movement/persistence model, the home-anchor and the notify decision
-//! belong in the daemon on top of this and are not built - see the crate doc for
-//! which detectors have a driver and what the rest are waiting on.
+//! belong in the daemon on top of this; [`crate::sighting`] is the accumulation in
+//! between, and the daemon half is not built - see the crate doc for what it waits
+//! on.
 //!
 //! The formats follow the de-facto per-vendor advertisement layouts (research-
 //! grounded against AirGuard). Near-owner adverts are dropped before they ever reach
