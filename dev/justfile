@@ -391,6 +391,17 @@ smoke-apps:
 shell-smoke:
     bash "{{ROOT}}/dev/scripts/smoke-shell.sh"
 
+# What each daemon puts on the bus when NOTHING is happening. One at a time, each
+# with a private bus and no peers, watched while the machine is left alone; the
+# number is events per window per topic. A steady stream against an idle machine
+# means the daemon's idea of a change is not yours - three of those were found by
+# hand in one night (a bluetoothd error read as a device arriving, a device going
+# "down" while it was already down, a power state republished because a time
+# estimate drifted), which is why this exists instead of luck. Minutes to run and
+# a person has to read it, so it is a sweep and not a gate.
+idle-emitters window="10":
+    python3 "{{ROOT}}/dev/scripts/idle-emitter-census.py" --window {{window}}
+
 # IT-1 host-only backend smoke (integration-testing-plan.md §4): build the
 # backend daemons, then run the hermetic #[ignore]d backend scenarios
 # (`EphemeralStack`: stack-comes-up + the file.opened -> SQLite data-flow). Fast
