@@ -13,6 +13,7 @@
 //! real state first, and only then let anything be switched.
 
 pub mod ble;
+pub mod consent;
 pub mod live;
 pub mod location;
 pub mod sightings;

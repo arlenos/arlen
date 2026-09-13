@@ -43,6 +43,10 @@ uuid = "1"
 # daemon uses; the payloads live in the shared event proto beside them.
 os-sdk = { path = "../../sdk/os-sdk" }
 prost = "0.13"
+# The one consent surface. The tracker's coarse location is a capability somebody
+# grants, not one this daemon takes.
+arlen-consent-broker = { path = "../consent-broker" }
+arlen-consent-contract = { path = "../../contracts/consent-contract" }
 # SEN-4's sighting store. A tag's location history is the most sensitive thing this
 # daemon touches, so it is sealed with the reviewed AEAD record store under a master
 # held by the reviewed key custody, rather than a second hand-rolled pair.
