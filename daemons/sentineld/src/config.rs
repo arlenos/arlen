@@ -112,6 +112,27 @@ pub const PROXIMITY: [&str; 3] = ["near", "room", "anywhere"];
 /// before it says a tag is following you.
 pub const STRICTNESS: [&str; 3] = ["cautious", "balanced", "strict"];
 
+/// What the recording detector's proximity setting means to the radio.
+///
+/// The page offers three stops in the words a person thinks in; a BlueZ monitor
+/// is registered with a number in dBm. This is the one place the two meet, and it
+/// is here rather than beside the scan because it is a reading of a CONFIG value -
+/// an unset or unknown level is the default rather than an error, the same way
+/// every other switch in this file treats one.
+///
+/// RSSI is not distance and the stops do not claim to be
+/// (`privacy-sentinel-plan.md` §4.4): "near" is the narrowest listening, not a
+/// promise about metres.
+pub fn proximity_sensitivity(cfg: &DetectorConfig) -> arlen_sentinel_detect::ble_scan::Sensitivity {
+    use arlen_sentinel_detect::ble_scan::Sensitivity;
+    match cfg.sensitivity.as_deref() {
+        Some("near") => Sensitivity::CloseOnly,
+        Some("anywhere") => Sensitivity::Wide,
+        // "room", absent, or a level this build does not know.
+        _ => Sensitivity::Balanced,
+    }
+}
+
 /// One detector's switches.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetectorConfig {
@@ -487,5 +508,39 @@ mod tests {
                 "{r:?} leaves a person guessing"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod proximity_tests {
+    use super::*;
+    use arlen_sentinel_detect::ble_scan::{thresholds, Sensitivity};
+
+    fn at(level: Option<&str>) -> DetectorConfig {
+        DetectorConfig {
+            on: true,
+            alerts: Alerts::Notify,
+            sensitivity: level.map(str::to_string),
+        }
+    }
+
+    /// The three words the page offers, in the order they are named.
+    #[test]
+    fn each_stop_maps_to_its_own_listening_width() {
+        assert_eq!(proximity_sensitivity(&at(Some("near"))), Sensitivity::CloseOnly);
+        assert_eq!(proximity_sensitivity(&at(Some("room"))), Sensitivity::Balanced);
+        assert_eq!(proximity_sensitivity(&at(Some("anywhere"))), Sensitivity::Wide);
+        assert!(
+            thresholds(proximity_sensitivity(&at(Some("near")))).rssi_low
+                > thresholds(proximity_sensitivity(&at(Some("anywhere")))).rssi_low
+        );
+    }
+
+    /// An unset or unknown level is the default, not an error: a switch this
+    /// build does not recognise must not stop the detector listening at all.
+    #[test]
+    fn an_unknown_level_is_the_default() {
+        assert_eq!(proximity_sensitivity(&at(None)), Sensitivity::Balanced);
+        assert_eq!(proximity_sensitivity(&at(Some("whatever"))), Sensitivity::Balanced);
     }
 }
