@@ -99,7 +99,7 @@
                        yet. A widened update has no Update button: the gate would
                        refuse it, and a button that fails in silence is worse than a
                        line that says so. -->
-                  <p class="cannot">{$t("st.upd.cannotAllow")}</p>
+                  <div class="row-note"><Notice tone="caution" text={$t("st.upd.cannotAllow")} /></div>
                 {/if}
                 {@render state(u.id, status, removal)}
                 <div class="actions">
@@ -178,7 +178,7 @@
   {#if removal?.kind === "removing"}
     <p class="quiet-line">{$t("st.app.removing")}</p>
   {:else if removal?.kind === "refused"}
-    <p class="refused" role="alert">{$t("st.app.uninstallRefused", { reason: $t(whyKey(removal.cause ?? "other")) })}</p>
+    <div class="row-note"><Notice tone="error" text={$t("st.app.uninstallRefused", { reason: $t(whyKey(removal.cause ?? "other")) })} /></div>
   {:else if status?.kind === "applying"}
     <p class="quiet-line">{$t("st.upd.applying")}</p>
   {:else if status?.kind === "unconfirmed"}
@@ -186,7 +186,7 @@
   {:else if status?.kind === "notStarted"}
     <p class="quiet-line">{$t("st.upd.notStarted")}</p>
   {:else if status?.kind === "refused"}
-    <p class="refused" role="alert">{$t(status.act === "skip" ? "st.upd.skipRefused" : "st.upd.refused", { reason: $t(whyKey(status.cause ?? "other")) })}</p>
+    <div class="row-note"><Notice tone="error" text={$t(status.act === "skip" ? "st.upd.skipRefused" : "st.upd.refused", { reason: $t(whyKey(status.cause ?? "other")) })} /></div>
   {/if}
 {/snippet}
 
@@ -283,18 +283,15 @@
   }
   /* The system's sentence under a widening: quieter than the delta, still a
      full sentence, never a badge. */
-  .cannot,
+  /* A refusal or a caution inside the row, in the one shape, over the buttons. */
+  .row-note {
+    margin: 0.25rem 0;
+  }
   .quiet-line {
     margin: 0;
     font-size: var(--text-xs);
     line-height: 1.45;
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
-  }
-  .refused {
-    margin: 0;
-    font-size: var(--text-xs);
-    line-height: 1.45;
-    color: var(--color-error, #dc2626);
   }
   .actions {
     display: flex;
