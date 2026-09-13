@@ -214,6 +214,14 @@ impl Settings {
     }
 }
 
+/// The one refusal both read methods give a sender that is not the frontend.
+///
+/// A constant because the two used to differ in KIND, not only in wording:
+/// `Read` returned this error and `ReadAll` returned an empty map with a success
+/// reply. Sharing the sentence keeps them answering the same question the same
+/// way, which is the property that was broken.
+const NOT_THE_FRONTEND: &str = "caller is not the xdg-desktop-portal frontend";
+
 #[interface(name = "org.freedesktop.impl.portal.Settings")]
 impl Settings {
     /// Interface version.
@@ -228,15 +236,25 @@ impl Settings {
     }
 
     /// Every key in every namespace the caller asked for.
+    ///
+    /// A refusal is an ERROR, the same one `Read` gives, and not an empty map.
+    /// It used to be the empty map, because the return type had nowhere else to
+    /// go - so a caller that was not allowed to ask was told there are no
+    /// appearance settings, which for this namespace is not a refusal at all: an
+    /// empty `org.freedesktop.appearance` is what a desktop with no colour
+    /// preference looks like, so the client falls back to its own default and
+    /// nobody, on either side, learns that a boundary was enforced. Measured
+    /// against a live bus, where `Read` refused honestly and `ReadAll` answered
+    /// `{}` with a success reply.
     async fn read_all(
         &self,
         namespaces: Vec<String>,
         #[zbus(connection)] connection: &zbus::Connection,
         #[zbus(header)] hdr: zbus::message::Header<'_>,
-    ) -> HashMap<String, HashMap<String, OwnedValue>> {
+    ) -> Result<HashMap<String, HashMap<String, OwnedValue>>, SettingsError> {
         if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
             tracing::warn!("refusing a Settings ReadAll from a sender that is not the portal frontend");
-            return HashMap::new();
+            return Err(SettingsError::NotFound(NOT_THE_FRONTEND.to_string()));
         }
         // An empty array matches all, per the spec, and so does an empty string
         // inside it - which `namespace_matches` already answers true for.
@@ -246,7 +264,7 @@ impl Settings {
         if wanted {
             out.insert(NAMESPACE.to_string(), Appearance::current().as_map());
         }
-        out
+        Ok(out)
     }
 
     /// One key. An unknown namespace or key is an error, not an empty value.
@@ -259,9 +277,7 @@ impl Settings {
     ) -> Result<OwnedValue, SettingsError> {
         if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
             tracing::warn!("refusing a Settings Read from a sender that is not the portal frontend");
-            return Err(SettingsError::NotFound(
-                "caller is not the xdg-desktop-portal frontend".to_string(),
-            ));
+            return Err(SettingsError::NotFound(NOT_THE_FRONTEND.to_string()));
         }
         if namespace != NAMESPACE {
             return Err(SettingsError::NotFound(format!(
@@ -286,6 +302,38 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn both_reads_refuse_an_outsider_the_same_way() {
+        // The control for a refusal that was not one. `Read` answered an outsider
+        // with an error; `ReadAll` answered with an empty map and a SUCCESS reply,
+        // which for `org.freedesktop.appearance` is indistinguishable from a
+        // desktop that has no colour preference - so the client fell back to its
+        // own default and neither side learned a boundary had been enforced.
+        //
+        // Read as source rather than over a bus because the refusal needs a real
+        // sender and a real frontend owner. What it holds is the property that
+        // broke: both methods return the same error, from the same constant, and
+        // neither has a path that refuses by returning a value.
+        let source = include_str!("settings.rs");
+        let read_all = source
+            .split("async fn read_all(")
+            .nth(1)
+            .expect("read_all is in this file");
+        let body = read_all
+            .split("async fn read(")
+            .next()
+            .expect("bounded by the next method");
+        assert!(
+            body.contains("SettingsError::NotFound(NOT_THE_FRONTEND"),
+            "ReadAll must refuse with the shared error, not a value"
+        );
+        assert!(
+            !body.contains("return HashMap::new()"),
+            "an empty map is a legitimate answer for a legitimate caller, so it \
+             cannot also be how this one says no"
+        );
+    }
 
     #[test]
     fn an_empty_pattern_matches_everything() {
