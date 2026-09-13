@@ -1920,3 +1920,41 @@ mod tests {
     }
 }
 
+
+#[cfg(test)]
+mod read_only_probe {
+    use super::*;
+
+    /// Can a SECOND, read-only handle open the same graph while the writer holds
+    /// it? knowledge#30's answer to the lexical write-blocklist is an engine-level
+    /// read-only database for the query socket, and the reason that was never
+    /// built is a concurrency question nobody had measured. This measures it on
+    /// the version we actually pin.
+    ///
+    /// Whatever it answers is a fact worth having: if a second handle opens, the
+    /// query socket can stop trusting a token scan; if it does not, the blocklist
+    /// stays and the report says why.
+    #[test]
+    fn a_read_only_handle_beside_the_writer() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("graph");
+        let path = path.to_str().expect("utf-8 path");
+
+        let writer = Database::new(path, SystemConfig::default()).expect("the writer opens");
+        let conn = Connection::new(&writer).expect("a connection");
+        conn.query("CREATE NODE TABLE Probe(id STRING, PRIMARY KEY(id))").expect("schema");
+        conn.query("CREATE (:Probe {id: 'one'})").expect("a row");
+
+        match Database::new(path, SystemConfig::default().read_only(true)) {
+            Ok(reader) => {
+                let rconn = Connection::new(&reader).expect("a read connection");
+                let rows = rconn.query("MATCH (p:Probe) RETURN p.id").expect("the read runs");
+                assert_eq!(rows.count(), 1, "the reader sees the writer's row");
+                let write = rconn.query("CREATE (:Probe {id: 'two'})");
+                assert!(write.is_err(), "a read-only handle refuses a write");
+                println!("READ-ONLY-PROBE: a second handle opens beside the writer");
+            }
+            Err(e) => println!("READ-ONLY-PROBE: refused beside the writer: {e}"),
+        }
+    }
+}
