@@ -5,6 +5,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Plus } from "lucide-svelte";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import AlarmsView from "$lib/components/AlarmsView.svelte";
   import TimersView from "$lib/components/TimersView.svelte";
   import FocusView from "$lib/components/FocusView.svelte";
@@ -125,11 +126,11 @@
          pane below is empty. Above the switch is still where they belong - that
          is what makes them show on whichever tab is open. -->
     {#if $clockMocked}
-      <p class="sample">{$t("c.sample")}</p>
+      <div class="note"><Notice tone="neutral" text={$t("c.sample")} /></div>
     {:else if $clockAbsent}
       <!-- Not a failure: nobody started the service. Naming it is what lets a
            person do something about it, where "cannot be read" only worries them. -->
-      <p class="sample">{$t("c.notRunning")}</p>
+      <div class="note"><Notice tone="caution" text={$t("c.notRunning")} /></div>
     {:else if $clockUnavailable}
       <!-- This line sits above the tab switch, so it shows on WHICHEVER tab is
            open. It used to say "Cannot read your alarms and timers", which is a
@@ -139,12 +140,12 @@
            persisted too, which is why its view is gated on it - so one sentence can
            cover them all, as long as it names what is actually missing rather than
            one tab's worth of it. -->
-      <p class="sample">{$t("c.unavailable")}</p>
+      <div class="note"><Notice tone="error" text={$t("c.unavailable")} /></div>
     {/if}
     <!-- The alarm or timer below is back to what the daemon holds, because what
          was asked for never got there. -->
     {#if $clockActionFailed}
-      <p class="sample" role="alert">{$t("c.actionFailed")}</p>
+      <div class="note"><Notice tone="error" text={$t("c.actionFailed")} /></div>
     {/if}
     {#if tab === "alarms"}
       <AlarmsView />
@@ -245,12 +246,8 @@
     height: 2px;
     background: var(--color-fg-primary);
   }
-  .sample {
+  .note {
     margin: 0.6rem 1rem 0;
-    text-align: center;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
-    flex-shrink: 0;
   }
   .body {
     min-height: 0;
