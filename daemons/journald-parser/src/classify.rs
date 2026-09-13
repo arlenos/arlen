@@ -138,17 +138,50 @@ fn interface_name(message: &str) -> Option<String> {
 }
 
 /// bluetoothd device connect/disconnect. Carries NO device address (the paired
-/// device's MAC is left out; only the transition is recorded). Note the
-/// substring trap: `"disconnected"` contains `"connected"`, so the disconnect
-/// case is tested first.
+/// device's MAC is left out; only the transition is recorded).
+///
+/// IT MATCHES THE ADAPTER'S DEVICE LINE, not the word. This used to be a
+/// substring search for `"connected"` anywhere in the message, and measured
+/// against fourteen days of real bluetoothd output that is not a near miss, it
+/// is inverted: the single most common line carrying the word is
+///
+/// ```text
+/// Unable to get io data for Hands-Free Voice gateway: getpeername:
+///   Transport endpoint is not connected (107)
+/// ```
+///
+/// a connection FAILURE, reported as a connection, fifty-three times. The line
+/// that fires most often in a live session is bluetoothd announcing that a
+/// D-BUS CLIENT of its advertisement-monitor API went away (`Adv Monitor app
+/// :1.157 disconnected from D-Bus`) - nothing to do with a device, twenty-two
+/// times a minute on this machine, each one a `bluetooth/disconnected` the graph
+/// would have taken as a device leaving.
+///
+/// So the shape is required: the adapter's own `device <addr> connected` /
+/// `device <addr> disconnected`, where the transition word follows the address
+/// rather than merely appearing somewhere in a sentence. The address itself is
+/// still dropped, as this arm has always promised.
+///
+/// The substring trap the old note warned about is real and still handled -
+/// `"disconnected"` contains `"connected"` - it was just guarding the wrong
+/// thing.
 fn classify_bluetooth(message: &str) -> Option<ServiceEvent> {
     let lower = message.to_ascii_lowercase();
-    let kind = if lower.contains("disconnected") {
-        "disconnected"
-    } else if lower.contains("connected") {
-        "connected"
-    } else {
-        return None;
+    // `... device aa:bb:cc:dd:ee:ff connected ...` - the address is skipped, so
+    // what is read is the token AFTER it. `device` has to be a word: the adapter
+    // writes it mid-line (`hci0 device aa:.. disconnected, reason 3`) and
+    // bluetoothd's own summaries write it first, so both boundaries count and
+    // neither `subdevice` nor `devices` does.
+    let mut after_device = lower.split_whitespace().skip_while(|w| *w != "device").skip(1);
+    // The address itself is read past and dropped, never carried.
+    let _address = after_device.next()?;
+    let transition = after_device.next()?;
+    // Trailing punctuation is bluetoothd's, not ours: `disconnected, reason 3`.
+    let transition = transition.trim_end_matches([',', '.', ';']);
+    let kind = match transition {
+        "disconnected" => "disconnected",
+        "connected" => "connected",
+        _ => return None,
     };
     Some(ServiceEvent {
         service: "bluetooth".to_string(),
@@ -290,6 +323,62 @@ mod tests {
             message: "Device AA:BB:CC:DD:EE:FF Connected".to_string(),
         };
         assert_eq!(classify(&con).expect("classifies").kind, "connected");
+    }
+
+    #[test]
+    fn the_lines_a_live_bluetoothd_actually_writes_are_not_transitions() {
+        // Measured, not imagined: these are the highest-frequency bluetoothd
+        // lines from fourteen days of one machine's journal, and the substring
+        // classifier this replaced turned every one of them into a device
+        // transition. The first is the one that matters most - a connection
+        // FAILURE reported as a connection.
+        for message in [
+            "Unable to get io data for Hands-Free Voice gateway: getpeername: \
+             Transport endpoint is not connected (107)",
+            "Adv Monitor app :1.1573754 disconnected from D-Bus",
+            "Path / reserved for Adv Monitor app :1.1573755",
+            "src/device.c:device_connect_le() ATT bt_io_connect(F9:F7:E4:80:E5:58): \
+             connect to F9:F7:E4:80:E5:58: No route to host (113)",
+            "plugins/policy.c:reconnect_timeout() Reconnecting services failed: \
+             Device or resource busy (16)",
+            "src/service.c:service_accept() rap profile accept failed for E4:58:BC:2A:DA:BE",
+        ] {
+            let l = JournalLine {
+                unit: "bluetooth.service".to_string(),
+                identifier: "bluetoothd".to_string(),
+                message: message.to_string(),
+            };
+            assert_eq!(
+                classify(&l),
+                None,
+                "this is not a device transition and must not become one: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_adapter_line_is_what_a_transition_looks_like() {
+        // And the shape that IS one, in the adapter's own wording, with the
+        // trailing reason bluetoothd appends to a disconnect.
+        let l = JournalLine {
+            unit: "bluetooth.service".to_string(),
+            identifier: "bluetoothd".to_string(),
+            message: "src/adapter.c:disconnected_callback() hci0 device \
+                      AA:BB:CC:DD:EE:FF disconnected, reason 3"
+                .to_string(),
+        };
+        let ev = classify(&l).expect("the adapter's own device line classifies");
+        assert_eq!(ev.kind, "disconnected");
+        assert_eq!(ev.detail, "", "the address is read past, never carried");
+
+        let up = JournalLine {
+            unit: "bluetooth.service".to_string(),
+            identifier: "bluetoothd".to_string(),
+            message: "src/adapter.c:connected_callback() hci0 device \
+                      AA:BB:CC:DD:EE:FF connected eir_len 21"
+                .to_string(),
+        };
+        assert_eq!(classify(&up).expect("classifies").kind, "connected");
     }
 
     #[test]
