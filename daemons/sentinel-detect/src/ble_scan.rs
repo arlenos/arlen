@@ -38,6 +38,8 @@ pub mod ad_type {
     pub const SERVICE_DATA_UUID16: u8 = 0x16;
     /// Manufacturer-specific data, which begins with the company id.
     pub const MANUFACTURER_DATA: u8 = 0xFF;
+    /// 128-bit service UUIDs, complete list.
+    pub const SERVICE_UUID128_COMPLETE: u8 = 0x07;
 }
 
 /// One `or_patterns` entry: match `content` at `start_position` within the field
@@ -89,6 +91,53 @@ pub fn finder_tag_patterns() -> Vec<Pattern> {
         Pattern::service_data(GOOGLE_UUID),
         Pattern::service_data(DULT_UUID),
     ]
+}
+
+/// Match a 128-bit service UUID, whole, in the complete-list field.
+///
+/// The 16-bit assignments have a short form; a vendor-allocated 128-bit UUID does
+/// not, so it goes on the wire in full and LITTLE-ENDIAN, which is the reverse of
+/// how it is written down. Getting that backwards produces a monitor that never
+/// fires and looks exactly like a quiet room.
+pub fn service_uuid128_pattern(uuid: uuid::Uuid) -> Pattern {
+    let mut content = uuid.as_bytes().to_vec();
+    content.reverse();
+    Pattern { start_position: 0, ad_type: ad_type::SERVICE_UUID128_COMPLETE, content }
+}
+
+/// Every pattern the nearby-recording indicator needs, derived from the match-set
+/// rather than restated beside it.
+///
+/// **A class that cannot raise a signal gets no pattern.** The Jieli SoC id is in
+/// countless earbuds and is never a standalone trigger, and a disabled class is off
+/// pending evidence - registering either would wake the host for something the
+/// classifier is then obliged to throw away, which on this path is battery spent to
+/// learn nothing.
+pub fn recording_patterns(classes: &[crate::recording::DeviceClass]) -> Vec<Pattern> {
+    use crate::recording::Confidence;
+    let mut out = Vec::new();
+    for class in classes {
+        if !class.enabled {
+            continue;
+        }
+        // A class whose best possible answer is None can never surface anything.
+        if class.id_alone == Confidence::None && class.id_plus_name == Confidence::None {
+            continue;
+        }
+        if let Some(id) = class.company_id {
+            let pattern = Pattern::company(id);
+            if !out.contains(&pattern) {
+                out.push(pattern);
+            }
+        }
+        if let Some(uuid) = class.service_uuid.as_deref().and_then(|u| u.parse().ok()) {
+            let pattern = service_uuid128_pattern(uuid);
+            if !out.contains(&pattern) {
+                out.push(pattern);
+            }
+        }
+    }
+    out
 }
 
 /// How hard to listen. Named for what the person wants, not for a distance
@@ -186,6 +235,53 @@ mod tests {
             patterns.iter().filter(|p| p.ad_type == ad_type::MANUFACTURER_DATA).count(),
             1
         );
+    }
+
+
+    /// The match-set is the source; the pattern list is derived so a new class is
+    /// a data edit rather than two edits that can disagree.
+    #[test]
+    fn a_class_that_can_never_surface_gets_no_pattern() {
+        let classes = crate::recording::bundled_device_classes();
+        let patterns = recording_patterns(&classes);
+        // Jieli is in the set and is never a standalone trigger.
+        assert!(classes.iter().any(|c| c.company_id == Some(0x05D6)));
+        assert!(
+            !patterns.contains(&Pattern::company(0x05D6)),
+            "the SoC id would wake the host for something always discarded"
+        );
+        // The two Meta ids and Snap are real triggers.
+        for id in [0x01AB_u16, 0x058E, 0x03C2] {
+            assert!(patterns.contains(&Pattern::company(id)), "{id:#06x} is missing");
+        }
+    }
+
+    #[test]
+    fn a_disabled_class_gets_no_pattern() {
+        let mut classes = crate::recording::bundled_device_classes();
+        for c in &mut classes {
+            c.enabled = false;
+        }
+        assert!(recording_patterns(&classes).is_empty());
+    }
+
+    /// A 128-bit UUID goes on the wire reversed, and a monitor registered with it
+    /// the right way round never fires.
+    #[test]
+    fn a_128_bit_service_uuid_is_reversed_on_the_wire() {
+        let uuid: uuid::Uuid = "7905fff0-b5ce-4e99-a40f-4b1e122d00d0".parse().unwrap();
+        let p = service_uuid128_pattern(uuid);
+        assert_eq!(p.ad_type, ad_type::SERVICE_UUID128_COMPLETE);
+        assert_eq!(p.content.len(), 16);
+        assert_eq!(p.content[0], 0xD0, "the last byte written is the first sent");
+        assert_eq!(p.content[15], 0x79);
+    }
+
+    /// The HeyCyan class is UUID-only, so it contributes a pattern with no company.
+    #[test]
+    fn a_uuid_only_class_still_gets_watched_for() {
+        let patterns = recording_patterns(&crate::recording::bundled_device_classes());
+        assert!(patterns.iter().any(|p| p.ad_type == ad_type::SERVICE_UUID128_COMPLETE));
     }
 
     #[test]

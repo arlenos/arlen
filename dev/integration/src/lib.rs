@@ -1469,7 +1469,6 @@ mod module_reachability {
         "daemons/knowledge/backup",
         "daemons/knowledge/lifecycle",
         "daemons/knowledge/migration",
-        "daemons/sentinel-detect/recording",
         "daemons/sentinel-detect/usb",
     ];
 

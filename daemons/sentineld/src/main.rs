@@ -62,6 +62,7 @@ async fn main() -> std::process::ExitCode {
     // awaited: this daemon's first job is answering what the machine broadcasts,
     // and a radio that will not start must not take the socket down with it.
     let tracker = spawn_tracker_watch(&ctx.config_path);
+    let recording = spawn_recording_watch(&ctx.config_path);
 
     tracing::info!(socket = %socket.display(), "privacy sentinel listening");
     tokio::select! {
@@ -70,6 +71,7 @@ async fn main() -> std::process::ExitCode {
         _ = term.recv() => tracing::info!("asked to stop, shutting down"),
     }
     tracker.abort();
+    recording.abort();
     let _ = std::fs::remove_file(&socket);
     std::process::ExitCode::SUCCESS
 }
@@ -138,6 +140,31 @@ fn spawn_tracker_watch(config_path: &std::path::Path) -> tokio::task::JoinHandle
                 .await
         {
             tracing::warn!("the tag watch stopped: {e}");
+        }
+    })
+}
+
+/// Start the nearby-recording watch if that detector is switched on.
+///
+/// Its own task rather than a branch inside the tag watch: the two detectors have
+/// separate switches, and somebody who wants to know about cameras but not about
+/// tags should get exactly that.
+fn spawn_recording_watch(config_path: &std::path::Path) -> tokio::task::JoinHandle<()> {
+    use arlen_sentineld::config::{self, Detector};
+
+    let (cfg, _) = config::load(config_path);
+    let recording = cfg.get(Detector::Recording).clone();
+    tokio::spawn(async move {
+        if !recording.on {
+            tracing::info!("the recording detector is off, so nothing is watched for");
+            return;
+        }
+        let classes = arlen_sentinel_detect::recording::bundled_device_classes();
+        let sensitivity = config::proximity_sensitivity(&recording);
+        if let Err(e) =
+            arlen_sentineld::ble::watch_recording(sensitivity, &classes, std::future::pending()).await
+        {
+            tracing::warn!("the recording watch stopped: {e}");
         }
     })
 }

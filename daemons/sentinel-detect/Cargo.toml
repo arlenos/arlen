@@ -14,5 +14,9 @@ path = "src/lib.rs"
 # store needs a shape to seal. Defining a second mirror of these types over there
 # so this one could stay dependency-free would be the worse trade.
 serde = { version = "1", features = ["derive"] }
+# Parsing a class's 128-bit service UUID into the bytes a monitor is registered
+# with. The match-set writes them the way a person reads them; the radio wants
+# them reversed, and doing that by hand is how a monitor silently never fires.
+uuid = "1"
 
 [workspace]

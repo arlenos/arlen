@@ -109,6 +109,57 @@ fn is_finder_tag_service(short: u16) -> bool {
     matches!(short, x if x == SAMSUNG_UUID || x == TILE_UUID || x == GOOGLE_UUID || x == DULT_UUID)
 }
 
+/// The monitor the nearby-recording indicator registers.
+pub fn recording_monitor_for(
+    thresholds: Thresholds,
+    classes: &[arlen_sentinel_detect::recording::DeviceClass],
+) -> bluer::monitor::Monitor {
+    let mut monitor = monitor_for(thresholds);
+    monitor.patterns = Some(
+        arlen_sentinel_detect::ble_scan::recording_patterns(classes)
+            .into_iter()
+            .map(|p| bluer::monitor::Pattern {
+                data_type: p.ad_type,
+                start_position: p.start_position,
+                content: p.content,
+            })
+            .collect(),
+    );
+    monitor
+}
+
+/// Classify one matched device against the recording match-set.
+///
+/// Pure, and separate from the finder-tag mapping because the two ask different
+/// questions of the same advert: a tag is identified by its payload, a recording
+/// device by its vendor plus what it calls itself. The name is what lifts a broad
+/// vendor id from "a Meta wearable somewhere" to "Meta smart glasses", and it is
+/// the one field the controller cannot filter on.
+pub fn recording_match_from(
+    manufacturer: Option<&HashMap<u16, Vec<u8>>>,
+    service: Option<&HashMap<uuid::Uuid, Vec<u8>>>,
+    name: Option<&str>,
+    classes: &[arlen_sentinel_detect::recording::DeviceClass],
+) -> Option<arlen_sentinel_detect::recording::DeviceMatch> {
+    use arlen_sentinel_detect::recording::classify_device;
+    let uuids: Vec<String> = service
+        .map(|m| m.keys().map(|u| u.to_string()).collect())
+        .unwrap_or_default();
+    // One advert can carry several company ids; the classifier answers per id and
+    // the strongest answer is the one shown, which is what "the indicator shows the
+    // highest-confidence live class" means at this end.
+    let ids: Vec<u16> = manufacturer.map(|m| m.keys().copied().collect()).unwrap_or_default();
+    let mut best: Option<arlen_sentinel_detect::recording::DeviceMatch> = None;
+    for id in ids.iter().map(|i| Some(*i)).chain(std::iter::once(None)) {
+        if let Some(found) = classify_device(id, name, &uuids, classes) {
+            if best.as_ref().is_none_or(|b| found.confidence > b.confidence) {
+                best = Some(found);
+            }
+        }
+    }
+    best
+}
+
 /// Watch for finder-tags until `stop` resolves, recording what is seen.
 ///
 /// The whole SEN-4 chain in one place: register the monitor at the width the
@@ -187,6 +238,58 @@ pub async fn watch(
     Ok(())
 }
 
+/// Watch for nearby recording devices until `stop` resolves.
+///
+/// The sibling of [`watch`] over the same substrate, and separate from it on
+/// purpose: the two detectors have their own switches and their own sensitivity,
+/// so a person who wants one and not the other gets exactly that rather than a
+/// shared monitor that stops when either is turned off.
+///
+/// **Nothing is written down.** A stranger's device near you is not your context,
+/// which §4.3 states outright - so this reports the live class and keeps no history
+/// of who passed by. The contrast with the tag watch beside it is the point: that
+/// one keeps an encrypted, pruned log because the criteria need a span, and this
+/// one needs only "is it here now".
+pub async fn watch_recording(
+    sensitivity: arlen_sentinel_detect::ble_scan::Sensitivity,
+    classes: &[arlen_sentinel_detect::recording::DeviceClass],
+    stop: impl std::future::Future<Output = ()>,
+) -> Result<(), String> {
+    use arlen_sentinel_detect::ble_scan::thresholds;
+    use futures::StreamExt;
+
+    let session = bluer::Session::new().await.map_err(|e| format!("no bluetooth session: {e}"))?;
+    let adapter = session.default_adapter().await.map_err(|e| format!("no adapter: {e}"))?;
+    let manager = adapter.monitor().await.map_err(|e| format!("no advertisement monitor: {e}"))?;
+    let mut handle = manager
+        .register(recording_monitor_for(thresholds(sensitivity), classes))
+        .await
+        .map_err(|e| format!("the monitor was refused: {e}"))?;
+
+    tokio::pin!(stop);
+    loop {
+        let event = tokio::select! {
+            () = &mut stop => break,
+            event = handle.next() => event,
+        };
+        let Some(bluer::monitor::MonitorEvent::DeviceFound(found)) = event else { break };
+        let Ok(device) = adapter.device(found.device) else { continue };
+        let manufacturer = device.manufacturer_data().await.ok().flatten();
+        let service = device.service_data().await.ok().flatten();
+        let name = device.name().await.ok().flatten();
+        let Some(found) =
+            recording_match_from(manufacturer.as_ref(), service.as_ref(), name.as_deref(), classes)
+        else {
+            continue;
+        };
+        // The label and how sure, never the address: the indicator says what kind
+        // of thing is nearby, and which one it is would be a log of the people
+        // around you.
+        tracing::info!(class = %found.label, confidence = ?found.confidence, "a recording device is nearby");
+    }
+    Ok(())
+}
+
 /// A correlator in the log, where the bytes themselves have no business being.
 fn hex(correlator: &[u8]) -> String {
     correlator.iter().take(4).map(|b| format!("{b:02x}")).collect()
@@ -252,6 +355,55 @@ mod tests {
 
     /// Everything the controller matched but that carries nothing we read is not
     /// a sighting and not an error.
+
+    #[test]
+    fn a_meta_advert_without_a_name_is_only_a_wearable() {
+        use arlen_sentinel_detect::recording::{bundled_device_classes, Confidence};
+        let mut md = HashMap::new();
+        md.insert(0x01AB_u16, vec![1, 2]);
+        let m = recording_match_from(Some(&md), None, None, &bundled_device_classes())
+            .expect("the vendor id alone is a match");
+        assert_eq!(m.confidence, Confidence::Low);
+    }
+
+    /// The name is what the controller cannot filter on and what lifts the answer.
+    #[test]
+    fn the_name_lifts_a_meta_advert_to_the_concrete_class() {
+        use arlen_sentinel_detect::recording::{bundled_device_classes, Confidence};
+        let mut md = HashMap::new();
+        md.insert(0x01AB_u16, vec![1, 2]);
+        let m = recording_match_from(Some(&md), None, Some("Ray-Ban Meta"), &bundled_device_classes())
+            .expect("a corroborated match");
+        assert_eq!(m.confidence, Confidence::High);
+        assert_eq!(m.label, "Meta smart glasses");
+    }
+
+    /// An advert carrying several vendor ids is shown as its strongest answer.
+    #[test]
+    fn the_strongest_answer_is_the_one_shown() {
+        use arlen_sentinel_detect::recording::{bundled_device_classes, Confidence};
+        let mut md = HashMap::new();
+        md.insert(0x05D6_u16, vec![0]); // the SoC, never a signal
+        md.insert(0x03C2_u16, vec![0]); // Snap, a narrow vendor
+        let m = recording_match_from(Some(&md), None, None, &bundled_device_classes())
+            .expect("the narrow vendor answers");
+        assert_eq!(m.confidence, Confidence::Medium);
+        assert_eq!(m.label, "Snap Spectacles");
+    }
+
+    #[test]
+    fn an_ordinary_device_is_not_a_recording_device() {
+        let mut md = HashMap::new();
+        md.insert(0x004C_u16, vec![1, 2, 3]);
+        assert!(recording_match_from(
+            Some(&md),
+            None,
+            Some("AirPods"),
+            &arlen_sentinel_detect::recording::bundled_device_classes()
+        )
+        .is_none());
+    }
+
     #[test]
     fn an_unrecognised_advert_is_no_advert() {
         assert!(advert_from(None, None).is_none());
