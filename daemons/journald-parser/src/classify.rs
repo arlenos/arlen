@@ -114,10 +114,28 @@ fn classify_network(message: &str) -> Option<ServiceEvent> {
     // We lift only the terminal up/down states; intermediate states (prepare,
     // config, ip-config) are noise and classify to None.
     let after = message.split("state change:").nth(1)?;
+    let old_state = after.split("->").next()?.split_whitespace().next()?;
     let new_state = after.split("-> ").nth(1)?.split_whitespace().next()?;
-    let kind = match new_state {
-        "activated" => "device-up",
-        "disconnected" | "unavailable" | "deactivating" | "failed" | "unmanaged" => "device-down",
+    // A DOWN is a device that WAS up and now is not, which is why the old state
+    // is read rather than thrown away. Without that, every step between two
+    // flavours of down is a separate "the device went down": measured over
+    // fourteen days on one machine, `unmanaged -> unavailable` 359 times,
+    // `unavailable -> disconnected` 245, `disconnected -> unmanaged` 231 - none
+    // of them a device that had been reachable. Against 58 real ones in the same
+    // period (`activated ->` deactivating, failed or unmanaged).
+    //
+    // It also collapses the pair: a real down walks `activated -> deactivating`
+    // and then `deactivating -> disconnected`, which used to be two events for
+    // one thing that happened.
+    //
+    // And it drops a failed connection ATTEMPT (`need-auth -> failed`), which is
+    // not a device going down any more than bluetoothd's `not connected` errno
+    // was a device arriving.
+    let kind = match (old_state, new_state) {
+        (_, "activated") => "device-up",
+        ("activated", "disconnected" | "unavailable" | "deactivating" | "failed" | "unmanaged") => {
+            "device-down"
+        }
         _ => return None,
     };
     let interface = interface_name(message).unwrap_or_default();
@@ -278,6 +296,54 @@ mod tests {
         let ev = classify(&l).expect("disconnected classifies");
         assert_eq!(ev.kind, "device-down");
         assert_eq!(ev.detail, "eth0");
+    }
+
+    #[test]
+    fn a_device_that_was_never_up_does_not_go_down() {
+        // The measured corpus again: fourteen days of one machine's
+        // NetworkManager, most frequent transitions first. Every one of these
+        // used to be a `device-down` event, and not one of them is a device that
+        // had been reachable.
+        for (count, change) in [
+            (359, "unmanaged -> unavailable (reason 'connection-assumed')"),
+            (245, "unavailable -> disconnected (reason 'none')"),
+            (231, "disconnected -> unmanaged (reason 'removed')"),
+            (114, "unavailable -> unmanaged (reason 'removed')"),
+            // A connection ATTEMPT that failed. Not a device going down, the
+            // same way bluetoothd's "not connected" errno was not one arriving.
+            (0, "need-auth -> failed (reason 'no-secrets')"),
+        ] {
+            let l = line(
+                "NetworkManager.service",
+                &format!("device (wlan0): state change: {change}"),
+            );
+            assert!(
+                classify(&l).is_none(),
+                "{change} happened {count}x and is not a device going down"
+            );
+        }
+    }
+
+    #[test]
+    fn one_real_down_is_one_event_not_two() {
+        // A real down walks activated -> deactivating -> disconnected. The first
+        // step is the event; the second is the same thing still happening.
+        let first = line(
+            "NetworkManager.service",
+            "device (wlan0): state change: activated -> deactivating (reason 'user-requested')",
+        );
+        assert_eq!(
+            classify(&first).expect("leaving activated is the down").kind,
+            "device-down"
+        );
+        let second = line(
+            "NetworkManager.service",
+            "device (wlan0): state change: deactivating -> disconnected (reason 'user-requested')",
+        );
+        assert!(
+            classify(&second).is_none(),
+            "the second step of one departure is not a second departure"
+        );
     }
 
     #[test]
