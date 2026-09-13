@@ -13,9 +13,9 @@
 //! reached, and so are [`sighting`], [`home_anchor`], [`epoch`] and [`ble_scan`]:
 //! `arlen-sentineld` keeps tags and the learned resting place between sessions in
 //! its encrypted store, stamps each sighting with the awake-session it fell in,
-//! prunes the tags on start, and reads the proximity switch into the thresholds a
-//! monitor would be registered with. **[`recording`] and [`usb`] have no caller
-//! anywhere.**
+//! prunes the tags on start, and since 13 September registers a real BlueZ
+//! advertisement monitor from [`ble_scan`]'s patterns and drives the whole chain
+//! from what it finds. **[`recording`] and [`usb`] have no caller anywhere.**
 //!
 //! That is deliberate about the order rather than an oversight, and saying which is
 //! the point of this note. The cores were written first because they are the half

@@ -58,6 +58,10 @@ async fn main() -> std::process::ExitCode {
     // that will not open is a sentinel that cannot yet detect, not one that must
     // refuse to answer what the machine broadcasts.
     prune_sightings();
+    // The finder-tag watch, when the person has it on. Spawned rather than
+    // awaited: this daemon's first job is answering what the machine broadcasts,
+    // and a radio that will not start must not take the socket down with it.
+    let tracker = spawn_tracker_watch(&ctx.config_path);
 
     tracing::info!(socket = %socket.display(), "privacy sentinel listening");
     tokio::select! {
@@ -65,6 +69,7 @@ async fn main() -> std::process::ExitCode {
         _ = tokio::signal::ctrl_c() => tracing::info!("interrupted, shutting down"),
         _ = term.recv() => tracing::info!("asked to stop, shutting down"),
     }
+    tracker.abort();
     let _ = std::fs::remove_file(&socket);
     std::process::ExitCode::SUCCESS
 }
@@ -93,4 +98,46 @@ fn prune_sightings() {
         Err(StoreError::NoStateDir) => {}
         Err(e) => tracing::warn!("the sighting store did not open: {e}"),
     }
+}
+
+/// Start the finder-tag watch if the tracker detector is switched on.
+///
+/// Reads the switch here rather than inside the watch so the reason for not
+/// watching is said once, at the point somebody would look for it. A detector
+/// that is off is not an error and not a warning: it is the state the person
+/// chose.
+fn spawn_tracker_watch(config_path: &std::path::Path) -> tokio::task::JoinHandle<()> {
+    use arlen_sentineld::config::{self, Detector};
+    use arlen_sentineld::sightings::SightingStore;
+
+    let (cfg, _) = config::load(config_path);
+    let tracker = cfg.get(Detector::Tracker).clone();
+    tokio::spawn(async move {
+        if !tracker.on {
+            tracing::info!("the tracker detector is off, so nothing is watched for");
+            return;
+        }
+        let store = match SightingStore::open_default() {
+            Ok(store) => store,
+            Err(e) => {
+                tracing::warn!("no sighting store, so tags cannot be followed: {e}");
+                return;
+            }
+        };
+        let connection = match zbus::Connection::system().await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("no system bus, so the radio cannot be reached: {e}");
+                return;
+            }
+        };
+        let sensitivity = config::proximity_sensitivity(&tracker);
+        // Runs until the task is aborted at shutdown.
+        if let Err(e) =
+            arlen_sentineld::ble::watch(&store, sensitivity, &connection, std::future::pending())
+                .await
+        {
+            tracing::warn!("the tag watch stopped: {e}");
+        }
+    })
 }

@@ -1471,17 +1471,6 @@ mod module_reachability {
         "daemons/knowledge/migration",
         "daemons/sentinel-detect/recording",
         "daemons/sentinel-detect/usb",
-        // SEN-4's last open seam, and these two are on the daemon's side of it. The
-        // chain is whole otherwise: `tracker_run` classifies an advert, drops the
-        // near-owner ones, places each sighting with a `location` fix, keeps it in
-        // the sealed store and applies the criteria - all of it exercised against a
-        // fixture advert source. What nothing provides is a REAL advert source: the
-        // BlueZ `AdvertisementMonitor` of `tracker-sentinel-plan.md` §6 job 3, which
-        // needs a live adapter. Wiring `main` to a loop with no source would be
-        // inventing a caller to make this test green, which is the thing it exists
-        // to catch.
-        "daemons/sentineld/location",
-        "daemons/sentineld/tracker_run",
     ];
 
     /// Every `.rs` file in the tree, skipping build and vendor directories.

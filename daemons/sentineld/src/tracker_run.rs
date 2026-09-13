@@ -51,6 +51,27 @@ pub trait AdvertSource {
     fn scan(&mut self) -> Vec<Advert>;
 }
 
+/// One advert, handed over once.
+///
+/// The live watch is event-driven - BlueZ wakes it per match - while `run_scan`
+/// reads a scan's worth at a time. This is the adapter between the two, and it
+/// yields its advert exactly once so a second call does not re-record the same
+/// sighting.
+pub struct Once(Option<Advert>);
+
+impl Once {
+    /// Hold one advert for a single scan.
+    pub fn new(advert: Advert) -> Self {
+        Self(Some(advert))
+    }
+}
+
+impl AdvertSource for Once {
+    fn scan(&mut self) -> Vec<Advert> {
+        self.0.take().into_iter().collect()
+    }
+}
+
 /// What one scan did.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ScanOutcome {
