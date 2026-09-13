@@ -26,6 +26,7 @@ use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use zbus::interface;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
+use crate::interfaces::error_results;
 use crate::interfaces::sender_is_frontend;
 use crate::request::{response, RequestHandle};
 use crate::state::DaemonState;
@@ -97,13 +98,7 @@ impl Screenshot {
     }
 }
 
-fn error_results(message: &str) -> HashMap<String, OwnedValue> {
-    let mut map = HashMap::new();
-    if let Ok(owned) = Value::new(message.to_string()).try_to_owned() {
-        map.insert("arlen-error".to_string(), owned);
-    }
-    map
-}
+
 
 /// A unique screenshot path in the screenshots directory. Uses an epoch
 /// millisecond suffix for uniqueness (the frontend exposes the file to the
@@ -142,10 +137,7 @@ impl Screenshot {
         // record). Verified frontend, or refuse before any capture.
         if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
             tracing::warn!("refusing a Screenshot call from a sender that is not the portal frontend");
-            return (
-                response::OTHER,
-                error_results("caller is not the xdg-desktop-portal frontend"),
-            );
+            return crate::interfaces::refuse_not_the_frontend();
         }
         // A screenshot is capture the moment it is taken, so the master switch is
         // checked before anything is read off the screen.
@@ -261,10 +253,7 @@ impl Screenshot {
         // PickColor reads a screen pixel; same frontend-only gate as capture.
         if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
             tracing::warn!("refusing a PickColor call from a sender that is not the portal frontend");
-            return (
-                response::OTHER,
-                error_results("caller is not the xdg-desktop-portal frontend"),
-            );
+            return crate::interfaces::refuse_not_the_frontend();
         }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());

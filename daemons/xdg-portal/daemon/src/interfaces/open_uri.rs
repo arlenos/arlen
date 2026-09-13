@@ -29,10 +29,11 @@ use std::path::{Path, PathBuf};
 
 use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, CONTROLS};
 use zbus::interface;
-use zbus::zvariant::{Fd, ObjectPath, OwnedValue, Value};
+use zbus::zvariant::{Fd, ObjectPath, OwnedValue};
 
 use arlen_launch_contract as launch;
 
+use crate::interfaces::error_results;
 use crate::request::{response, RequestHandle};
 use crate::sandbox::CallerIdentity;
 use crate::state::DaemonState;
@@ -249,13 +250,7 @@ impl OpenUri {
     }
 }
 
-fn error_results(message: &str) -> HashMap<String, OwnedValue> {
-    let mut map = HashMap::new();
-    if let Ok(owned) = Value::new(message.to_string()).try_to_owned() {
-        map.insert("arlen-error".to_string(), owned);
-    }
-    map
-}
+
 
 #[interface(name = "org.freedesktop.impl.portal.OpenURI")]
 #[allow(clippy::too_many_arguments)] // spec-mandated method signatures
@@ -277,10 +272,7 @@ impl OpenUri {
         if !crate::interfaces::sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await
         {
             tracing::warn!("refusing an OpenURI call from a sender that is not the portal frontend");
-            return (
-                response::OTHER,
-                error_results("caller is not the xdg-desktop-portal frontend"),
-            );
+            return crate::interfaces::refuse_not_the_frontend();
         }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
@@ -370,10 +362,7 @@ impl OpenUri {
         if !crate::interfaces::sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await
         {
             tracing::warn!("refusing an OpenFile call from a sender that is not the portal frontend");
-            return (
-                response::OTHER,
-                error_results("caller is not the xdg-desktop-portal frontend"),
-            );
+            return crate::interfaces::refuse_not_the_frontend();
         }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
