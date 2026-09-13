@@ -1,0 +1,30 @@
+# The privacy sentinel's event-bus profile.
+#
+# THE GATE COULD NOT SEE THIS ONE, which is why it is written from a run rather
+# than from a sweep. `check-emitters-declared` finds a producer by looking for a
+# literal topic inside an `emit(...)` call; the sentinel holds its two topics in
+# constants, so the gate read it as emitting nothing and asked for no profile.
+# The same run that found this taught the gate to follow a constant, so the next
+# producer written this way is caught by the check instead of by somebody
+# starting a daemon.
+#
+# Without it, both advisory events are dropped at the bus the moment publish
+# enforcement stops being shadow mode - and dropped silently, which for a
+# detector means the indicator simply never lights and nobody is told why.
+#
+# `sentineld`, not `sentinel-detect` or `arlen-sentineld`: it installs at
+# `/usr/lib/arlen/libexec/arlen-sentineld`, which `identity.rs` carries an
+# explicit rule for. The filename has to be that id or the profile is never
+# found.
+#
+# Publish only, and exactly two topics. The sentinel reads the radio and says
+# what it saw; it subscribes to nothing, because nothing another component
+# publishes changes what is in the room.
+
+[info]
+app_id = "sentineld"
+tier = "first-party"
+
+[event_bus]
+publish = ["sentinel.recording_device.nearby", "sentinel.tracker.suspected"]
+subscribe = []

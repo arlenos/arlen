@@ -38,6 +38,29 @@ async fn publish(emitter: &E) {
     emitter.emit("power.state", bytes).await
 }
 `;
+
+//: The same producer with its topic behind a constant, which is how the privacy
+//: sentinel and the journal tier were written and why neither was seen until
+//: 13 September. One indirection was enough to make the check read them as
+//: emitting nothing.
+const EMITS_VIA_CONST = `
+const STATE_EVENT: &str = "power.state";
+
+async fn announce(emitter: &E) {
+    emitter.emit(STATE_EVENT, bytes).await
+}
+`;
+
+//: A constant that is not a topic. A socket name has no dot-separated shape and
+//: must not be mistaken for one, or a daemon would be asked to declare a publish
+//: scope for its own file path.
+const CONST_NOT_A_TOPIC = `
+const SOCKET: &str = "power-daemon";
+
+async fn announce(emitter: &E) {
+    emitter.emit(SOCKET, bytes).await
+}
+`;
 const PROFILE = '[info]\napp_id = "powerd"\n\n[event_bus]\npublish = ["power.state"]\nsubscribe = []\n';
 
 // The gate's own NOT_SHIPPED table, injected for the carried case below rather
@@ -63,6 +86,32 @@ function run(files, mutate = (s) => s) {
 
 console.log("emitters declared:");
 
+{
+  // A topic held in a constant is still a topic. This is the shape that slipped
+  // past: the check saw no literal inside the call and read the file as emitting
+  // nothing at all.
+  const r = run({
+    [IDENTITY]: ARMS,
+    "daemons/power-daemon/src/main.rs": EMITS_VIA_CONST,
+    [`${PROFILES}/somethingelse.toml`]: '[info]\napp_id = "somethingelse"\n',
+  });
+  check(
+    "a topic behind a constant is seen",
+    r.code === 1 && r.out.includes("powerd.toml") && r.out.includes("power.state"),
+  );
+}
+{
+  // And a constant that is not a topic is not read as one.
+  const r = run({
+    [IDENTITY]: ARMS,
+    "daemons/power-daemon/src/main.rs": CONST_NOT_A_TOPIC,
+    [`${PROFILES}/somethingelse.toml`]: '[info]\napp_id = "somethingelse"\n',
+  });
+  check(
+    "a constant with no dotted topic is not one",
+    r.code === 2 || !r.out.includes("powerd.toml"),
+  );
+}
 {
   // The defect: emits, resolvable, no profile. A profile has to exist for the
   // check to have read anything at all, so an unrelated one stands in.
