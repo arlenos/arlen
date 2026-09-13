@@ -336,8 +336,12 @@ async fn handle_intake_conn(state: Arc<SharedState>, mut stream: UnixStream, uid
     let result = match state.intake(body, &app_id) {
         IntakeOutcome::SilentGranted => IntakeResult::SilentGranted,
         IntakeOutcome::Coverage { covered } => IntakeResult::Coverage { covered },
-        IntakeOutcome::Pending { id, decision } => {
-            tracing::info!(app_id = %app_id, id = id.get(), "intake: queued for a dialog");
+        IntakeOutcome::Pending { id, joined, decision } => {
+            if joined {
+                tracing::info!(app_id = %app_id, id = id.get(), "intake: joined the dialog already waiting");
+            } else {
+                tracing::info!(app_id = %app_id, id = id.get(), "intake: queued for a dialog");
+            }
             match decision.await {
                 Ok(outcome) => IntakeResult::Decided { outcome },
                 Err(_) => {

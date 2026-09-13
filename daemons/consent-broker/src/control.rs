@@ -181,7 +181,7 @@ mod tests {
             scope: scope.map(str::to_string),
         };
         match q.enqueue(req, &cap_suggest()) {
-            Enqueued::Queued(id) => id,
+            Enqueued::Queued(id) | Enqueued::AlreadyPending(id) => id,
             Enqueued::SilentGrant => panic!("expected a dialog-requiring request"),
         }
     }

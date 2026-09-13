@@ -114,7 +114,9 @@ pub fn handle_intake(
     let requester = resolve_requester(attested_app_id, body.on_behalf_of.as_deref());
     let request = assemble(body, requester);
     match queue.enqueue(request, capability) {
-        Enqueued::Queued(id) => IntakeReply::Queued { id: RequestId::get(id) },
+        Enqueued::Queued(id) | Enqueued::AlreadyPending(id) => {
+            IntakeReply::Queued { id: RequestId::get(id) }
+        }
         Enqueued::SilentGrant => IntakeReply::SilentGranted,
     }
 }
