@@ -48,7 +48,7 @@ pub enum Response {
     /// Boxed: it is by far the largest variant and every other one is a word or
     /// a sentence, so an unboxed enum would make each `Done` as big as a whole
     /// readout.
-    State(Box<State>),
+    State(Box<SentinelState>),
     /// The change was made.
     Done,
     /// The change was refused by a rule, with the sentence to show.
@@ -89,10 +89,15 @@ pub struct PostureWire {
     pub fix: bool,
 }
 
-/// The whole state the page renders.
+/// The whole state the privacy page renders.
+///
+/// Named for the thing rather than for the word: `State` is a name several crates
+/// define, so a shape checker comparing what a command returns against what a page
+/// reads cannot tell which one crossed the wire and stops comparing. A struct that
+/// leaves its own crate carries a name that is unambiguous outside it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct State {
+pub struct SentinelState {
     pub detectors: Detectors,
     pub posture: Vec<PostureWire>,
     /// Whether anything is using the microphone or camera right now, or absent
@@ -263,7 +268,7 @@ mod tests {
     #[test]
     fn the_state_serialises_in_the_shape_the_store_declares() {
         let cfg = Config::default();
-        let state = State {
+        let state = SentinelState {
             detectors: (&cfg).into(),
             posture: posture_wire(&[Line {
                 surface: Surface::BluetoothDiscoverable,
