@@ -39,6 +39,10 @@ libc = "0.2"
 bluer = { version = "0.17", features = ["bluetoothd"] }
 futures = "0.3"
 uuid = "1"
+# The advisory events both watches publish. Same producer socket every other
+# daemon uses; the payloads live in the shared event proto beside them.
+os-sdk = { path = "../../sdk/os-sdk" }
+prost = "0.13"
 # SEN-4's sighting store. A tag's location history is the most sensitive thing this
 # daemon touches, so it is sealed with the reviewed AEAD record store under a master
 # held by the reviewed key custody, rather than a second hand-rolled pair.
