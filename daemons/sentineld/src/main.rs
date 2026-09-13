@@ -50,6 +50,15 @@ async fn main() -> std::process::ExitCode {
         audit: Arc::new(audit_proto::sink::LedgerAuditSink::at_default_socket()),
     });
 
+    // Give back what is past its window before serving anything. A correlator
+    // cannot be chained across its rotation, so a tag older than the detection
+    // window can never contribute to an alert again and holding its positions
+    // would be collecting location history for nothing - which is the thing this
+    // daemon exists to object to when other software does it. Best-effort: a store
+    // that will not open is a sentinel that cannot yet detect, not one that must
+    // refuse to answer what the machine broadcasts.
+    prune_sightings();
+
     tracing::info!(socket = %socket.display(), "privacy sentinel listening");
     tokio::select! {
         () = run(listener, Arc::clone(&ctx)) => {}
@@ -58,4 +67,30 @@ async fn main() -> std::process::ExitCode {
     }
     let _ = std::fs::remove_file(&socket);
     std::process::ExitCode::SUCCESS
+}
+
+/// Drop every tracker-sentinel record whose window has closed.
+///
+/// Separated from `main` so the reason reads at the call site and the handling of
+/// each outcome reads here. Nothing is fatal: no state directory means no store to
+/// prune, and a store that fails to open is worth a line in the log rather than a
+/// daemon that will not start.
+fn prune_sightings() {
+    use arlen_sentineld::sightings::{SightingStore, StoreError};
+
+    let now = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(d) => d.as_secs(),
+        // A clock before 1970 cannot say what is expired, and guessing would delete
+        // somebody's live evidence. Keep everything and try again next start.
+        Err(_) => return,
+    };
+    match SightingStore::open_default() {
+        Ok(store) => match store.prune(now) {
+            Ok(0) => {}
+            Ok(n) => tracing::info!(count = n, "dropped tracker sightings past their window"),
+            Err(e) => tracing::warn!("could not prune the sighting store: {e}"),
+        },
+        Err(StoreError::NoStateDir) => {}
+        Err(e) => tracing::warn!("the sighting store did not open: {e}"),
+    }
 }

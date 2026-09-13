@@ -1441,10 +1441,12 @@ mod module_reachability {
         // it the same day: `arlen-sentineld` now composes exposure's surfaces
         // through it and serves the result to the Settings privacy page, which
         // took `exposure` and `readout` off together. `tracker` and `movement` came
-        // off on 13 September for a different reason: `sighting` now joins them into
-        // the SEN-4 chain, so they are reached from inside the crate while the
-        // daemon half is still missing - which is what moved the waiting one module
-        // up rather than removing it.
+        // off on 13 September for a different reason: `sighting` joined them into the
+        // SEN-4 chain, and `sighting` itself came off the same day once the daemon's
+        // encrypted store started keeping tags between sessions and pruning them on
+        // start. What SEN-4 still waits on is §6 job 1, the GeoClue2 bridge that
+        // puts a fix on a sighting: the store and the criteria are there, the thing
+        // that says WHERE a tag was seen is not.
         "daemons/code-indexer/resolve",
         "daemons/integration-packages/manifest",
         // Diagnosed rather than assumed: the transfer daemon's live per-uid
@@ -1468,14 +1470,6 @@ mod module_reachability {
         "daemons/knowledge/lifecycle",
         "daemons/knowledge/migration",
         "daemons/sentinel-detect/recording",
-        // The top of the SEN-4 chain: it accumulates a tag's separated sightings and
-        // reduces them through `movement` into the summary `trigger` decides on. It
-        // is what `arlen-sentineld` will call, and it waits on the two pieces that
-        // would give it something to accumulate - `tracker-sentinel-plan.md` §6 job
-        // 1 (the GeoClue2 portal bridge that puts a fix on a sighting) and job 2
-        // (the encrypted store under `~/.local/state/arlen/tracker-sentinel/` that
-        // keeps a tag between sessions).
-        "daemons/sentinel-detect/sighting",
         "daemons/sentinel-detect/usb",
     ];
 

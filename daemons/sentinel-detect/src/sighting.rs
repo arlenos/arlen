@@ -42,7 +42,7 @@ pub const MAX_WINDOW_SECS: u64 = 24 * 60 * 60;
 pub const MAX_SIGHTINGS: usize = 512;
 
 /// What the person has said about this tag.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum AllowState {
     /// Nothing said. The only state that may raise a safety alert.
     #[default]
@@ -55,7 +55,7 @@ pub enum AllowState {
 }
 
 /// One observation of a separated finder-tag in one scan.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Sighting {
     /// When it was seen, in unix seconds.
     pub seen_at_secs: u64,
@@ -67,7 +67,7 @@ pub struct Sighting {
 }
 
 /// Every sighting of one physical tag inside its stable-identifier window.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TrackedTag {
     /// The payload identifier, never the MAC. Opaque bytes: each brand's own.
     pub correlator: Vec<u8>,

@@ -33,6 +33,15 @@ arlen-permissions = { path = "../../sdk/permissions" }
 # Turning a protection off is recorded before it happens.
 audit-proto = { path = "../../contracts/audit-proto" }
 libc = "0.2"
+# SEN-4's sighting store. A tag's location history is the most sensitive thing this
+# daemon touches, so it is sealed with the reviewed AEAD record store under a master
+# held by the reviewed key custody, rather than a second hand-rolled pair.
+arlen-secret-vault = { path = "../../sdk/secret-vault" }
+arlen-forage-signing = { path = "../../forage/signing" }
+hmac = "0.12"
+sha2 = "0.10"
+dirs = "5"
+thiserror = "2"
 
 [dev-dependencies]
 tempfile = "3"
