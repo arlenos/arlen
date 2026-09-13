@@ -14,6 +14,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { page } from "$app/state";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import AudioPlayer from "$lib/components/AudioPlayer.svelte";
   import DetailsPanel, { type Fact } from "$lib/components/DetailsPanel.svelte";
   import ImageViewer from "$lib/components/ImageViewer.svelte";
@@ -101,6 +103,17 @@
   function hasReason(message: string): boolean {
     return message.trim() !== "" && !readsAsInternal(message);
   }
+  /// The open failure as one finished sentence, for the Notice at the top of
+  /// the empty view.
+  const loadText = $derived.by(() => {
+    if (loadError === null) return "";
+    if (failedName) {
+      return hasReason(loadError)
+        ? $t("v.couldNotOpenNamed", { name: failedName, reason: loadError })
+        : $t("v.couldNotOpenNamedUnknown", { name: failedName });
+    }
+    return hasReason(loadError) ? $t("v.couldNotOpen", { reason: loadError }) : $t("v.couldNotOpenUnknown");
+  });
 
   function basename(p: string): string {
     return p.split("/").filter(Boolean).pop() ?? p;
@@ -605,20 +618,19 @@
     <div class="winctl">
       <WindowButtons showMaximize={false} />
     </div>
-    <!-- Announced: this replaces the whole view after the person opened a file,
-         so somebody who cannot see it has no other signal that the open did not
-         take - the window simply stops showing anything. -->
-    <p role="alert">
-      {#if failedName}
-        {hasReason(loadError)
-          ? $t("v.couldNotOpenNamed", { name: failedName, reason: loadError })
-          : $t("v.couldNotOpenNamedUnknown", { name: failedName })}
-      {:else}
-        {hasReason(loadError)
-          ? $t("v.couldNotOpen", { reason: loadError })
-          : $t("v.couldNotOpenUnknown")}
+    <!-- The refusal at the top of the empty view, in the one shape
+         (design-system.md 6.11, thread two); the Notice announces itself. -->
+    <div class="note-stack">
+      <div class="note"><Notice tone="error" text={loadText} /></div>
+      {#if actionError}
+        <!-- An action refused over an empty view stacks under the open failure
+             rather than floating over it. -->
+        <div class="note note-row">
+          <Notice tone="error" text={actionError} />
+          <Button variant="ghost" size="sm" onclick={() => (actionError = null)}>{$t("v.close")}</Button>
+        </div>
       {/if}
-    </p>
+    </div>
   </main>
 {:else if noFile}
   <!-- Before the demo branches on purpose: in the real shell an empty window is
@@ -649,13 +661,12 @@
     <span>{printStatus}</span>
     <button onclick={() => (printStatus = null)}>{$t("v.close")}</button>
   </div>
-{:else if actionError}
-  <!-- Over whatever is on screen, because that is where the failure happened. The
-       load-error branch below cannot serve here: it only renders when nothing is
-       loaded, so it is invisible in exactly the case an action fails. -->
-  <div class="undobar bad" role="alert">
-    <span>{actionError}</span>
-    <button onclick={() => (actionError = null)}>{$t("v.close")}</button>
+{:else if actionError && loadError === null}
+  <!-- Over whatever is on screen, at its top, because that is where the failure
+       happened; over an empty view the load-error branch carries it instead. -->
+  <div class="note note-top note-row">
+    <Notice tone="error" text={actionError} />
+    <Button variant="ghost" size="sm" onclick={() => (actionError = null)}>{$t("v.close")}</Button>
   </div>
 {:else if lastDeleted}
   <!-- Over every state, including "no file is open" - that is precisely the state
@@ -696,8 +707,24 @@
     font-weight: 600;
     background: color-mix(in srgb, var(--color-fg-primary, #fafafa) 14%, transparent);
   }
-  .undobar.bad {
-    border-color: color-mix(in srgb, var(--color-error, #ef4444) 55%, transparent);
+  .note {
+    margin: 0 16px;
+  }
+  /* Under the window buttons, over the picture. */
+  .note-top {
+    position: fixed;
+    top: 52px;
+    left: 0;
+    right: 0;
+    z-index: 30;
+  }
+  .note-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .note-row :global(.notice) {
+    flex: 1;
   }
   .undobar button:hover {
     background: color-mix(in srgb, var(--color-fg-primary, #fafafa) 22%, transparent);
@@ -735,5 +762,16 @@
     font-size: 13px;
     padding: 24px;
     text-align: center;
+  }
+  /* The refusals sit at the top of the empty view, not in its middle. */
+  .err .note-stack {
+    position: absolute;
+    top: 52px;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: start;
   }
 </style>
