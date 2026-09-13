@@ -14,6 +14,29 @@
 //! already alerted recently. Only separated adverts feed the count - a near-owner
 //! advert is never a stalking signal and is dropped before it reaches here.
 
+/// What the person has said about one tag.
+///
+/// Three values rather than a boolean, because the plan's two "not a stranger"
+/// cases are genuinely different and collapsing them would make one of them a lie
+/// (§2.5). A connectable tag can be allowlisted by a DURABLE identifier read over
+/// GATT, which survives the correlator rotation - that one can be silent. A
+/// separated AirTag exposes no durable, ownership-free identifier at all, so after
+/// the daily rotation it reappears as a stranger no matter what was said about it;
+/// the honest handling is to damp it to review and let a person confirm in one tap,
+/// not to promise a permanent silence the radio cannot deliver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum AllowState {
+    /// Nothing said. The only state that may raise a safety alert.
+    #[default]
+    Unknown,
+    /// Recognised as travelling with a known companion, or a tag whose durable id
+    /// could not be read. Damped to review, re-surfaced after a rotation.
+    KnownCompanion,
+    /// The person said it is theirs AND it was allowlisted by a durable identifier.
+    /// Silent.
+    UserMarkedMine,
+}
+
 /// The load-bearing threshold: a tag must appear at >= 2 distinct places to signal
 /// it is travelling with the user rather than fixed in one location.
 pub const MIN_DISTINCT_LOCATIONS: u32 = 2;
@@ -95,20 +118,26 @@ pub enum Verdict {
 /// make the one case that matters unreachable. So it goes to review, where a person
 /// can look, instead of to a notification or to nothing.
 ///
-/// **An allowlisted tag is never alerted on and is still reviewable.** Saying a tag
-/// is yours or a companion's answers the question "should this interrupt me", not
-/// "did it travel with me", and the second answer is the one somebody re-checks when
-/// they change their mind about the first.
+/// **A companion tag is never alerted on and is still reviewable.** Saying a tag
+/// travels with you answers "should this interrupt me", not "did it travel with me",
+/// and the second answer is the one somebody re-checks when they change their mind
+/// about the first. A tag allowlisted by a durable id is the exception and goes
+/// silent, because there the answer will still be true after the rotation.
 ///
 /// The middle state is the laptop form-factor's, not a hedge: a machine that spends
 /// the day shut sees a genuine follower thinly, and the plan's answer to thin
 /// evidence is a review surface rather than a lower bar.
-pub fn verdict(obs: &TrackerObservation, seen_at_home: bool, allowlisted: bool) -> Verdict {
+pub fn verdict(obs: &TrackerObservation, seen_at_home: bool, allow: AllowState) -> Verdict {
+    if allow == AllowState::UserMarkedMine {
+        // Allowlisted by a durable identifier that survives the rotation, so this
+        // is the one case where silence is honest.
+        return Verdict::Nothing;
+    }
     if obs.distinct_locations < MIN_DISTINCT_LOCATIONS {
         // The load-bearing signal is absent: seen in one place, however often.
         return Verdict::Nothing;
     }
-    if seen_at_home || allowlisted || !should_alert(obs) {
+    if seen_at_home || allow == AllowState::KnownCompanion || !should_alert(obs) {
         return Verdict::Review;
     }
     Verdict::Alert
@@ -182,16 +211,18 @@ mod tests {
         let mut obs = qualifying();
         obs.distinct_locations = 1;
         obs.sighting_count = 50;
-        assert_eq!(verdict(&obs, false, false), Verdict::Nothing);
+        assert_eq!(verdict(&obs, false, AllowState::Unknown), Verdict::Nothing);
     }
 
     /// Downgraded, not dropped: a person can still look.
     #[test]
-    fn home_and_the_allowlist_downgrade_rather_than_suppress() {
+    fn home_damps_and_only_a_durable_id_silences() {
         let obs = qualifying();
-        assert_eq!(verdict(&obs, false, false), Verdict::Alert);
-        assert_eq!(verdict(&obs, true, false), Verdict::Review);
-        assert_eq!(verdict(&obs, false, true), Verdict::Review);
+        assert_eq!(verdict(&obs, false, AllowState::Unknown), Verdict::Alert);
+        assert_eq!(verdict(&obs, true, AllowState::Unknown), Verdict::Review);
+        assert_eq!(verdict(&obs, false, AllowState::KnownCompanion), Verdict::Review);
+        // The durable-id case, and the only silent one.
+        assert_eq!(verdict(&obs, false, AllowState::UserMarkedMine), Verdict::Nothing);
     }
 
     /// The laptop case: two places, but the evidence is thin. Review, not silence.
@@ -200,7 +231,7 @@ mod tests {
         let mut obs = qualifying();
         obs.sighting_count = MIN_SIGHTINGS - 1;
         assert!(!should_alert(&obs));
-        assert_eq!(verdict(&obs, false, false), Verdict::Review);
+        assert_eq!(verdict(&obs, false, AllowState::Unknown), Verdict::Review);
     }
 
     /// A tag seen twice in one session has not been shown to follow you between
@@ -210,7 +241,7 @@ mod tests {
         let mut obs = qualifying();
         obs.distinct_epochs = 1;
         assert!(!should_alert(&obs));
-        assert_eq!(verdict(&obs, false, false), Verdict::Review);
+        assert_eq!(verdict(&obs, false, AllowState::Unknown), Verdict::Review);
     }
 
     #[test]
