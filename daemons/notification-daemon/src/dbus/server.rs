@@ -376,20 +376,17 @@ impl NotificationServer {
             .await
     }
 
-    /// Close a notification by ID. Delegates dismissal to the manager
-    /// (which updates SQLite + broadcasts). The D-Bus `NotificationClosed`
-    /// signal is emitted here because it is a D-Bus concept.
-    async fn close_notification(
-        &self,
-        id: u32,
-        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
-    ) {
+    /// Close a notification by ID. Delegates dismissal to the manager, which
+    /// updates SQLite and broadcasts `NotifyEvent::Closed`; `relay_fdo_signals`
+    /// turns that into the `NotificationClosed` signal. Emitting it here as well
+    /// would send it twice for this one reason and still leave the other two
+    /// unreported, which is how it used to be.
+    async fn close_notification(&self, id: u32) {
         if let Some(manager) = self.manager.get() {
             manager.handle_close(id, CloseReason::Closed).await;
         } else {
             tracing::error!("D-Bus close: manager not wired up");
         }
-        let _ = Self::notification_closed(&emitter, id, CloseReason::Closed as u32).await;
         tracing::debug!(id, "notification closed via D-Bus");
     }
 
@@ -439,6 +436,107 @@ impl NotificationServer {
     ) -> zbus::Result<()>;
 }
 
+/// The freedesktop signal an internal event turns into, if any. Pure, so the
+/// mapping can be tested without a bus.
+#[derive(Debug, PartialEq, Eq)]
+pub enum FdoSignal {
+    /// `org.freedesktop.Notifications.ActionInvoked`.
+    ActionInvoked {
+        /// The notification the action belongs to.
+        id: u32,
+        /// The action key the sending application registered.
+        action_key: String,
+    },
+    /// `org.freedesktop.Notifications.NotificationClosed`.
+    Closed {
+        /// The notification that went away.
+        id: u32,
+        /// The freedesktop close reason, as the wire carries it.
+        reason: u32,
+    },
+}
+
+/// Map an internal event onto the signal the specification makes the server
+/// responsible for. Everything else - added, read, cleared, DND, jobs - is ours
+/// alone and has no place on the freedesktop interface.
+pub fn fdo_signal_for(event: &NotifyEvent) -> Option<FdoSignal> {
+    match event {
+        NotifyEvent::ActionInvoked { id, action_key } => Some(FdoSignal::ActionInvoked {
+            id: *id,
+            action_key: action_key.clone(),
+        }),
+        NotifyEvent::Closed { id, reason } => Some(FdoSignal::Closed {
+            id: *id,
+            reason: *reason as u32,
+        }),
+        _ => None,
+    }
+}
+
+/// Carry the internal notify events onto the two signals the freedesktop
+/// specification makes the server responsible for.
+///
+/// WHY THIS EXISTS. `ActionInvoked` was declared and never called by anything -
+/// grep found exactly one occurrence, its own declaration. So the daemon
+/// advertised the `actions` capability, an application attached actions and got
+/// an id back, the shell rendered the buttons and reported a press over the
+/// socket, and the application that offered the action was never told. Every
+/// third-party notification action in the system was inert, and the only sign of
+/// it was the absence of something.
+///
+/// `NotificationClosed` was half there: emitted inline by `CloseNotification`,
+/// which is the one reason an application can already see coming, and absent for
+/// the two it cannot - a person dismissing the notification, and expiry. An
+/// application that keeps the id to react when its notification goes away heard
+/// nothing in exactly the cases it was watching for.
+///
+/// Both are now one relay over the broadcast every path already sends on, so a
+/// new way to close or act on a notification is reported without anyone
+/// remembering to emit anything.
+pub async fn relay_fdo_signals(
+    conn: zbus::Connection,
+    mut events: broadcast::Receiver<NotifyEvent>,
+) {
+    let emitter = match SignalEmitter::new(&conn, "/org/freedesktop/Notifications") {
+        Ok(e) => e,
+        Err(e) => {
+            // Without this the daemon still shows notifications, so it keeps
+            // running - but no application will hear about an action or a close,
+            // and that is worth a line rather than a silent downgrade.
+            tracing::error!("no signal emitter, applications will not be told about actions: {e}");
+            return;
+        }
+    };
+
+    loop {
+        match events.recv().await {
+            Ok(event) => match fdo_signal_for(&event) {
+                Some(FdoSignal::ActionInvoked { id, action_key }) => {
+                    if let Err(e) =
+                        NotificationServer::action_invoked(&emitter, id, &action_key).await
+                    {
+                        tracing::warn!(id, "ActionInvoked not delivered: {e}");
+                    }
+                }
+                Some(FdoSignal::Closed { id, reason }) => {
+                    if let Err(e) =
+                        NotificationServer::notification_closed(&emitter, id, reason).await
+                    {
+                        tracing::warn!(id, "NotificationClosed not delivered: {e}");
+                    }
+                }
+                None => {}
+            },
+            // A slow relay misses events rather than stalling the broadcast; say
+            // how many, because a missed close is an application left waiting.
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                tracing::warn!("signal relay fell behind, {n} event(s) not reported");
+            }
+            Err(broadcast::error::RecvError::Closed) => return,
+        }
+    }
+}
+
 /// Classify the resolved icon string for structured logging. Avoids
 /// dumping megabyte-long base64 data URLs into `tracing::info` output
 /// while still capturing which of the three FDO sources was picked.
@@ -461,6 +559,56 @@ fn icon_kind(icon: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── The freedesktop signals ──────────────────────────────────────────
+
+    #[test]
+    fn an_action_press_and_a_close_become_signals() {
+        // The control for the gap this relay closed: `ActionInvoked` had no
+        // caller at all, so an application that offered an action was never told
+        // it was pressed, and `NotificationClosed` was emitted only for the one
+        // reason an application asks for itself.
+        assert_eq!(
+            fdo_signal_for(&NotifyEvent::ActionInvoked {
+                id: 7,
+                action_key: "open".to_string(),
+            }),
+            Some(FdoSignal::ActionInvoked {
+                id: 7,
+                action_key: "open".to_string()
+            })
+        );
+
+        // Every close reason reaches the bus, not only the one a method call
+        // produced. Dismissed is the one a person causes and the one that used to
+        // go unreported.
+        for (reason, wire) in [
+            (CloseReason::Expired, 1u32),
+            (CloseReason::Dismissed, 2),
+            (CloseReason::Closed, 3),
+        ] {
+            assert_eq!(
+                fdo_signal_for(&NotifyEvent::Closed { id: 3, reason }),
+                Some(FdoSignal::Closed { id: 3, reason: wire }),
+                "close reason {reason:?} belongs on the bus"
+            );
+        }
+    }
+
+    #[test]
+    fn our_own_events_stay_off_the_freedesktop_interface() {
+        // Read, cleared and DND are Arlen's own vocabulary and reach the shell
+        // over the socket. Putting them on `org.freedesktop.Notifications` would
+        // be inventing signals other desktops do not have.
+        assert_eq!(fdo_signal_for(&NotifyEvent::Read { id: 1 }), None);
+        assert_eq!(fdo_signal_for(&NotifyEvent::AllCleared), None);
+        assert_eq!(
+            fdo_signal_for(&NotifyEvent::DndChanged {
+                mode: crate::config::DndMode::Priority
+            }),
+            None
+        );
+    }
 
     // ── Priority determination ───────────────────────────────────────────
 
