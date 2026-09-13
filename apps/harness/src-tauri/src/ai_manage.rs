@@ -265,26 +265,32 @@ pub async fn undo_action(id: String) -> String {
 /// transparency drawer's working-set section. Identity/shape only, never user
 /// data.
 ///
-/// TWO THINGS THIS DOES NOT DO, both of which the doc used to claim.
+/// **It returns the shape, not the text of the shape**, and that distinction was a
+/// live bug until 13 September. This used to be `-> String`, the drawer does
+/// `invoke<WorkingSet>` with no parse, and a scalar arrives as a scalar - so every
+/// field the Memory section read came back undefined and the section rendered
+/// nothing, silently, on the surface whose whole job is to be believable. The
+/// doc's own claim that an unreachable agent reads as "not available yet" was part
+/// of the same bug: what the drawer received was the four-character string
+/// `"null"`, which is truthy, so that branch was never taken.
 ///
-/// It said `null` on an unreachable agent is read by the drawer as the "not
-/// available yet" state. The drawer does `invoke<WorkingSet>` with no parse, so
-/// what it receives is the four-character STRING `"null"`, which is truthy, and
-/// that branch is never taken. The value here is right; nothing reads it.
+/// The other half was that the two ends described different things - the engine
+/// served `{status, behaviours[]}`, the drawer declares
+/// `{available, held, entityCounts, activeBehaviour, declaredReads}` - so parsing
+/// here alone would only have moved the failure one step later. The engine answers
+/// the drawer's shape now (`daemons/ai-engine-daemon/src/agent_iface.rs`), which is
+/// the specified one, and this passes it through as JSON.
 ///
-/// And the shapes disagree underneath that. The engine serves
-/// `{status, behaviours[]}` (`daemons/ai-engine-daemon/src/agent_iface.rs`), the
-/// drawer declares `{available, held, entityCounts, activeBehaviour,
-/// declaredReads}`. Parsing the string here would only move the failure one step
-/// later, so it is deliberately NOT parsed until somebody decides which shape is
-/// the real one - a call between the drawer and the engine, reported to the
-/// planner rather than settled here. `check-invoke-shape` carries both as routed
-/// findings so neither can be quietly forgotten.
+/// An unreachable agent answers `available: false` rather than a null: the drawer
+/// defines that field as "the endpoint answered", so the honest wire value for a
+/// daemon that did not answer is the one that says so.
 #[tauri::command]
-pub async fn ai_working_set() -> String {
-    try_call_string(AGENT_BUS, AGENT_PATH, "working_set")
-        .await
-        .unwrap_or_else(|| "null".to_string())
+pub async fn ai_working_set() -> serde_json::Value {
+    let unavailable = || serde_json::json!({ "available": false });
+    let Some(text) = try_call_string(AGENT_BUS, AGENT_PATH, "working_set").await else {
+        return unavailable();
+    };
+    serde_json::from_str(&text).unwrap_or_else(|_| unavailable())
 }
 
 /// The AI's capability grants for the transparency drawer's Grants feed

@@ -63,15 +63,6 @@ EXCUSED: dict[str, str] = {}
 # does not fail on them, so the debt stays visible and attributed. Keyed by
 # command name; remove the entry when the owner fixes it and the gate holds it shut.
 KNOWN_RETURN_MISMATCHES: dict[str, str] = {
-    "ai_working_set": (
-        "same missing parse, and a second disagreement underneath it: the engine's "
-        "`working_set` serves {status, behaviours[]} and the drawer's `WorkingSet` "
-        "declares {available, held, entityCounts, activeBehaviour, declaredReads}. The "
-        "two describe different things, so parsing the string would only move the "
-        "failure. Which shape is right is a design call between the transparency "
-        "drawer and the engine, not a fix on either side alone - reported for the "
-        "planner rather than decided here."
-    ),
     "ai_models_search_hf": (
         "the model picker's `Model` is the merged card shape the page builds from "
         "several sources; the Hugging Face hit is only one of them. Reworking it is "
