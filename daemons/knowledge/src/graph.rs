@@ -1925,17 +1925,23 @@ mod tests {
 mod read_only_probe {
     use super::*;
 
-    /// Can a SECOND, read-only handle open the same graph while the writer holds
-    /// it? knowledge#30's answer to the lexical write-blocklist is an engine-level
-    /// read-only database for the query socket, and the reason that was never
-    /// built is a concurrency question nobody had measured. This measures it on
-    /// the version we actually pin.
+    /// Why the query socket still fences writes with a token scan
+    /// (`daemon.rs::is_write_query`) rather than an engine-level read-only handle,
+    /// measured rather than asserted.
     ///
-    /// Whatever it answers is a fact worth having: if a second handle opens, the
-    /// query socket can stop trusting a token scan; if it does not, the blocklist
-    /// stays and the report says why.
+    /// A read-only `Database` DOES open beside the live writer and DOES refuse a
+    /// write on its own connection - so "can the two coexist" was never the
+    /// blocker, and a first version of this test stopped there and concluded the
+    /// wrong thing. **The handle is a snapshot at open.** A row the writer commits
+    /// afterwards is invisible to it, which for the agent means its own writes
+    /// disappear from its own reads, and re-opening per query is the cost the
+    /// daemon's comment already rules out.
+    ///
+    /// Pinned as a test because the day this stops being true is the day
+    /// knowledge#30 becomes buildable, and that should announce itself here rather
+    /// than be rediscovered by somebody reading the comment and trusting it.
     #[test]
-    fn a_read_only_handle_beside_the_writer() {
+    fn a_read_only_handle_is_a_snapshot_at_open() {
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join("graph");
         let path = path.to_str().expect("utf-8 path");
@@ -1949,10 +1955,25 @@ mod read_only_probe {
             Ok(reader) => {
                 let rconn = Connection::new(&reader).expect("a read connection");
                 let rows = rconn.query("MATCH (p:Probe) RETURN p.id").expect("the read runs");
-                assert_eq!(rows.count(), 1, "the reader sees the writer's row");
+                let at_open = rows.count();
                 let write = rconn.query("CREATE (:Probe {id: 'two'})");
                 assert!(write.is_err(), "a read-only handle refuses a write");
-                println!("READ-ONLY-PROBE: a second handle opens beside the writer");
+
+                // THE QUESTION THE DAEMON'S COMMENT ACTUALLY ASKS. Seeing a row
+                // committed BEFORE the reader opened proves nothing: the claim in
+                // `daemon.rs` is that the handle is a snapshot AT OPEN, so a write
+                // the agent makes afterwards would be invisible to its own reads.
+                conn.query("CREATE (:Probe {id: 'after'})").expect("a later row");
+                let later = rconn
+                    .query("MATCH (p:Probe) RETURN p.id")
+                    .expect("the second read runs")
+                    .count();
+                assert_eq!(
+                    later, at_open,
+                    "the read-only handle saw a commit made after it opened - if this \
+                     fails, the engine has gained a fresh read-only view and the query \
+                     socket can stop trusting a token scan (knowledge#30)"
+                );
             }
             Err(e) => println!("READ-ONLY-PROBE: refused beside the writer: {e}"),
         }
