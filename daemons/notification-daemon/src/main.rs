@@ -141,6 +141,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // The relay that makes an action press and a close reach the application
+    // that sent the notification. It subscribes before anything can be shown, so
+    // the first notification of the session is covered like every later one.
+    {
+        let conn_for_signals = _conn.clone();
+        let signal_events = event_tx.subscribe();
+        tokio::spawn(async move {
+            arlen_notification_daemon::dbus::server::relay_fdo_signals(
+                conn_for_signals,
+                signal_events,
+            )
+            .await;
+        });
+    }
+
     // The bus handle the socket server relays job actions on. Cloned before
     // the spawn so the connection outlives this scope with the server.
     let conn_for_jobs = _conn.clone();
