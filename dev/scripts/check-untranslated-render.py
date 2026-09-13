@@ -104,11 +104,11 @@ KNOWN: dict[str, tuple[int, str]] = {
     # draws nothing. Eleven carried instances became three. Every one that was
     # kept has been read at the line named below; a number nobody re-derives
     # reserves room for a new instance to arrive unreported.
-    "apps/harness/src/lib/components/mint/MintFlow.svelte": (
-        1,
-        "arlen-ui's live work; `{$mintError}` at :94, and the store prepends "
-        "an English sentence to it",
-    ),
+    #
+    # And on 13 September the last of the three went: `MintFlow.svelte` stopped
+    # prepending an English sentence to `{$mintError}`, so the dict is empty. An
+    # empty carried list is the point of keeping it honest - it is what the file
+    # has been counting down to since the eleven.
 }
 
 
