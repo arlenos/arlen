@@ -276,3 +276,41 @@ message PermissionChangedPayload {
   // connections from this app_id".
   bool exists = 2;
 }
+
+// ── Physical-world privacy sentinel ────────────────────────────────────
+// `sentinel.*`, from `arlen-sentineld` (privacy-sentinel-plan.md §5). Both
+// payloads below are deliberately thin, and what they LEAVE OUT is the design:
+// neither carries a device address, a name, or a location. The plan's audit
+// boundary says the ledger records what Arlen did to your hardware, never what
+// devices were in the room, and the same rule applies one layer earlier - an
+// event carrying the identity of every passing stranger would manufacture the
+// proximity history the detector exists to warn about.
+//
+// Advisory, both of them: the sentinel never acts on these, it says them.
+
+// A nearby device matched the recording-device match-set. Quiet indicator only,
+// never a push, never audited (§5).
+message SentinelRecordingNearbyPayload {
+  // The matched class as a person reads it, e.g. "Meta smart glasses". The class,
+  // not the device: which one it was is exactly what must not travel.
+  string class_label = 1;
+  // How sure: "low" | "medium" | "high". The indicator never collapses low and
+  // high into one signal, so the confidence travels with the claim.
+  string confidence  = 2;
+}
+
+// A separated finder-tag has met the stalking criteria. Quiet while correlating;
+// a notification once the bar clears. NOT the HMAC ledger (§5).
+message SentinelTrackerSuspectedPayload {
+  // The tag's ecosystem, e.g. "apple-find-my". Never the correlator itself: that
+  // is the tag's rotating identity and belongs only in the local sealed store.
+  string brand              = 1;
+  // How many distinct coarse places it was seen at. The load-bearing number, and
+  // a count rather than the places themselves.
+  uint32 distinct_locations = 2;
+  // How many awake-sessions it spanned.
+  uint32 distinct_epochs    = 3;
+  // "alert" once every criterion is met, "review" while the evidence is thin or
+  // something downgraded it.
+  string verdict            = 4;
+}

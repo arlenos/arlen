@@ -136,8 +136,14 @@ fn spawn_tracker_watch(config_path: &std::path::Path) -> tokio::task::JoinHandle
         let sensitivity = config::proximity_sensitivity(&tracker);
         // Runs until the task is aborted at shutdown.
         if let Err(e) =
-            arlen_sentineld::ble::watch(&store, sensitivity, &connection, std::future::pending())
-                .await
+            arlen_sentineld::ble::watch(
+                &store,
+                sensitivity,
+                &connection,
+                &event_emitter(),
+                std::future::pending(),
+            )
+            .await
         {
             tracing::warn!("the tag watch stopped: {e}");
         }
@@ -162,9 +168,28 @@ fn spawn_recording_watch(config_path: &std::path::Path) -> tokio::task::JoinHand
         let classes = arlen_sentinel_detect::recording::bundled_device_classes();
         let sensitivity = config::proximity_sensitivity(&recording);
         if let Err(e) =
-            arlen_sentineld::ble::watch_recording(sensitivity, &classes, std::future::pending()).await
+            arlen_sentineld::ble::watch_recording(
+                sensitivity,
+                &classes,
+                &event_emitter(),
+                std::future::pending(),
+            )
+            .await
         {
             tracing::warn!("the recording watch stopped: {e}");
         }
     })
+}
+
+/// The producer this daemon publishes its advisory events on.
+///
+/// Built per watch rather than shared: the emitter reconnects on its own, the two
+/// watches are independent tasks with independent lifetimes, and one shared
+/// handle would tie them together for no gain.
+fn event_emitter() -> os_sdk::event::UnixEventEmitter {
+    let socket = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
+    os_sdk::event::UnixEventEmitter::for_system_named(
+        "sentineld",
+        socket.to_string_lossy().into_owned(),
+    )
 }

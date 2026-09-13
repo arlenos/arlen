@@ -26,6 +26,7 @@
 //! identifies a tag inside its rotation window is the payload identifier, which is
 //! what [`advert_from`] carries.
 
+
 use std::collections::HashMap;
 
 use arlen_sentinel_detect::ble_scan::{finder_tag_patterns, Thresholds};
@@ -178,6 +179,7 @@ pub async fn watch(
     store: &crate::sightings::SightingStore,
     sensitivity: arlen_sentinel_detect::ble_scan::Sensitivity,
     connection: &zbus::Connection,
+    events: &impl os_sdk::event::EventEmitter,
     stop: impl std::future::Future<Output = ()>,
 ) -> Result<(), String> {
     use arlen_sentinel_detect::ble_scan::thresholds;
@@ -230,9 +232,11 @@ pub async fn watch(
         let outcome = crate::tracker_run::run_scan(&mut once, store, fix, &epochs, now, &anchor);
         for correlator in &outcome.alerts {
             tracing::warn!(tag = %hex(correlator), "a separated tag has followed this machine");
+            publish_tag(events, store, correlator, "alert", now).await;
         }
         for correlator in &outcome.review {
             tracing::info!(tag = %hex(correlator), "a separated tag is worth a look");
+            publish_tag(events, store, correlator, "review", now).await;
         }
     }
     Ok(())
@@ -253,6 +257,7 @@ pub async fn watch(
 pub async fn watch_recording(
     sensitivity: arlen_sentinel_detect::ble_scan::Sensitivity,
     classes: &[arlen_sentinel_detect::recording::DeviceClass],
+    events: &impl os_sdk::event::EventEmitter,
     stop: impl std::future::Future<Output = ()>,
 ) -> Result<(), String> {
     use arlen_sentinel_detect::ble_scan::thresholds;
@@ -286,8 +291,81 @@ pub async fn watch_recording(
         // of thing is nearby, and which one it is would be a log of the people
         // around you.
         tracing::info!(class = %found.label, confidence = ?found.confidence, "a recording device is nearby");
+        let payload = os_sdk::proto::SentinelRecordingNearbyPayload {
+            class_label: found.label.clone(),
+            confidence: confidence_word(found.confidence).to_string(),
+        };
+        publish(events, RECORDING_EVENT, payload).await;
     }
     Ok(())
+}
+
+/// The event a nearby recording device is published under.
+pub const RECORDING_EVENT: &str = "sentinel.recording_device.nearby";
+/// The event a suspected tracker is published under.
+pub const TRACKER_EVENT: &str = "sentinel.tracker.suspected";
+
+/// The confidence as the payload spells it.
+fn confidence_word(c: arlen_sentinel_detect::recording::Confidence) -> &'static str {
+    use arlen_sentinel_detect::recording::Confidence;
+    match c {
+        Confidence::None => "none",
+        Confidence::Low => "low",
+        Confidence::Medium => "medium",
+        Confidence::High => "high",
+    }
+}
+
+/// The brand as the payload spells it.
+fn brand_word(b: arlen_sentinel_detect::tracker::TrackerBrand) -> &'static str {
+    use arlen_sentinel_detect::tracker::TrackerBrand;
+    match b {
+        TrackerBrand::AppleFindMy => "apple-find-my",
+        TrackerBrand::SamsungSmartTag => "samsung-smarttag",
+        TrackerBrand::Tile => "tile",
+        TrackerBrand::GoogleFmdn => "google-fmdn",
+        TrackerBrand::Dult => "dult",
+    }
+}
+
+/// Publish one payload, best-effort.
+///
+/// A bus that is down costs the indicator this reading and nothing else. These
+/// are advisory events: the sentinel says them, it never acts on them, so a
+/// failure to say one must not stop it watching.
+async fn publish<M: prost::Message>(
+    events: &impl os_sdk::event::EventEmitter,
+    event_type: &str,
+    payload: M,
+) {
+    if let Err(e) = events.emit(event_type, prost::Message::encode_to_vec(&payload)).await {
+        tracing::debug!("{event_type} not published: {e}");
+    }
+}
+
+/// Publish a tag verdict, with the counts that justify it and nothing that
+/// identifies the tag.
+///
+/// The correlator does NOT travel. It is the tag's rotating identity and belongs
+/// only in the sealed store; an event carrying it would put a passing stranger's
+/// device id on a bus several consumers read, which is the proximity history this
+/// detector exists to warn people about.
+async fn publish_tag(
+    events: &impl os_sdk::event::EventEmitter,
+    store: &crate::sightings::SightingStore,
+    correlator: &[u8],
+    verdict: &str,
+    now_secs: u64,
+) {
+    let Ok(Some(tag)) = store.load(correlator) else { return };
+    let observed = tag.observe(now_secs);
+    let payload = os_sdk::proto::SentinelTrackerSuspectedPayload {
+        brand: brand_word(tag.brand).to_string(),
+        distinct_locations: observed.distinct_locations,
+        distinct_epochs: observed.distinct_epochs,
+        verdict: verdict.to_string(),
+    };
+    publish(events, TRACKER_EVENT, payload).await;
 }
 
 /// A correlator in the log, where the bytes themselves have no business being.
