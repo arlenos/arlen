@@ -115,6 +115,31 @@ pub struct PowerState {
 }
 
 impl PowerState {
+    /// Whether this is a DIFFERENT power state, for deciding what to publish.
+    ///
+    /// Not `==`, and the difference is the whole point. `PowerState` carries two
+    /// running estimates, `time_to_empty_seconds` and `time_to_full_seconds`, and
+    /// UPower re-computes those continuously - so a plain equality guard on the
+    /// whole struct never holds and every poll looks like a change.
+    ///
+    /// Measured on a plugged-in laptop at 100%, nothing touched: four
+    /// `power.state` events in thirty-five seconds, one about every nine seconds,
+    /// with percentage, charge state, lid and profile identical across all four
+    /// and only the seconds-to-empty drifting. That is a power-state change
+    /// recorded in the graph, forever, on a machine whose power state has not
+    /// changed since it was plugged in.
+    ///
+    /// The estimates still travel IN the payload and stay live on the pull
+    /// socket, which is where a consumer that wants the number should read it.
+    /// They just do not make an event.
+    pub fn is_new_state(&self, other: &Self) -> bool {
+        self.on_battery != other.on_battery
+            || self.percentage != other.percentage
+            || self.charge != other.charge
+            || self.lid != other.lid
+            || self.profile != other.profile
+    }
+
     /// Build a snapshot from raw UPower values. Pure: no I/O, so the
     /// normalisation (state mapping, percentage clamp, time-field gating, lid
     /// derivation) is unit-tested directly. `profile` comes from
@@ -171,6 +196,52 @@ impl PowerState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A snapshot with a given estimate, everything else fixed.
+    fn plugged_in(seconds_to_empty: i64) -> PowerState {
+        PowerState {
+            on_battery: false,
+            percentage: 100,
+            charge: ChargeState::Discharging,
+            time_to_empty_seconds: seconds_to_empty,
+            time_to_full_seconds: 0,
+            lid: LidState::Open,
+            profile: "balanced".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_drifting_estimate_is_not_a_new_state() {
+        // The measurement this came from: a plugged-in laptop at 100%, nothing
+        // touched, publishing `power.state` about every nine seconds because
+        // UPower re-computes seconds-to-empty continuously. Everything a person
+        // would call the power state was identical across all of them.
+        let before = plugged_in(2_934_900);
+        let after = plugged_in(2_934_586);
+        assert_ne!(before, after, "the structs do differ, which is why == failed");
+        assert!(
+            !after.is_new_state(&before),
+            "but the power state did not change"
+        );
+    }
+
+    #[test]
+    fn every_field_a_person_would_call_the_state_still_counts() {
+        let base = plugged_in(2_934_900);
+        let changed = [
+            PowerState { on_battery: true, ..base.clone() },
+            PowerState { percentage: 99, ..base.clone() },
+            PowerState { charge: ChargeState::Charging, ..base.clone() },
+            PowerState { lid: LidState::Closed, ..base.clone() },
+            PowerState { profile: "power-saver".to_string(), ..base.clone() },
+        ];
+        for other in changed {
+            assert!(
+                other.is_new_state(&base),
+                "this is a real transition and must publish: {other:?}"
+            );
+        }
+    }
 
     #[test]
     fn charge_state_maps_upower_enum_including_pending() {

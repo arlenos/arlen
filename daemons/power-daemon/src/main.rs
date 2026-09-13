@@ -242,10 +242,19 @@ async fn main() {
                 };
                 match read_power_state(&conn).await {
                     Some(state) => {
-                        if last.as_ref() != Some(&state) {
-                            // Update the pull snapshot first so a consumer that
-                            // reacts to the push event reads the fresh value.
-                            *shared.write().await = state.clone();
+                        // The pull snapshot is refreshed EVERY poll, including
+                        // when only the running time estimate moved. It is the
+                        // current-value surface, so it carries the newest number
+                        // whether or not anything worth an event happened - and
+                        // it is where a consumer that wants the estimate reads
+                        // it. Outside the publish guard on purpose: gating this
+                        // on a state change would leave the socket answering
+                        // with an estimate from the last transition.
+                        *shared.write().await = state.clone();
+
+                        // The bus carries TRANSITIONS, so a drifting estimate is
+                        // not one. See `PowerState::is_new_state`.
+                        if last.as_ref().is_none_or(|prev| state.is_new_state(prev)) {
                             let bytes = state.to_payload().encode_to_vec();
                             match emitter.emit("power.state", bytes).await {
                                 Ok(()) => debug!(?state, "published power.state"),
