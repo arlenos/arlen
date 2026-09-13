@@ -163,6 +163,11 @@ pub enum IntakeOutcome {
         /// Fires with the user's decision once the shell resolves the request.
         decision: oneshot::Receiver<ConsentOutcome>,
     },
+    /// The answer to a check: whether a live grant covers the request.
+    Coverage {
+        /// Whether it does.
+        covered: bool,
+    },
 }
 
 // The wire `IntakeResult` lives in the shared `arlen-consent-contract` crate;
@@ -396,6 +401,7 @@ impl SharedState {
     /// can never silently skip a confirmation the high-impact / injection-
     /// containment rules require.
     pub fn intake(&self, body: RequestBody, attested_app_id: &str) -> IntakeOutcome {
+        let check_only = body.check_only;
         // Same trusted-intermediary resolution as service::handle_intake: an
         // allowlisted portal's on_behalf_of is honored, everything else is
         // attributed to the attested peer (fail-safe).
@@ -403,6 +409,14 @@ impl SharedState {
             crate::service::resolve_requester(attested_app_id, body.on_behalf_of.as_deref());
         let request = assemble(body, requester);
         let mut inner = self.inner.lock().expect("consent state mutex poisoned");
+
+        // A check is a READ: it answers about the caller's own grant and returns
+        // before anything can be queued, so polling it cannot manufacture a prompt
+        // for somebody to dismiss.
+        if check_only {
+            let covered = inner.grants.covers(&request, now_micros());
+            return IntakeOutcome::Coverage { covered };
+        }
 
         // A remembered grant only covers a Standard, non-externally-triggered
         // request. HighStakes classifies away from Standard (external trigger maps
@@ -732,6 +746,7 @@ mod tests {
             on_behalf_of: None,
             summary: "permanently delete 3 files".to_string(),
             scope: Some("/x".to_string()),
+            check_only: false,
         }
     }
 
@@ -748,13 +763,51 @@ mod tests {
             on_behalf_of: None,
             summary: "use a capability".to_string(),
             scope: scope.map(str::to_string),
+            check_only: false,
         }
+    }
+
+    /// A check answers about the grant and queues nothing - which is what makes it
+    /// safe to poll. If it enqueued, a holder asking "am I still allowed" would put
+    /// a dialog in front of somebody every time it asked.
+    #[tokio::test]
+    async fn a_check_reads_the_grant_and_queues_nothing() {
+        let state = SharedState::new(cap_default(), Arc::new(MockAuditSink::accepting()));
+        let mut check = standard_body(Some("/x"));
+        check.check_only = true;
+
+        assert!(
+            matches!(state.intake(check.clone(), "app.o"), IntakeOutcome::Coverage { covered: false }),
+            "nothing has been granted yet"
+        );
+        assert!(state.front_view().is_none(), "a check must not queue a dialog");
+
+        remember(&state, standard_body(Some("/x")), "app.o").await;
+        assert!(matches!(
+            state.intake(check, "app.o"),
+            IntakeOutcome::Coverage { covered: true }
+        ));
+    }
+
+    /// It answers about the CALLER, which is the whole reason this is on the
+    /// intake socket rather than the grant list.
+    #[tokio::test]
+    async fn a_check_answers_about_the_asking_peer_alone() {
+        let state = SharedState::new(cap_default(), Arc::new(MockAuditSink::accepting()));
+        remember(&state, standard_body(Some("/x")), "app.o").await;
+        let mut check = standard_body(Some("/x"));
+        check.check_only = true;
+        assert!(matches!(
+            state.intake(check, "app.other"),
+            IntakeOutcome::Coverage { covered: false }
+        ));
     }
 
     /// Drive a request to an AllowedRemembered resolution, recording its grant.
     async fn remember(state: &SharedState, b: RequestBody, app: &str) {
         let id = match state.intake(b, app) {
             IntakeOutcome::Pending { id, .. } => id,
+            IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
             IntakeOutcome::SilentGranted => panic!("the request should have prompted"),
         };
         let r = state.resolve(id, ConsentOutcome::AllowedRemembered).await;
@@ -827,6 +880,7 @@ mod tests {
         // empty, so the next identical request still prompts.
         let state = state_default();
         let id = match state.intake(standard_body(Some("/x")), "app.o") {
+            IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
             IntakeOutcome::Pending { id, .. } => id,
             IntakeOutcome::SilentGranted => panic!("expected a prompt"),
         };
@@ -897,6 +951,7 @@ mod tests {
                 on_behalf_of: None,
                 summary: "routine".to_string(),
                 scope: None,
+                check_only: false,
             },
             "org.arlen.files",
         );
@@ -909,6 +964,7 @@ mod tests {
         let state = state_default();
         let out = state.intake(body(ActionKind::PermanentDelete), "org.arlen.files");
         let (id, decision) = match out {
+            IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
             IntakeOutcome::Pending { id, decision } => (id, decision),
             IntakeOutcome::SilentGranted => panic!("a delete must require a dialog"),
         };
@@ -943,6 +999,7 @@ mod tests {
         // user's always-allow is downgraded to a denial and no grant is returned.
         let state = SharedState::new(cap_default(), Arc::new(MockAuditSink::failing()));
         let (id, decision) = match state.intake(body(ActionKind::PermanentDelete), "app.x") {
+            IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
             IntakeOutcome::Pending { id, decision } => (id, decision),
             IntakeOutcome::SilentGranted => panic!("expected a dialog request"),
         };
@@ -979,6 +1036,7 @@ mod tests {
     async fn a_disconnected_requester_does_not_break_resolution() {
         let state = state_default();
         let id = match state.intake(body(ActionKind::PermanentDelete), "app.gone") {
+            IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
             IntakeOutcome::Pending { id, decision } => {
                 drop(decision); // the requester disconnected before the decision
                 id
@@ -1011,13 +1069,16 @@ mod tests {
                 on_behalf_of: None,
                 summary: "routine".to_string(),
                 scope: None,
+                check_only: false,
             },
             "app.a",
         ) {
+            IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
             IntakeOutcome::Pending { id, .. } => id,
             IntakeOutcome::SilentGranted => panic!("suggest baseline must prompt"),
         };
         let high = match state.intake(body(ActionKind::PermanentDelete), "app.b") {
+            IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
             IntakeOutcome::Pending { id, .. } => id,
             IntakeOutcome::SilentGranted => panic!("delete must prompt"),
         };
@@ -1057,6 +1118,7 @@ mod tests {
 
         // Always-allow -> persisted.
         let id = match state.intake(standard_body(Some("/x")), "app.p") {
+            IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
             IntakeOutcome::Pending { id, .. } => id,
             IntakeOutcome::SilentGranted => panic!("expected a prompt"),
         };
@@ -1070,6 +1132,7 @@ mod tests {
 
         // Allow-once -> mints no grant -> persists nothing.
         let id2 = match state.intake(standard_body(Some("/y")), "app.p") {
+            IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
             IntakeOutcome::Pending { id, .. } => id,
             IntakeOutcome::SilentGranted => panic!("expected a prompt"),
         };

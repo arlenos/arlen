@@ -2317,6 +2317,7 @@ async fn a_confirm_round_trips_through_the_consent_loop() {
             targets: Vec::new(),
             total: None,
             on_behalf_of: None,
+            check_only: false,
         };
         let bytes = serde_json::to_vec(&body).expect("serialise request");
         let mut stream = tokio::net::UnixStream::connect(&intake)
@@ -2430,6 +2431,7 @@ async fn a_denied_confirm_relays_the_refusal() {
             targets: Vec::new(),
             total: None,
             on_behalf_of: None,
+            check_only: false,
         };
         let bytes = serde_json::to_vec(&body).expect("serialise request");
         let mut stream = tokio::net::UnixStream::connect(&intake)
@@ -2505,6 +2507,7 @@ fn consent_app_data_body() -> arlen_consent_contract::RequestBody {
         targets: Vec::new(),
         total: None,
         on_behalf_of: None,
+        check_only: false,
     }
 }
 

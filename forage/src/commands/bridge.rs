@@ -396,6 +396,7 @@ pub async fn request_bridge_consent(prepared: &[PreparedBridge]) -> bool {
         targets: Vec::new(),
         total: None,
         on_behalf_of: None,
+        check_only: false,
     };
     matches!(
         crate::commands::consent::ask(&body).await,
