@@ -195,10 +195,18 @@ pub async fn watch(
         .await
         .map_err(|e| format!("the monitor was refused: {e}"))?;
 
-    // Best-effort: a machine that cannot be placed still watches, and every
-    // sighting it takes is simply not recorded (see `run_scan`). Saying so once
-    // here beats a log line per advert.
-    let feed = crate::location::LocationFeed::open(connection).await.ok();
+    // Asked for, not taken. A denial degrades this watch to seeing that a tag is
+    // nearby without being able to say one is following you (§6, fail-soft), and
+    // that is the same code path as having no fix: `run_scan` records nothing it
+    // cannot place. So the feed is not even opened without consent - a capability
+    // you were refused is not one to hold open in case.
+    let consented = crate::consent::ask_for_location(&crate::consent::intake_socket_path()).await;
+    let feed = match consented {
+        crate::consent::LocationConsent::Granted => {
+            crate::location::LocationFeed::open(connection).await.ok()
+        }
+        crate::consent::LocationConsent::Denied => None,
+    };
     if feed.is_none() {
         tracing::info!("no coarse location, so tags are seen but not placed");
     }

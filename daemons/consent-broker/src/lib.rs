@@ -14,7 +14,7 @@
 
 #![warn(missing_docs)]
 
-use arlen_ai_core::capability::{ActionDecision, ActionKind, Capability};
+use arlen_ai_core::capability::{ActionDecision, Capability};
 use serde::{Deserialize, Serialize};
 
 pub mod control;
@@ -37,6 +37,14 @@ pub use service::{assemble, handle_intake, IntakeReply, RequestBody};
 // so every internal `crate::ConsentClass` / `crate::ConsentOutcome` reference and
 // every downstream `arlen_consent_broker::ConsentClass` import is unchanged.
 pub use arlen_consent_contract::{ConsentClass, ConsentOutcome, ConsentTarget};
+
+/// Re-exported because [`RequestBody::kind`] is of this type.
+///
+/// A requester could not name the field without it, so every one of them grew a
+/// dependency on `arlen-ai-core` for a single enum - a public struct whose field
+/// type its own crate does not export makes its callers reach past it. The type
+/// stays the decision engine's; this is only the door.
+pub use arlen_ai_core::capability::ActionKind;
 
 /// The attested identity of the requester: the SINGLE value that is BOTH shown
 /// in the dialog AND recorded as the grant recipient.
