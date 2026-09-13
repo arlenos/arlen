@@ -24,6 +24,7 @@
 //! only when there has never been one, because a sighting at (0, 0) would be a place
 //! in the Gulf of Guinea that the distinct-place count would believe.
 
+use arlen_sentinel_detect::epoch::EpochTracker;
 use arlen_sentinel_detect::home_anchor::HomeAnchor;
 use arlen_sentinel_detect::movement::Fix;
 use arlen_sentinel_detect::sighting::Sighting;
@@ -81,9 +82,10 @@ fn classify(advert: &Advert) -> Option<TrackerMatch> {
 /// their tags, and decide.
 ///
 /// `fix` is the machine's current coarse location, or `None` when it has none.
-/// `epoch_id` is the awake-session; the daemon bumps it on resume and on a
-/// location delta, and two distinct ones is what makes a span meaningful on a
-/// machine that suspends.
+/// The awake-session comes from the [`EpochTracker`], which the daemon feeds with
+/// resumes, fixes and access-point sets; two distinct ones is what makes a span
+/// meaningful on a machine that suspends. It is read here rather than passed as a
+/// number so a scan cannot be stamped with an epoch nothing opened.
 ///
 /// Whether this scan happened at home is asked of the learned anchor rather than
 /// passed in, so nobody upstream can answer it for a place the machine has never
@@ -93,7 +95,7 @@ pub fn run_scan(
     source: &mut dyn AdvertSource,
     store: &SightingStore,
     fix: Option<Fix>,
-    epoch_id: u64,
+    epochs: &EpochTracker,
     now_secs: u64,
     home: &HomeAnchor,
 ) -> ScanOutcome {
@@ -113,7 +115,7 @@ pub fn run_scan(
             continue;
         };
         let at_home = home.is_home(fix);
-        let sighting = Sighting { seen_at_secs: now_secs, fix, epoch_id };
+        let sighting = Sighting { seen_at_secs: now_secs, fix, epoch_id: epochs.current() };
         let Ok(mut tag) = store.record(&advert.correlator, m.brand, sighting) else {
             // A store that will not write is a detection this scan cannot make.
             // It is logged by the caller; the scan carries on with the others.
@@ -172,7 +174,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let s = store(tmp.path());
         let mut src = Fixed(vec![not_a_tag()]);
-        let out = run_scan(&mut src, &s, Some(Fix { lat: 47.26, lon: 11.40 }), 1, 1_000, &HomeAnchor::default());
+        let out = run_scan(&mut src, &s, Some(Fix { lat: 47.26, lon: 11.40 }), &EpochTracker::default(), 1_000, &HomeAnchor::default());
         assert_eq!(out.ignored, 1);
         assert_eq!(out.recorded, 0);
         assert!(s.all().unwrap().is_empty());
@@ -188,9 +190,12 @@ mod tests {
         let there = Fix { lat: 47.2692, lon: 11.4570 };
 
         let away = HomeAnchor::default();
-        run_scan(&mut src, &s, Some(here), 1, 1_000, &away);
-        run_scan(&mut src, &s, Some(here), 1, 1_600, &away);
-        let out = run_scan(&mut src, &s, Some(there), 2, 4_700, &away);
+        let mut epochs = EpochTracker::default();
+        run_scan(&mut src, &s, Some(here), &epochs, 1_000, &away);
+        run_scan(&mut src, &s, Some(here), &epochs, 1_600, &away);
+        // The lid closed and opened again somewhere else.
+        epochs.observe(arlen_sentinel_detect::epoch::Signal::Resumed);
+        let out = run_scan(&mut src, &s, Some(there), &epochs, 4_700, &away);
 
         assert_eq!(out.alerts, vec![b"apple-key-1".to_vec()], "{out:?}");
         assert!(out.review.is_empty());
@@ -211,9 +216,11 @@ mod tests {
         for night in 1..=3 {
             home.record(arlen_sentinel_detect::home_anchor::NightFix { night, fix: here });
         }
-        run_scan(&mut src, &s, Some(here), 1, 1_000, &home);
-        run_scan(&mut src, &s, Some(here), 1, 1_600, &home);
-        let out = run_scan(&mut src, &s, Some(there), 2, 4_700, &home);
+        let mut epochs = EpochTracker::default();
+        run_scan(&mut src, &s, Some(here), &epochs, 1_000, &home);
+        run_scan(&mut src, &s, Some(here), &epochs, 1_600, &home);
+        epochs.observe(arlen_sentinel_detect::epoch::Signal::Resumed);
+        let out = run_scan(&mut src, &s, Some(there), &epochs, 4_700, &home);
 
         assert!(out.alerts.is_empty(), "{out:?}");
         assert_eq!(out.review, vec![b"apple-key-1".to_vec()]);
@@ -226,7 +233,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let s = store(tmp.path());
         let mut src = Fixed(vec![apple_separated()]);
-        let out = run_scan(&mut src, &s, None, 1, 1_000, &HomeAnchor::default());
+        let out = run_scan(&mut src, &s, None, &EpochTracker::default(), 1_000, &HomeAnchor::default());
         assert_eq!(out.recorded, 0);
         assert!(s.all().unwrap().is_empty());
     }
