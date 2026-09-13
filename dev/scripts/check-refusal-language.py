@@ -126,42 +126,12 @@ ACKNOWLEDGED = {
     "apps/settings/src/routes/appearance/quicksettings/+page.svelte:385": (
         "guarded by `readsAsInternal`: same trade on the reset path"
     ),
-    # 539 until 26 Aug, when two imports and a comment went in above it. The
-    # line-keyed acknowledgement is brittle to any edit above the line ON
-    # PURPOSE - see the note above the dict - and it earned that here: it made
-    # me re-read the line and confirm the `readsAsInternal` guard was still the
-    # thing being excused, rather than carrying the excuse to whatever had
-    # moved into position 539.
-    # 549 until 5 Sep, when the app's level-one heading went in above it as a
-    # snippet plus one render call per branch. Re-read: the guard is still
-    # `readsAsInternal` and it still falls to `v.couldNotOpenUnknown`.
-    # 561 until 7 Sep, when the sentence gained a NAMED variant - the window in
-    # this branch holds nothing else, so it says which file it is about - and
-    # there are two of them now, one each side of a `{#if failedName}`. Re-read
-    # a third time: the same `readsAsInternal` guard covers both arms, and an
-    # internal-looking error still falls to the unknown-reason wording. The
-    # brittleness is doing its job: this is the third edit above these lines and
-    # the third forced re-read, which is the whole argument for keying on a line.
-    # 574/578 until 9 Sep, when a BLANK reason turned out to reach the screen: an
-    # empty string is not recognisably internal, so the sentence with the hole in
-    # it was chosen and the window said "a-one.png could not be opened:" and
-    # stopped. The guard is now `hasReason`, which is `readsAsInternal` plus the
-    # blank, and the branches swapped so the reasoned sentence is the positive
-    # arm. Re-read a fourth time: the excuse still holds, and it holds slightly
-    # better - the fall-through now covers one more way of having nothing to say.
-    # Re-keyed a fifth time on 9 September (589/593 -> 614/618) when the window
-    # gained its presence publish above these lines. The code under them did not
-    # move: both arms still sit under `hasReason`, and re-reading them is the
-    # whole reason this list is keyed by line rather than by file.
-    "apps/viewers/src/routes/+page.svelte:614": (
-        "guarded by `hasReason`: an internal-looking or blank error falls to "
-        "`v.couldNotOpenNamedUnknown`. The named arm of the same sentence"
-    ),
-    "apps/viewers/src/routes/+page.svelte:618": (
-        "guarded by `hasReason`: an internal-looking or blank error falls to "
-        "`v.couldNotOpenUnknown`. `readsAsInternal` underneath it is the third "
-        "copy of that predicate, which is the argument for its home being the kit"
-    ),
+    # The viewers pair lived here through five re-keyings and came off on 13
+    # September: the sentence no longer reaches for the error object at all. The
+    # app records a catalogue KEY for the reason beside the host's own text, the
+    # key is what the sentence says, and the text goes to the console. That is
+    # the fix the gate's own message asks for, so there is nothing left to
+    # excuse - which is what an entry coming off this list is supposed to mean.
 }
 
 

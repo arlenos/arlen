@@ -55,11 +55,24 @@ fn worker_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// The token a refusal travels as, with the host's own text kept here.
+///
+/// What crosses to the window is a word it can look up, never a sentence: an
+/// errno text or a decoder's prose spliced after a translated sentence leaves half
+/// of what a German reader sees in English, which is what `check-refusal-language`
+/// exists to refuse. The detail is logged on this side, where whoever is debugging
+/// can read it and nobody is being told it.
+fn refusal_token(why: arlen_viewers_host::OpenFailure) -> String {
+    log::warn!("viewers: {}", why.detail);
+    why.token.to_string()
+}
+
 /// Decode an image file in the sandbox and return its RGBA raster.
 #[tauri::command]
 fn decode_image(path: String) -> Result<DecodedImageDto, String> {
     let dir = worker_dir();
-    let decoded = arlen_viewers_host::decode_image_path(&dir.to_string_lossy(), Path::new(&path))?;
+    let decoded = arlen_viewers_host::decode_image_path(&dir.to_string_lossy(), Path::new(&path))
+        .map_err(refusal_token)?;
     Ok(DecodedImageDto {
         width: decoded.width,
         height: decoded.height,
@@ -71,7 +84,8 @@ fn decode_image(path: String) -> Result<DecodedImageDto, String> {
 #[tauri::command]
 fn probe_audio(path: String) -> Result<AudioInfoDto, String> {
     let dir = worker_dir();
-    let info = arlen_viewers_host::probe_audio_path(&dir.to_string_lossy(), Path::new(&path))?;
+    let info = arlen_viewers_host::probe_audio_path(&dir.to_string_lossy(), Path::new(&path))
+        .map_err(refusal_token)?;
     Ok(AudioInfoDto {
         codec: info.codec,
         sample_rate: info.sample_rate,
