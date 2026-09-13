@@ -16,6 +16,11 @@
 //! **A broker that cannot be reached is a denial**, not a pass. A consent path
 //! whose failure mode is "carry on" is not a consent path.
 //!
+//! **A revoke reaches a running watch.** The grant is re-checked whenever the last
+//! answer has gone stale, through a request that asks the broker about the CALLER
+//! and queues nothing - so a person taking the location back in the browser stops
+//! the placing within that window rather than at the next restart.
+//!
 //! The recipient is this daemon. Unlike modulesd asking on behalf of a module, the
 //! sentinel is the principal that reads the location, so there is nobody to speak
 //! for and `on_behalf_of` stays empty - the grant lands under the identity the
@@ -67,6 +72,33 @@ pub fn location_request() -> arlen_consent_broker::RequestBody {
         targets: Vec::new(),
         total: None,
         on_behalf_of: None,
+        check_only: false,
+    }
+}
+
+/// How long an answer stands before it is asked again.
+///
+/// The same window the page's own findings use, and for the same reason: a revoke
+/// that took effect on the next restart would be a switch somebody flips and
+/// watches do nothing. Short enough to matter, long enough that a watch seeing a
+/// busy room does not ask the broker per advert.
+pub const RECHECK_AFTER: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Ask whether a grant still covers the coarse location, prompting nobody.
+///
+/// A refusal, an unreachable broker or a malformed reply all answer `Denied`, the
+/// same as the first ask: a check that failed open would make the revoke path
+/// depend on the broker being up.
+pub async fn still_granted(socket: &Path) -> LocationConsent {
+    let mut body = location_request();
+    body.check_only = true;
+    match request(socket, &body).await {
+        Ok(IntakeResult::Coverage { covered: true }) => LocationConsent::Granted,
+        Ok(_) => LocationConsent::Denied,
+        Err(why) => {
+            tracing::debug!("could not re-check location consent ({why})");
+            LocationConsent::Denied
+        }
     }
 }
 
@@ -138,6 +170,27 @@ mod tests {
         assert!(summary.contains("following you"), "{summary}");
         let scope = body.scope.unwrap_or_default().to_lowercase();
         assert!(scope.contains("city level"), "{scope}");
+    }
+
+    /// A check asks about the grant and never prompts, which is what makes it safe
+    /// to repeat.
+    #[test]
+    fn a_recheck_asks_the_same_thing_without_prompting() {
+        let mut body = location_request();
+        body.check_only = true;
+        assert!(body.check_only);
+        // Same class and scope as the original ask, or it would be asking about a
+        // grant nobody holds.
+        assert_eq!(body.class, location_request().class);
+        assert_eq!(body.scope, location_request().scope);
+    }
+
+    /// A re-check that cannot reach the broker denies, so the revoke path does not
+    /// depend on the broker being up.
+    #[tokio::test]
+    async fn a_recheck_against_no_broker_denies() {
+        let missing = std::path::Path::new("/nonexistent/arlen/consent-intake.sock");
+        assert_eq!(still_granted(missing).await, LocationConsent::Denied);
     }
 
     /// A broker that is not there is a denial. A consent path whose failure mode

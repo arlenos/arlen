@@ -151,6 +151,7 @@ mod tests {
             on_behalf_of: None,
             summary: "do a thing".to_string(),
             scope: Some("/x".to_string()),
+            check_only: false,
         }
     }
 

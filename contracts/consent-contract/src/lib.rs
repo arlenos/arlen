@@ -164,6 +164,20 @@ pub struct RequestBody {
     /// audit but never shown as the grantee.
     #[serde(default)]
     pub on_behalf_of: Option<String>,
+    /// Ask whether a grant already covers this, and prompt NOBODY.
+    ///
+    /// A holder needs to be able to find out that its grant was taken away. The
+    /// grant list is on the control socket, which is the shell's and Settings',
+    /// and admitting a holder there would let it enumerate everyone else's grants
+    /// to learn about its own - the wrong shape for the question. Here the peer is
+    /// already attested, so "am I still allowed" is unambiguous and answers about
+    /// the caller alone.
+    ///
+    /// A check NEVER queues, never shows a dialog and never mints anything: it is
+    /// a read. So a daemon polling it cannot manufacture a prompt somebody has to
+    /// dismiss, which is the failure mode that would make this dangerous.
+    #[serde(default)]
+    pub check_only: bool,
 }
 
 /// One named target of a destructive request, with a human-readable size (e.g.
@@ -187,6 +201,18 @@ pub enum IntakeResult {
     Decided {
         /// The user's decision.
         outcome: ConsentOutcome,
+    },
+    /// The answer to a [`RequestBody::check_only`] request: whether a remembered
+    /// grant covers it right now.
+    ///
+    /// Its own variant rather than reusing `SilentGranted`, because the two are
+    /// different facts. `SilentGranted` says something was authorised; this says
+    /// what the state IS, and a holder that heard "granted" when it had asked "am
+    /// I still allowed" would have no way to tell a fresh authorisation from a
+    /// surviving one.
+    Coverage {
+        /// Whether a live grant covers the request as asked.
+        covered: bool,
     },
 }
 

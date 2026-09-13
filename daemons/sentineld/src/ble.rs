@@ -201,7 +201,8 @@ pub async fn watch(
     // cannot place. So the feed is not even opened without consent - a capability
     // you were refused is not one to hold open in case.
     let consented = crate::consent::ask_for_location(&crate::consent::intake_socket_path()).await;
-    let feed = match consented {
+    let mut asked = std::time::Instant::now();
+    let mut feed = match consented {
         crate::consent::LocationConsent::Granted => {
             crate::location::LocationFeed::open(connection).await.ok()
         }
@@ -229,6 +230,17 @@ pub async fn watch(
         let service = device.service_data().await.ok().flatten();
         let Some(advert) = advert_from(manufacturer.as_ref(), service.as_ref()) else { continue };
 
+        // Re-ask when the last answer has gone stale, so a revoke reaches a
+        // running watch rather than waiting for a restart.
+        if feed.is_some() && asked.elapsed() >= crate::consent::RECHECK_AFTER {
+            asked = std::time::Instant::now();
+            if crate::consent::still_granted(&crate::consent::intake_socket_path()).await
+                == crate::consent::LocationConsent::Denied
+            {
+                tracing::info!("location consent is gone, so tags are seen but not placed");
+                feed = None;
+            }
+        }
         let fix = match &feed {
             Some(feed) => feed.fix(connection).await.ok(),
             None => None,

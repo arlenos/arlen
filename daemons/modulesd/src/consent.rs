@@ -182,6 +182,7 @@ pub async fn request_enable_consent(
         targets: Vec::new(),
         total: None,
         on_behalf_of: Some(module_id.to_string()),
+        check_only: false,
     };
     matches!(
         request(socket, &body).await,

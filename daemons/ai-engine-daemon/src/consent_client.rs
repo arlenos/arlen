@@ -100,6 +100,7 @@ impl ConsentDriver for ConsentBrokerClient {
             // trusted intermediary mediating for another app, so the grant is
             // attributed to the attested peer (fail-safe, never a mediated subject).
             on_behalf_of: None,
+            check_only: false,
         };
         match self.request(&body).await {
             Ok(IntakeResult::SilentGranted) => ConfirmAnswer::Approved,
@@ -112,6 +113,9 @@ impl ConsentDriver for ConsentBrokerClient {
                 | ConsentOutcome::AllowedForWindow => ConfirmAnswer::Approved,
                 ConsentOutcome::Denied => ConfirmAnswer::Denied,
             },
+            // This call never sets `check_only`, so a coverage answer is a reply to
+            // something else and is not an approval.
+            Ok(IntakeResult::Coverage { .. }) => ConfirmAnswer::Denied,
             // Broker unreachable / framing / I/O error: fail closed.
             Err(_) => ConfirmAnswer::Denied,
         }

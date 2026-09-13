@@ -62,6 +62,7 @@ pub async fn request_screencast_consent(socket: &PathBuf, app_id: &str, summary:
         // app, not the portal. The broker ignores this unless the attested peer
         // is the allowlisted portal.
         on_behalf_of: Some(app_id.to_string()),
+        check_only: false,
     };
     match request(socket, &body).await {
         Ok(IntakeResult::SilentGranted) => ConsentDecision::Allowed,
@@ -73,6 +74,9 @@ pub async fn request_screencast_consent(socket: &PathBuf, app_id: &str, summary:
             | ConsentOutcome::AllowedForWindow => ConsentDecision::Allowed,
             ConsentOutcome::Denied => ConsentDecision::Denied,
         },
+        // This request never sets `check_only`, so a coverage answer means the
+        // broker replied to something else - which is not an authorisation.
+        Ok(IntakeResult::Coverage { .. }) => ConsentDecision::Denied,
         // Broker unreachable / framing / IO error: fail closed.
         Err(e) => {
             tracing::warn!("screencast consent request failed, denying: {e}");
