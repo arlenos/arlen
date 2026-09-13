@@ -28,7 +28,7 @@ use std::collections::BTreeSet;
 
 use crate::movement::{count_distinct_locations, travelled_metres, Fix};
 use crate::tracker::TrackerBrand;
-use crate::trigger::TrackerObservation;
+use crate::trigger::{AllowState, TrackerObservation};
 
 /// The longest a correlator is treated as one tag. Apple rotates its key daily and
 /// the others are comparable, so a sighting older than this cannot be proven to be
@@ -40,19 +40,6 @@ pub const MAX_WINDOW_SECS: u64 = 24 * 60 * 60;
 /// exists to cap memory against a tag that adverts continuously for a day, not to
 /// forget deliberately. At a continuous passive scan this is hours of adverts.
 pub const MAX_SIGHTINGS: usize = 512;
-
-/// What the person has said about this tag.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub enum AllowState {
-    /// Nothing said. The only state that may raise a safety alert.
-    #[default]
-    Unknown,
-    /// Recognised as travelling with a known companion (a partner's keys, a shared
-    /// bag). Reviewable, never alerted on.
-    KnownCompanion,
-    /// The person said it is theirs.
-    Mine,
-}
 
 /// One observation of a separated finder-tag in one scan.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

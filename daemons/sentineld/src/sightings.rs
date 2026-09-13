@@ -36,10 +36,17 @@ use std::path::{Path, PathBuf};
 
 use arlen_forage_signing::BuilderKey;
 use arlen_secret_vault::{Vault, VaultError};
+use arlen_sentinel_detect::home_anchor::HomeAnchor;
 use arlen_sentinel_detect::sighting::{Sighting, TrackedTag, MAX_WINDOW_SECS};
 use arlen_sentinel_detect::tracker::TrackerBrand;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+
+/// The record the home anchor lives in. A fixed name rather than a hashed one: it
+/// is the store's own state, not a tag, and `prune` must be able to tell the two
+/// apart - a listing that could not would eventually delete the anchor as if it
+/// were an expired tag.
+const ANCHOR_RECORD: &str = "home-anchor";
 
 /// The HMAC domain, so this key derivation cannot collide with another use of the
 /// same master.
@@ -159,6 +166,26 @@ impl SightingStore {
         Ok(tag)
     }
 
+    /// The learned home anchor, or a fresh one if none has been kept yet.
+    ///
+    /// It lives in the same sealed store as the tags and for the same reason: where
+    /// somebody sleeps is the most identifying coordinate on the machine, and it
+    /// would be an odd kind of care to encrypt the tags that passed the house and
+    /// leave the house itself in the clear beside them.
+    pub fn anchor(&self) -> Result<HomeAnchor, StoreError> {
+        match self.vault.load(ANCHOR_RECORD)? {
+            Some(bytes) => serde_json::from_slice(&bytes).map_err(|_| StoreError::Malformed),
+            None => Ok(HomeAnchor::default()),
+        }
+    }
+
+    /// Persist the anchor.
+    pub fn save_anchor(&self, anchor: &HomeAnchor) -> Result<(), StoreError> {
+        let bytes = serde_json::to_vec(anchor).map_err(|_| StoreError::Malformed)?;
+        self.vault.store(ANCHOR_RECORD, &bytes)?;
+        Ok(())
+    }
+
     /// Forget one tag outright - what "this is mine, stop watching it" writes.
     pub fn forget(&self, correlator: &[u8]) -> Result<(), StoreError> {
         self.vault.remove(&self.record_id(correlator))?;
@@ -184,6 +211,7 @@ impl SightingStore {
             .map(|e| e.path())
             .filter(|p| p.extension().is_some_and(|x| x == "vault"))
             .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+            .filter(|id| id != ANCHOR_RECORD)
             .collect();
         ids.sort();
         let mut out = Vec::new();
@@ -301,6 +329,44 @@ mod tests {
         assert_eq!(s.prune(now).unwrap(), 1);
         assert!(s.load(b"old").unwrap().is_none());
         assert!(s.load(b"new").unwrap().is_some());
+    }
+
+    #[test]
+    fn the_anchor_survives_a_restart_and_is_not_a_tag() {
+        use arlen_sentinel_detect::home_anchor::NightFix;
+        let tmp = tempfile::tempdir().unwrap();
+        let here = Fix { lat: 47.2692, lon: 11.4041 };
+        {
+            let s = store(tmp.path());
+            let mut a = s.anchor().unwrap();
+            for night in 1..=3 {
+                a.record(NightFix { night, fix: here });
+            }
+            s.save_anchor(&a).unwrap();
+            s.record(b"tag", TrackerBrand::Tile, sighting(1_000, 47.26, 11.40, 1)).unwrap();
+        }
+        let s = store(tmp.path());
+        assert!(s.anchor().unwrap().is_home(here));
+        // The listing is tags, and the anchor is not one of them.
+        assert_eq!(s.all().unwrap().len(), 1);
+    }
+
+    /// A prune must never take the anchor with it: it has no window to expire.
+    #[test]
+    fn pruning_leaves_the_anchor_alone() {
+        use arlen_sentinel_detect::home_anchor::{HomeAnchor, NightFix};
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let here = Fix { lat: 47.2692, lon: 11.4041 };
+        let mut a = HomeAnchor::default();
+        for night in 1..=3 {
+            a.record(NightFix { night, fix: here });
+        }
+        s.save_anchor(&a).unwrap();
+        s.record(b"old", TrackerBrand::Tile, sighting(1_000, 47.26, 11.40, 1)).unwrap();
+
+        assert_eq!(s.prune(1_000 + MAX_WINDOW_SECS).unwrap(), 1);
+        assert!(s.anchor().unwrap().is_home(here), "the anchor is still there");
     }
 
     #[test]
