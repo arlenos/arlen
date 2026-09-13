@@ -213,7 +213,9 @@ mod tests {
             scope: scope.map(str::to_string),
         };
         match q.enqueue(req, &cap_suggest()) {
-            Enqueued::Queued(id) => q.resolve(id, ConsentOutcome::Denied).unwrap().0,
+            Enqueued::Queued(id) | Enqueued::AlreadyPending(id) => {
+                q.resolve(id, ConsentOutcome::Denied).unwrap().0
+            }
             Enqueued::SilentGrant => panic!("expected a dialog-requiring request"),
         }
     }

@@ -143,7 +143,11 @@ struct Inner {
     queue: ConsentQueue,
     /// A parked requester per pending id: resolving the request fires the sender
     /// with the user's decision, unblocking the requester's intake connection.
-    waiters: HashMap<RequestId, oneshot::Sender<ConsentOutcome>>,
+    /// Everyone waiting on one pending question.
+    ///
+    /// A list rather than one sender: identical requests collapse onto a single
+    /// dialog, and every caller that joined it is owed the same answer.
+    waiters: HashMap<RequestId, Vec<oneshot::Sender<ConsentOutcome>>>,
     /// Remembered ("always allow") grants, consulted to downgrade a repeated
     /// Standard request to Silent.
     grants: GrantStore,
@@ -160,6 +164,11 @@ pub enum IntakeOutcome {
     Pending {
         /// The broker id this request was queued under (for logging).
         id: RequestId,
+        /// Whether this request JOINED a dialog that was already pending rather
+        /// than opening one. Carried so the log can say which happened: three
+        /// lines reading "queued for a dialog" under one id would describe three
+        /// prompts that do not exist.
+        joined: bool,
         /// Fires with the user's decision once the shell resolves the request.
         decision: oneshot::Receiver<ConsentOutcome>,
     },
@@ -434,8 +443,15 @@ impl SharedState {
             Enqueued::SilentGrant => IntakeOutcome::SilentGranted,
             Enqueued::Queued(id) => {
                 let (tx, rx) = oneshot::channel();
-                inner.waiters.insert(id, tx);
-                IntakeOutcome::Pending { id, decision: rx }
+                inner.waiters.entry(id).or_default().push(tx);
+                IntakeOutcome::Pending { id, joined: false, decision: rx }
+            }
+            // The same question is already in front of somebody. Wait on that one
+            // rather than asking it again.
+            Enqueued::AlreadyPending(id) => {
+                let (tx, rx) = oneshot::channel();
+                inner.waiters.entry(id).or_default().push(tx);
+                IntakeOutcome::Pending { id, joined: true, decision: rx }
             }
         }
     }
@@ -468,7 +484,7 @@ impl SharedState {
                 None => None,
             }
         };
-        let (decision, tx) = match taken {
+        let (decision, waiting) = match taken {
             Some(t) => t,
             None => return ResolveResult::Unknown,
         };
@@ -517,7 +533,10 @@ impl SharedState {
                 }
             }
         }
-        if let Some(tx) = tx {
+        // Everyone who joined this question gets the same answer. A receiver that
+        // has gone away (its requester exited while the dialog was open) is not an
+        // error: the decision still stands and the grant is still recorded.
+        for tx in waiting.unwrap_or_default() {
             let _ = tx.send(reply);
         }
         ResolveResult::Resolved {
@@ -965,7 +984,7 @@ mod tests {
         let out = state.intake(body(ActionKind::PermanentDelete), "org.arlen.files");
         let (id, decision) = match out {
             IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
-            IntakeOutcome::Pending { id, decision } => (id, decision),
+            IntakeOutcome::Pending { id, decision, .. } => (id, decision),
             IntakeOutcome::SilentGranted => panic!("a delete must require a dialog"),
         };
         // The shell sees exactly this request, attested-id == recipient.
@@ -1000,7 +1019,7 @@ mod tests {
         let state = SharedState::new(cap_default(), Arc::new(MockAuditSink::failing()));
         let (id, decision) = match state.intake(body(ActionKind::PermanentDelete), "app.x") {
             IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
-            IntakeOutcome::Pending { id, decision } => (id, decision),
+            IntakeOutcome::Pending { id, decision, .. } => (id, decision),
             IntakeOutcome::SilentGranted => panic!("expected a dialog request"),
         };
         match state.resolve(id, ConsentOutcome::AllowedRemembered).await {
@@ -1037,7 +1056,7 @@ mod tests {
         let state = state_default();
         let id = match state.intake(body(ActionKind::PermanentDelete), "app.gone") {
             IntakeOutcome::Coverage { .. } => unreachable!("this fixture never checks"),
-            IntakeOutcome::Pending { id, decision } => {
+            IntakeOutcome::Pending { id, decision, .. } => {
                 drop(decision); // the requester disconnected before the decision
                 id
             }

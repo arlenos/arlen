@@ -72,9 +72,43 @@ pub struct ConsentQueue {
 pub enum Enqueued {
     /// The request needs a dialog and was queued under this id.
     Queued(RequestId),
+    /// The same question from the same requester is ALREADY waiting for an
+    /// answer, so nothing was added: this caller joins the pending one under its
+    /// id and gets the same decision when it resolves.
+    ///
+    /// Measured before it was built: three restarts of one daemon that asks at
+    /// startup put three identical prompts in the queue, ids 0, 1 and 2. A person
+    /// would have dismissed the same question three times, and a different,
+    /// genuine prompt would have been buried behind them. A requester cannot know
+    /// about other instances of itself, so only the queue can see this.
+    ///
+    /// It JOINS rather than replaces: the earlier caller may still be waiting,
+    /// and dropping its waiter would leave it hanging on a question that was
+    /// answered.
+    AlreadyPending(RequestId),
     /// The request resolved to [`SeverityTier::Silent`]: no dialog is shown, the
     /// caller silently grants it (still recording the grant). Not queued.
     SilentGrant,
+}
+
+/// Whether two requests are the same question: same requester, same class, same
+/// scope.
+///
+/// The same triple the grant store keys a revocation handle on, and for the same
+/// reason - it is what makes one authorisation answer one question. Deliberately
+/// NOT the summary: two callers wording the same request differently are still
+/// asking one thing, and the wording is the dialog's to show rather than the
+/// queue's to compare.
+///
+/// An externally-triggered request never collapses into another. Two of them may
+/// look alike and come from different content, and the containment rule treats
+/// each as its own decision.
+fn same_question(a: &ConsentRequest, b: &ConsentRequest) -> bool {
+    !a.triggered_by_external_content
+        && !b.triggered_by_external_content
+        && a.requester.display_id() == b.requester.display_id()
+        && a.class == b.class
+        && a.scope == b.scope
 }
 
 impl ConsentQueue {
@@ -90,6 +124,9 @@ impl ConsentQueue {
         let tier = classify(&request, capability);
         if tier == SeverityTier::Silent {
             return Enqueued::SilentGrant;
+        }
+        if let Some(pending) = self.pending.iter().find(|p| same_question(&p.request, &request)) {
+            return Enqueued::AlreadyPending(pending.id);
         }
         let id = RequestId(self.next_id);
         self.next_id += 1;
@@ -160,6 +197,13 @@ mod tests {
         }
     }
 
+    /// A dialog-requiring request with a scope, which is what the collapse keys on.
+    fn scoped(app: &str, scope: &str) -> ConsentRequest {
+        let mut r = req(app, ActionKind::Ordinary, false);
+        r.scope = Some(scope.to_string());
+        r
+    }
+
     fn cap_autonomous(app: &str) -> Capability {
         Capability::new(
             AccessTier::Minimal,
@@ -172,6 +216,49 @@ mod tests {
             AccessTier::Minimal,
             ActionPermissions::new(BaselineMode::Suggest, Vec::<String>::new()),
         )
+    }
+
+    /// Measured before this existed: a daemon that asks at startup, restarted
+    /// three times, left three identical prompts in the queue. One question, one
+    /// dialog.
+    #[test]
+    fn the_same_question_asked_twice_is_one_dialog() {
+        let mut q = ConsentQueue::new();
+        let first = q.enqueue(scoped("sentineld", "location"), &cap_suggest());
+        let second = q.enqueue(scoped("sentineld", "location"), &cap_suggest());
+        let Enqueued::Queued(id) = first else { panic!("the first one queues") };
+        assert!(matches!(second, Enqueued::AlreadyPending(joined) if joined == id));
+        assert_eq!(q.len(), 1, "only one prompt is in front of anybody");
+    }
+
+    /// A different scope, or a different requester, is a different question.
+    #[test]
+    fn a_different_question_is_its_own_dialog() {
+        let mut q = ConsentQueue::new();
+        q.enqueue(scoped("sentineld", "location"), &cap_suggest());
+        assert!(matches!(
+            q.enqueue(scoped("sentineld", "microphone"), &cap_suggest()),
+            Enqueued::Queued(_)
+        ));
+        assert!(matches!(
+            q.enqueue(scoped("other", "location"), &cap_suggest()),
+            Enqueued::Queued(_)
+        ));
+        assert_eq!(q.len(), 3);
+    }
+
+    /// Two externally-triggered requests never collapse: they may look alike and
+    /// come from different content, and each is its own decision.
+    #[test]
+    fn an_externally_triggered_request_never_joins_another() {
+        let mut q = ConsentQueue::new();
+        let mut a = scoped("sentineld", "location");
+        a.triggered_by_external_content = true;
+        let mut b = scoped("sentineld", "location");
+        b.triggered_by_external_content = true;
+        q.enqueue(a, &cap_suggest());
+        assert!(matches!(q.enqueue(b, &cap_suggest()), Enqueued::Queued(_)));
+        assert_eq!(q.len(), 2);
     }
 
     #[test]
@@ -189,11 +276,11 @@ mod tests {
         let mut q = ConsentQueue::new();
         // First a Standard (Ordinary + suggest), then a HighStakes (delete).
         let standard = match q.enqueue(req("a", ActionKind::Ordinary, false), &cap_suggest()) {
-            Enqueued::Queued(id) => id,
+            Enqueued::Queued(id) | Enqueued::AlreadyPending(id) => id,
             _ => panic!("expected queued"),
         };
         let high = match q.enqueue(req("b", ActionKind::PermanentDelete, false), &cap_suggest()) {
-            Enqueued::Queued(id) => id,
+            Enqueued::Queued(id) | Enqueued::AlreadyPending(id) => id,
             _ => panic!("expected queued"),
         };
         assert_eq!(q.len(), 2);
@@ -209,7 +296,7 @@ mod tests {
     fn same_tier_is_fifo() {
         let mut q = ConsentQueue::new();
         let first = match q.enqueue(req("a", ActionKind::Ordinary, false), &cap_suggest()) {
-            Enqueued::Queued(id) => id,
+            Enqueued::Queued(id) | Enqueued::AlreadyPending(id) => id,
             _ => panic!(),
         };
         let _second = q.enqueue(req("b", ActionKind::Ordinary, false), &cap_suggest());
@@ -221,7 +308,7 @@ mod tests {
     fn resolve_unknown_id_is_none() {
         let mut q = ConsentQueue::new();
         let id = match q.enqueue(req("a", ActionKind::PermanentDelete, false), &cap_suggest()) {
-            Enqueued::Queued(id) => id,
+            Enqueued::Queued(id) | Enqueued::AlreadyPending(id) => id,
             _ => panic!(),
         };
         q.resolve(id, ConsentOutcome::AllowedOnce).unwrap();
@@ -234,12 +321,12 @@ mod tests {
     fn ids_are_not_reused_after_resolve() {
         let mut q = ConsentQueue::new();
         let id0 = match q.enqueue(req("a", ActionKind::PermanentDelete, false), &cap_suggest()) {
-            Enqueued::Queued(id) => id,
+            Enqueued::Queued(id) | Enqueued::AlreadyPending(id) => id,
             _ => panic!(),
         };
         q.resolve(id0, ConsentOutcome::Denied);
         let id1 = match q.enqueue(req("b", ActionKind::PermanentDelete, false), &cap_suggest()) {
-            Enqueued::Queued(id) => id,
+            Enqueued::Queued(id) | Enqueued::AlreadyPending(id) => id,
             _ => panic!(),
         };
         assert_ne!(id0, id1, "a resolved id is never reused");
