@@ -54,7 +54,7 @@ mod utils;
 mod write;
 mod writer;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use tracing::{info, warn};
 
 const DEFAULT_DB_PATH: &str = "/var/lib/arlen/knowledge/events.db";
@@ -167,7 +167,12 @@ async fn run(
     let promotion_gate = activity_delete::promotion_gate();
 
     // Spawn the dedicated Ladybug thread
-    let graph = graph::spawn(&graph_path)?;
+    // Fails the daemon rather than starting one with no graph behind it: the
+    // handle now waits for the store to open (`graph::spawn`), so an unopenable
+    // store ends here, with the path in the message, and systemd restarts and
+    // reports it instead of showing a healthy daemon that answers nothing.
+    let graph = graph::spawn(&graph_path)
+        .with_context(|| format!("the knowledge graph store at {graph_path} could not be opened"))?;
     info!(path = graph_path, "ladybug query store ready");
 
     // The device-wide merge clock (graph-drift.md §2): one stable device id per
