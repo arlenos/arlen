@@ -117,6 +117,31 @@ pub struct SentinelState {
     /// managed to measure as the whole picture.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub posture_incomplete: Option<bool>,
+    /// The recording-device class nearby right now, or absent when none is.
+    ///
+    /// Absent rather than an empty string, and it goes absent on its own after a
+    /// couple of minutes: §7 mounts the shell's badge only while a warn condition
+    /// HOLDS, and a shield that stays lit because nothing came to clear it is the
+    /// nagging this page is written against.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recording_nearby: Option<NearbyWire>,
+    /// The tracker verdict standing right now, or absent when none is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tracker_suspected: Option<NearbyWire>,
+}
+
+/// One live finding as the page renders it: what kind of thing, and how sure.
+///
+/// Neither field identifies a device. The class and the confidence are what a
+/// person can act on; which particular camera or tag it was would be a record of
+/// the people around them, which is the thing the detector exists to object to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NearbyWire {
+    /// The class, e.g. "Meta smart glasses", or the tag's ecosystem.
+    pub label: String,
+    /// How sure, or for a tag the verdict: "alert" or "review".
+    pub qualifier: String,
 }
 
 /// The four configurable detectors, named rather than a map, so a missing one is
@@ -269,6 +294,8 @@ mod tests {
     fn the_state_serialises_in_the_shape_the_store_declares() {
         let cfg = Config::default();
         let state = SentinelState {
+            recording_nearby: None,
+            tracker_suspected: None,
             detectors: (&cfg).into(),
             posture: posture_wire(&[Line {
                 surface: Surface::BluetoothDiscoverable,

@@ -180,6 +180,7 @@ pub async fn watch(
     sensitivity: arlen_sentinel_detect::ble_scan::Sensitivity,
     connection: &zbus::Connection,
     events: &impl os_sdk::event::EventEmitter,
+    live: &crate::live::Live,
     stop: impl std::future::Future<Output = ()>,
 ) -> Result<(), String> {
     use arlen_sentinel_detect::ble_scan::thresholds;
@@ -232,11 +233,11 @@ pub async fn watch(
         let outcome = crate::tracker_run::run_scan(&mut once, store, fix, &epochs, now, &anchor);
         for correlator in &outcome.alerts {
             tracing::warn!(tag = %hex(correlator), "a separated tag has followed this machine");
-            publish_tag(events, store, correlator, "alert", now).await;
+            publish_tag(events, store, correlator, "alert", now, live).await;
         }
         for correlator in &outcome.review {
             tracing::info!(tag = %hex(correlator), "a separated tag is worth a look");
-            publish_tag(events, store, correlator, "review", now).await;
+            publish_tag(events, store, correlator, "review", now, live).await;
         }
     }
     Ok(())
@@ -258,6 +259,7 @@ pub async fn watch_recording(
     sensitivity: arlen_sentinel_detect::ble_scan::Sensitivity,
     classes: &[arlen_sentinel_detect::recording::DeviceClass],
     events: &impl os_sdk::event::EventEmitter,
+    live: &crate::live::Live,
     stop: impl std::future::Future<Output = ()>,
 ) -> Result<(), String> {
     use arlen_sentinel_detect::ble_scan::thresholds;
@@ -295,6 +297,7 @@ pub async fn watch_recording(
             class_label: found.label.clone(),
             confidence: confidence_word(found.confidence).to_string(),
         };
+        live.saw_recording(&payload.class_label, &payload.confidence);
         publish(events, RECORDING_EVENT, payload).await;
     }
     Ok(())
@@ -356,6 +359,7 @@ async fn publish_tag(
     correlator: &[u8],
     verdict: &str,
     now_secs: u64,
+    live: &crate::live::Live,
 ) {
     let Ok(Some(tag)) = store.load(correlator) else { return };
     let observed = tag.observe(now_secs);
@@ -365,6 +369,7 @@ async fn publish_tag(
         distinct_epochs: observed.distinct_epochs,
         verdict: verdict.to_string(),
     };
+    live.saw_tracker(payload.brand.as_str(), verdict);
     publish(events, TRACKER_EVENT, payload).await;
 }
 

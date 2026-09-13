@@ -45,7 +45,10 @@ async fn main() -> std::process::ExitCode {
     // Lazy by construction: an audit daemon that is not up yet is a failed submit
     // at the moment somebody switches a detector off, which is the fail-closed
     // answer rather than a reason to refuse to start.
+    // One shared slot per watch, read by the socket that answers the page.
+    let live = Arc::new(arlen_sentineld::live::Live::default());
     let ctx = Arc::new(Context {
+        live: Arc::clone(&live),
         config_path,
         audit: Arc::new(audit_proto::sink::LedgerAuditSink::at_default_socket()),
     });
@@ -61,8 +64,8 @@ async fn main() -> std::process::ExitCode {
     // The finder-tag watch, when the person has it on. Spawned rather than
     // awaited: this daemon's first job is answering what the machine broadcasts,
     // and a radio that will not start must not take the socket down with it.
-    let tracker = spawn_tracker_watch(&ctx.config_path);
-    let recording = spawn_recording_watch(&ctx.config_path);
+    let tracker = spawn_tracker_watch(&ctx.config_path, Arc::clone(&live));
+    let recording = spawn_recording_watch(&ctx.config_path, Arc::clone(&live));
 
     tracing::info!(socket = %socket.display(), "privacy sentinel listening");
     tokio::select! {
@@ -108,7 +111,10 @@ fn prune_sightings() {
 /// watching is said once, at the point somebody would look for it. A detector
 /// that is off is not an error and not a warning: it is the state the person
 /// chose.
-fn spawn_tracker_watch(config_path: &std::path::Path) -> tokio::task::JoinHandle<()> {
+fn spawn_tracker_watch(
+    config_path: &std::path::Path,
+    live: Arc<arlen_sentineld::live::Live>,
+) -> tokio::task::JoinHandle<()> {
     use arlen_sentineld::config::{self, Detector};
     use arlen_sentineld::sightings::SightingStore;
 
@@ -141,6 +147,7 @@ fn spawn_tracker_watch(config_path: &std::path::Path) -> tokio::task::JoinHandle
                 sensitivity,
                 &connection,
                 &event_emitter(),
+                &live,
                 std::future::pending(),
             )
             .await
@@ -155,7 +162,10 @@ fn spawn_tracker_watch(config_path: &std::path::Path) -> tokio::task::JoinHandle
 /// Its own task rather than a branch inside the tag watch: the two detectors have
 /// separate switches, and somebody who wants to know about cameras but not about
 /// tags should get exactly that.
-fn spawn_recording_watch(config_path: &std::path::Path) -> tokio::task::JoinHandle<()> {
+fn spawn_recording_watch(
+    config_path: &std::path::Path,
+    live: Arc<arlen_sentineld::live::Live>,
+) -> tokio::task::JoinHandle<()> {
     use arlen_sentineld::config::{self, Detector};
 
     let (cfg, _) = config::load(config_path);
@@ -172,6 +182,7 @@ fn spawn_recording_watch(config_path: &std::path::Path) -> tokio::task::JoinHand
                 sensitivity,
                 &classes,
                 &event_emitter(),
+                &live,
                 std::future::pending(),
             )
             .await

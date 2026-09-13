@@ -26,7 +26,7 @@ use tokio::net::{UnixListener, UnixStream};
 use crate::config::{self, Config, Detector};
 use crate::host;
 use crate::protocol::{
-    posture_wire, readout_incomplete, Detectors, Request, Response, SentinelState,
+    posture_wire, readout_incomplete, Detectors, NearbyWire, Request, Response, SentinelState,
 };
 use crate::read;
 
@@ -104,6 +104,8 @@ pub struct Context {
     pub config_path: PathBuf,
     /// The ledger a switch is recorded in.
     pub audit: Arc<dyn AuditSink>,
+    /// What the BLE watches have seen lately.
+    pub live: Arc<crate::live::Live>,
 }
 
 /// Read the current state: the switches, and the exposure readout when that
@@ -111,7 +113,7 @@ pub struct Context {
 ///
 /// A detector that is off produces no lines. Showing the last readout of a
 /// detector nobody is running would be a page reporting on a watch that stopped.
-pub async fn current_state(cfg: &Config) -> SentinelState {
+pub async fn current_state(cfg: &Config, live: &crate::live::Live) -> SentinelState {
     let (posture, incomplete) = if cfg.exposure.on {
         let readings = host::read_host().await;
         let lines = arlen_sentinel_detect::readout::compose(&read::postures(&readings));
@@ -134,6 +136,21 @@ pub async fn current_state(cfg: &Config) -> SentinelState {
         // placeholder: the card correctly offers to ask for it.
         tracker_has_location: false,
         posture_incomplete: incomplete.then_some(true),
+        // Only while the detector is on. A finding from before somebody switched
+        // it off is a page reporting on a watch that stopped, which is the same
+        // rule the posture lines above follow.
+        recording_nearby: cfg
+            .recording
+            .on
+            .then(|| live.recording_nearby())
+            .flatten()
+            .map(|(label, qualifier)| NearbyWire { label, qualifier }),
+        tracker_suspected: cfg
+            .tracker
+            .on
+            .then(|| live.tracker_suspected())
+            .flatten()
+            .map(|(label, qualifier)| NearbyWire { label, qualifier }),
     }
 }
 
@@ -144,7 +161,7 @@ pub async fn handle(ctx: &Context, request: Request) -> Response {
         tracing::warn!("{problem}");
     }
     match request {
-        Request::GetState => Response::State(Box::new(current_state(&cfg).await)),
+        Request::GetState => Response::State(Box::new(current_state(&cfg, &ctx.live).await)),
         Request::SetDetector { id, on } => {
             let Some(detector) = Detector::parse(&id) else {
                 return Response::Refused {
@@ -274,6 +291,7 @@ mod tests {
 
     fn ctx(dir: &Path) -> Context {
         Context {
+            live: Arc::new(crate::live::Live::default()),
             config_path: dir.join("arlen/sentinel.toml"),
             audit: Arc::new(MockAuditSink::accepting()),
         }
@@ -338,7 +356,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut cfg = Config::default();
         cfg.exposure.on = false;
-        let state = current_state(&cfg).await;
+        let state = current_state(&cfg, &crate::live::Live::default()).await;
         assert!(state.posture.is_empty());
         assert!(state.posture_incomplete.is_none());
         drop(dir);
@@ -346,11 +364,34 @@ mod tests {
 
     #[tokio::test]
     async fn nothing_claims_to_know_whether_the_microphone_is_in_use() {
-        let state = current_state(&Config::default()).await;
+        let state = current_state(&Config::default(), &crate::live::Live::default()).await;
         assert_eq!(
             state.capture_active, None,
             "no portal answers this, so the page must not be told false"
         );
+    }
+
+    /// A finding only reaches the page while its detector is on: showing one from
+    /// before somebody switched it off is a page reporting on a watch that stopped,
+    /// which is the same rule the posture lines follow.
+    #[tokio::test]
+    async fn a_finding_from_a_switched_off_watch_is_not_served() {
+        let live = crate::live::Live::default();
+        live.saw_recording("Meta smart glasses", "high");
+        live.saw_tracker("apple-find-my", "alert");
+
+        let mut cfg = Config::default();
+        cfg.recording.on = false;
+        cfg.tracker.on = false;
+        let off = current_state(&cfg, &live).await;
+        assert!(off.recording_nearby.is_none());
+        assert!(off.tracker_suspected.is_none());
+
+        cfg.recording.on = true;
+        cfg.tracker.on = true;
+        let on = current_state(&cfg, &live).await;
+        assert_eq!(on.recording_nearby.as_ref().map(|n| n.label.as_str()), Some("Meta smart glasses"));
+        assert_eq!(on.tracker_suspected.as_ref().map(|n| n.qualifier.as_str()), Some("alert"));
     }
 
     #[tokio::test]
