@@ -375,27 +375,66 @@ pub fn spawn(path: &str) -> Result<GraphHandle> {
     // blocking it. 1024 is generous; normal load is much lower.
     let (tx, rx) = mpsc::channel::<GraphRequest>(1024);
 
+    // THE OPEN HAPPENS ON THE THREAD, SO THIS WAITS FOR IT. Returning a handle
+    // the moment the thread starts said nothing about whether there is a graph
+    // behind it: a store that will not open logged one line and the daemon went
+    // on to bind its socket and announce itself ready, after which every read and
+    // every write answered "ladybug thread has stopped". Measured 13 September on
+    // a store the daemon could not open - socket bound, "graph daemon listening",
+    // and no graph. To systemd that process is `active (running)` and
+    // `Restart=on-failure` can never fire, because nothing failed. A daemon whose
+    // whole job is the graph does not come up without one.
+    let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
+
     thread::Builder::new()
         .name("ladybug".to_string())
         .spawn(move || {
-            if let Err(e) = ladybug_thread(&path, rx) {
+            if let Err(e) = ladybug_thread(&path, rx, ready_tx) {
                 tracing::error!("ladybug thread exited with error: {e}");
             }
         })?;
 
-    Ok(GraphHandle { sender: tx })
+    match ready_rx.recv() {
+        Ok(Ok(())) => Ok(GraphHandle { sender: tx }),
+        Ok(Err(e)) => Err(anyhow!("{e}")),
+        // The thread ended before it said either way, which only happens if it
+        // panicked on the way in. Same verdict: there is no store behind this.
+        Err(_) => Err(anyhow!("the ladybug thread stopped before the store was open")),
+    }
 }
 
 /// The body of the dedicated Ladybug thread.
-fn ladybug_thread(path: &str, mut rx: mpsc::Receiver<GraphRequest>) -> Result<()> {
-    let db = Database::new(path, SystemConfig::default())
-        .map_err(|e| anyhow!("failed to open ladybug database: {e}"))?;
-    let conn = Connection::new(&db)
-        .map_err(|e| anyhow!("failed to create ladybug connection: {e}"))?;
+fn ladybug_thread(
+    path: &str,
+    mut rx: mpsc::Receiver<GraphRequest>,
+    ready: std::sync::mpsc::SyncSender<Result<(), String>>,
+) -> Result<()> {
+    // Every way in that can fail reports itself to `spawn` before it returns, so
+    // the caller learns the store is unusable instead of holding a handle to a
+    // thread that has already gone.
+    macro_rules! opening {
+        ($step:expr) => {
+            match $step {
+                Ok(v) => v,
+                Err(e) => {
+                    let msg = e.to_string();
+                    let _ = ready.send(Err(msg.clone()));
+                    return Err(anyhow!(msg));
+                }
+            }
+        };
+    }
+
+    let db = opening!(Database::new(path, SystemConfig::default())
+        .map_err(|e| anyhow!("failed to open ladybug database: {e}")));
+    let conn = opening!(
+        Connection::new(&db).map_err(|e| anyhow!("failed to create ladybug connection: {e}"))
+    );
 
     info!(path, "ladybug database opened");
-    create_schema(&conn)?;
+    opening!(create_schema(&conn));
     info!("ladybug schema ready");
+    let _ = ready.send(Ok(()));
 
     while let Some(request) = rx.blocking_recv() {
         match request {
@@ -1253,6 +1292,48 @@ fn create_schema(conn: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_store_that_cannot_open_fails_the_spawn() {
+        // The control for the daemon coming up with no graph behind it. lbug
+        // refuses a path that is already a directory, which is the cheapest way
+        // to get a real open failure without corrupting a store; what matters is
+        // that `spawn` reports it rather than handing back a handle to a thread
+        // that has already exited.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = dir.path().join("graph");
+        std::fs::create_dir(&store).expect("occupy the path with a directory");
+
+        let err = match spawn(store.to_str().expect("utf-8 path")) {
+            Ok(_) => panic!("a directory is not a store, yet the spawn succeeded"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("ladybug database"),
+            "the reason belongs in the message, got: {err}"
+        );
+    }
+
+    #[test]
+    fn a_store_that_opens_yields_a_usable_handle() {
+        // The other half: the wait is not simply refusing everything. A fresh
+        // path opens, the schema is created, and the handle answers a query.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = dir.path().join("graph");
+        let handle = spawn(store.to_str().expect("utf-8 path")).expect("a fresh store opens");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        rt.block_on(async {
+            handle
+                .query_rows("MATCH (p:Project) RETURN p.id".to_string())
+                .await
+                .expect("the schema is ready by the time the handle exists");
+            handle.shutdown().await;
+        });
+    }
 
     #[test]
     fn value_to_json_preserves_types() {
