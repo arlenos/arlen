@@ -257,6 +257,11 @@ impl EphemeralStack {
             env.insert("ARLEN_AUDIT_EXTRA_ADMIT".to_string(), id.clone());
             env.insert("ARLEN_REVOKE_EXTRA_ADMIT".to_string(), id.clone());
             env.insert("ARLEN_KNOWLEDGE_DEV_SELF_ID".to_string(), id.clone());
+            // The consent broker's control socket, same shape and same reason:
+            // its dev admission is an exact id and a cargo test binary's is
+            // hash-suffixed, so the three consent scenarios connected as a caller
+            // nothing admits and got a reset socket with no reason attached.
+            env.insert("ARLEN_CONSENT_EXTRA_ADMIT".to_string(), id.clone());
             // FirstParty is the DEFAULT and a scenario opts OUT with
             // `as_unprivileged`. This comment used to say "opt-in", which is the
             // opposite, and the mistake was not cosmetic: a scenario that forgets
