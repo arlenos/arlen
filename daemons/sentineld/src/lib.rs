@@ -12,7 +12,9 @@
 //! project has said out loud it will not ship, so the order here is: read the
 //! real state first, and only then let anything be switched.
 
+pub mod location;
 pub mod sightings;
+pub mod tracker_run;
 pub mod client;
 pub mod config;
 pub mod host;

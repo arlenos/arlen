@@ -17,9 +17,10 @@
 //! That is deliberate about the order rather than an oversight, and saying which is
 //! the point of this note. The cores were written first because they are the half
 //! that can be proven on a laptop with no radio in it. What SEN-4 still waits on is
-//! `tracker-sentinel-plan.md` §6 job 1, the GeoClue2 portal bridge: the store and
-//! the criteria are there, and the piece that says WHERE a tag was seen is not, so
-//! nothing produces a sighting to accumulate yet.
+//! `tracker-sentinel-plan.md` §6 job 3's substrate - a BlueZ `AdvertisementMonitor`
+//! and a live adapter. The classifier, the geometry, the accumulation, the criteria,
+//! the coarse location feed and the sealed store are all there and joined in
+//! `arlen-sentineld`'s run loop; nothing hands that loop a real advertisement.
 //!
 //! **Keep this list true.** A detector that gains a caller comes out of the second
 //! paragraph, and one that is added goes in. A pure core is worth having early only

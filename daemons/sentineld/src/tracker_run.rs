@@ -1,0 +1,221 @@
+//! The tracker sentinel's run loop: adverts in, a verdict out
+//! (`tracker-sentinel-plan.md` §2).
+//!
+//! Everything SEN-4 needs is now built and this is the piece that holds it
+//! together: [`crate::location`] says where the machine is, the classifier says
+//! whether an advert is a separated finder-tag, [`crate::sightings`] keeps that tag
+//! between sessions, and the criteria decide. Splitting it out of the daemon's
+//! `main` is what makes it testable - the loop is driven through two seams, so the
+//! whole chain can be exercised without a radio or a location service.
+//!
+//! **The BLE scan is the seam that is still open** (§6 job 3's substrate). An
+//! [`AdvertSource`] hands over raw advertisement fields; the real one is a BlueZ
+//! `AdvertisementMonitor`, which needs a live adapter and is the piece this waits
+//! on. Everything above it is exercised here against a source that yields fixtures.
+//!
+//! **Near-owner adverts are dropped before the store, not after.** A tag saying its
+//! owner is nearby is not a stalking signal, and writing it down anyway would mean
+//! keeping location history about somebody's own keys. The drop is the first thing
+//! that happens to a classified advert.
+//!
+//! **An unplaced sighting is still recorded.** A scan with no fix - GeoClue silent,
+//! the machine somewhere it cannot be placed - still proves the tag was near you,
+//! just not where. It goes in with the last known fix if there is one and is skipped
+//! only when there has never been one, because a sighting at (0, 0) would be a place
+//! in the Gulf of Guinea that the distinct-place count would believe.
+
+use arlen_sentinel_detect::movement::Fix;
+use arlen_sentinel_detect::sighting::Sighting;
+use arlen_sentinel_detect::tracker::{classify_manufacturer_data, classify_service_data, Separation, TrackerMatch};
+use arlen_sentinel_detect::trigger::{verdict, Verdict};
+
+use crate::sightings::SightingStore;
+
+/// One BLE advertisement, as a scanner reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Advert {
+    /// The payload identifier this tag is correlated by - never the MAC.
+    pub correlator: Vec<u8>,
+    /// Manufacturer-Data, if the advert carried it: company id and payload.
+    pub manufacturer: Option<(u16, Vec<u8>)>,
+    /// Service-Data, if the advert carried it: 16-bit UUID and payload.
+    pub service: Option<(u16, Vec<u8>)>,
+}
+
+/// Where adverts come from. The real implementation is a BlueZ
+/// `AdvertisementMonitor`; the tests use a list.
+pub trait AdvertSource {
+    /// The adverts seen in this scan.
+    fn scan(&mut self) -> Vec<Advert>;
+}
+
+/// What one scan did.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ScanOutcome {
+    /// Adverts that were not finder-tags at all.
+    pub ignored: usize,
+    /// Finder-tag adverts dropped because the owner is nearby.
+    pub near_owner: usize,
+    /// Sightings written to the store.
+    pub recorded: usize,
+    /// Tags that met the alert bar in this scan.
+    pub alerts: Vec<Vec<u8>>,
+    /// Tags worth a person's eyes but not an interruption.
+    pub review: Vec<Vec<u8>>,
+}
+
+/// Classify one advert. Manufacturer-Data first because Apple is the only brand
+/// that uses it, and a single advert carrying both is Apple's.
+fn classify(advert: &Advert) -> Option<TrackerMatch> {
+    if let Some((company, data)) = &advert.manufacturer {
+        if let Some(m) = classify_manufacturer_data(*company, data) {
+            return Some(m);
+        }
+    }
+    let (uuid, data) = advert.service.as_ref()?;
+    classify_service_data(*uuid, data)
+}
+
+/// Run one scan: classify, drop the near-owner adverts, record the rest against
+/// their tags, and decide.
+///
+/// `fix` is the machine's current coarse location, or `None` when it has none.
+/// `epoch_id` is the awake-session; the daemon bumps it on resume and on a
+/// location delta, and two distinct ones is what makes a span meaningful on a
+/// machine that suspends.
+pub fn run_scan(
+    source: &mut dyn AdvertSource,
+    store: &SightingStore,
+    fix: Option<Fix>,
+    epoch_id: u64,
+    now_secs: u64,
+    at_home: bool,
+) -> ScanOutcome {
+    let mut out = ScanOutcome::default();
+    for advert in source.scan() {
+        let Some(m) = classify(&advert) else {
+            out.ignored += 1;
+            continue;
+        };
+        if m.separation == Separation::NearOwner {
+            out.near_owner += 1;
+            continue;
+        }
+        let Some(fix) = fix else {
+            // Never placed: see the module doc. A sighting with an invented
+            // location is worse than one that was not taken.
+            continue;
+        };
+        let sighting = Sighting { seen_at_secs: now_secs, fix, epoch_id };
+        let Ok(mut tag) = store.record(&advert.correlator, m.brand, sighting) else {
+            // A store that will not write is a detection this scan cannot make.
+            // It is logged by the caller; the scan carries on with the others.
+            continue;
+        };
+        out.recorded += 1;
+        if at_home && !tag.seen_at_home {
+            tag.seen_at_home = true;
+            let _ = store.save(&tag);
+        }
+        let allowlisted = tag.allow_state != arlen_sentinel_detect::sighting::AllowState::Unknown;
+        match verdict(&tag.observe(now_secs), tag.seen_at_home, allowlisted) {
+            Verdict::Alert => out.alerts.push(advert.correlator.clone()),
+            Verdict::Review => out.review.push(advert.correlator.clone()),
+            Verdict::Nothing => {}
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An Apple offline (separated) finding frame, the shape `tracker.rs` matches.
+    fn apple_separated() -> Advert {
+        let mut payload = vec![0x12, 0x19];
+        payload.extend_from_slice(&[0u8; 25]);
+        Advert {
+            correlator: b"apple-key-1".to_vec(),
+            manufacturer: Some((0x004C, payload)),
+            service: None,
+        }
+    }
+
+    fn not_a_tag() -> Advert {
+        Advert {
+            correlator: b"headphones".to_vec(),
+            manufacturer: Some((0x0075, vec![1, 2, 3])),
+            service: None,
+        }
+    }
+
+    struct Fixed(Vec<Advert>);
+    impl AdvertSource for Fixed {
+        fn scan(&mut self) -> Vec<Advert> {
+            self.0.clone()
+        }
+    }
+
+    fn store(dir: &std::path::Path) -> SightingStore {
+        SightingStore::open_in(dir).expect("a fresh store opens")
+    }
+
+    #[test]
+    fn a_non_tag_advert_is_ignored_and_nothing_is_written() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let mut src = Fixed(vec![not_a_tag()]);
+        let out = run_scan(&mut src, &s, Some(Fix { lat: 47.26, lon: 11.40 }), 1, 1_000, false);
+        assert_eq!(out.ignored, 1);
+        assert_eq!(out.recorded, 0);
+        assert!(s.all().unwrap().is_empty());
+    }
+
+    /// The whole chain: a tag seen across two places and two sessions alerts.
+    #[test]
+    fn a_tag_across_two_places_and_two_sessions_alerts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let mut src = Fixed(vec![apple_separated()]);
+        let here = Fix { lat: 47.2692, lon: 11.4041 };
+        let there = Fix { lat: 47.2692, lon: 11.4570 };
+
+        run_scan(&mut src, &s, Some(here), 1, 1_000, false);
+        run_scan(&mut src, &s, Some(here), 1, 1_600, false);
+        let out = run_scan(&mut src, &s, Some(there), 2, 4_700, false);
+
+        assert_eq!(out.alerts, vec![b"apple-key-1".to_vec()], "{out:?}");
+        assert!(out.review.is_empty());
+    }
+
+    /// The home anchor downgrades the same evidence to something a person can look
+    /// at, rather than an interruption.
+    #[test]
+    fn the_same_evidence_at_home_is_review_not_an_alert() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let mut src = Fixed(vec![apple_separated()]);
+        let here = Fix { lat: 47.2692, lon: 11.4041 };
+        let there = Fix { lat: 47.2692, lon: 11.4570 };
+
+        run_scan(&mut src, &s, Some(here), 1, 1_000, true);
+        run_scan(&mut src, &s, Some(here), 1, 1_600, true);
+        let out = run_scan(&mut src, &s, Some(there), 2, 4_700, false);
+
+        assert!(out.alerts.is_empty(), "{out:?}");
+        assert_eq!(out.review, vec![b"apple-key-1".to_vec()]);
+    }
+
+    /// No fix means no place, and a sighting with an invented place is worse than
+    /// one that was not taken.
+    #[test]
+    fn an_unplaced_scan_writes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let mut src = Fixed(vec![apple_separated()]);
+        let out = run_scan(&mut src, &s, None, 1, 1_000, false);
+        assert_eq!(out.recorded, 0);
+        assert!(s.all().unwrap().is_empty());
+    }
+}
