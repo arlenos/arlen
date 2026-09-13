@@ -64,8 +64,17 @@ async fn main() -> std::process::ExitCode {
     // The finder-tag watch, when the person has it on. Spawned rather than
     // awaited: this daemon's first job is answering what the machine broadcasts,
     // and a radio that will not start must not take the socket down with it.
-    let tracker = spawn_tracker_watch(&ctx.config_path, Arc::clone(&live));
-    let recording = spawn_recording_watch(&ctx.config_path, Arc::clone(&live));
+    // One radio for both watches: two tasks each opening their own session and
+    // registering at the same moment made BlueZ release one of the monitors.
+    let radio = match arlen_sentineld::ble::Radio::open().await {
+        Ok(r) => Some(Arc::new(r)),
+        Err(e) => {
+            tracing::info!("no bluetooth radio, so neither BLE detector runs: {e}");
+            None
+        }
+    };
+    let tracker = spawn_tracker_watch(&ctx.config_path, Arc::clone(&live), radio.clone());
+    let recording = spawn_recording_watch(&ctx.config_path, Arc::clone(&live), radio.clone());
 
     tracing::info!(socket = %socket.display(), "privacy sentinel listening");
     tokio::select! {
@@ -114,6 +123,7 @@ fn prune_sightings() {
 fn spawn_tracker_watch(
     config_path: &std::path::Path,
     live: Arc<arlen_sentineld::live::Live>,
+    radio: Option<Arc<arlen_sentineld::ble::Radio>>,
 ) -> tokio::task::JoinHandle<()> {
     use arlen_sentineld::config::{self, Detector};
     use arlen_sentineld::sightings::SightingStore;
@@ -125,6 +135,7 @@ fn spawn_tracker_watch(
             tracing::info!("the tracker detector is off, so nothing is watched for");
             return;
         }
+        let Some(radio) = radio else { return };
         let store = match SightingStore::open_default() {
             Ok(store) => store,
             Err(e) => {
@@ -143,6 +154,7 @@ fn spawn_tracker_watch(
         // Runs until the task is aborted at shutdown.
         if let Err(e) =
             arlen_sentineld::ble::watch(
+                &radio,
                 &store,
                 sensitivity,
                 &connection,
@@ -165,6 +177,7 @@ fn spawn_tracker_watch(
 fn spawn_recording_watch(
     config_path: &std::path::Path,
     live: Arc<arlen_sentineld::live::Live>,
+    radio: Option<Arc<arlen_sentineld::ble::Radio>>,
 ) -> tokio::task::JoinHandle<()> {
     use arlen_sentineld::config::{self, Detector};
 
@@ -175,10 +188,12 @@ fn spawn_recording_watch(
             tracing::info!("the recording detector is off, so nothing is watched for");
             return;
         }
+        let Some(radio) = radio else { return };
         let classes = arlen_sentinel_detect::recording::bundled_device_classes();
         let sensitivity = config::proximity_sensitivity(&recording);
         if let Err(e) =
             arlen_sentineld::ble::watch_recording(
+                &radio,
                 sensitivity,
                 &classes,
                 &event_emitter(),
