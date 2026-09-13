@@ -637,7 +637,7 @@ integration-nightly:
     # `check-integration-builds.py` holds this list against the suite now.
     for c in daemons/event-bus daemons/knowledge daemons/audit-daemon daemons/code-indexer \
              daemons/consent-broker daemons/config-broker daemons/ai-engine-daemon \
-             store-backend ai; do
+             daemons/anomaly-detector store-backend ai; do
         echo "== build $c ==" | tee -a "$report"
         cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml" 2>&1 | tee -a "$report"
     done

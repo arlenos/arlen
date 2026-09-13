@@ -306,6 +306,13 @@ impl EphemeralStack {
         self.socket_path("config")
     }
 
+    /// The private data home (`XDG_DATA_HOME` stand-in); a daemon that persists
+    /// state or a log under it writes here, e.g. the anomaly detector's
+    /// `arlen/anomaly/alerts.json`.
+    pub fn data_home(&self) -> PathBuf {
+        self.socket_path("data")
+    }
+
     /// Point the knowledge daemon's project watcher at `dir` (rewriting the seeded
     /// `graph.toml` `[projects].watch_directories`), so a scenario can drive
     /// project detection from a controlled fixture directory. Must be called

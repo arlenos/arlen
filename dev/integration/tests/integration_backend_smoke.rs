@@ -1618,6 +1618,110 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
     );
 }
 
+/// IT-1 anomaly detector: a recorded policy violation reaches the person.
+///
+/// The detector is the one component whose job is to INTERRUPT somebody, and it
+/// had no coverage at all. The defect that motivated this one is the shape a
+/// scenario catches and a unit test cannot: the audit poll used to sit inside the
+/// loop entered only after a successful event-bus subscribe, so a detector that
+/// could not reach the bus read the ledger once at startup and never again -
+/// silently, behind a warning that said only that the bus was down.
+///
+/// So this deliberately runs with NO event bus. A seed entry first, so the
+/// startup catch-up completes and the baseline goes live (entries present at
+/// bootstrap are learned, never dispatched - that is the design, and asserting
+/// against it would be asserting the wrong thing). Then the trip, then poll the
+/// alert log the harness surface reads.
+///
+/// Slow by construction: the poll interval is thirty seconds and the detector has
+/// no way to be nudged, so the wait is the real cadence rather than a fixture.
+#[tokio::test]
+#[ignore = "needs audit-daemon + anomaly-detector binaries built (debug, for the dev ingest admission)"]
+async fn a_recorded_policy_violation_becomes_an_alert_without_an_event_bus() {
+    use audit_proto::client::AuditClient;
+    use audit_proto::{AuditKind, IngestRequest, StructuralRecord};
+
+    if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
+        && arlen_integration::binary_built("daemons/anomaly-detector", "arlen-anomalyd"))
+    {
+        eprintln!("SKIP a_recorded_policy_violation_becomes_an_alert_without_an_event_bus: arlen-auditd or arlen-anomalyd not built (run `just integration-nightly`)");
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_ready("arlen/audit-ingest.sock")
+        .expect("audit ingest socket");
+    stack
+        .wait_ready("arlen/audit-read.sock")
+        .expect("audit read socket");
+
+    let violation = |outcome: &str| IngestRequest {
+        kind: AuditKind::PolicyViolation,
+        structural: StructuralRecord {
+            subject: "it.canary".to_string(),
+            node_types: vec![],
+            relations: vec![],
+            result_count: None,
+            duration_ms: None,
+            outcome: outcome.to_string(),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    };
+    let ingest = AuditClient::new(stack.audit_ingest_socket());
+    // The seed: present before the detector starts, so its catch-up completes and
+    // the baseline goes live. This one must NOT alert.
+    ingest
+        .submit(&violation("it-seed"))
+        .await
+        .expect("the seed entry is accepted");
+
+    stack
+        .spawn("daemons/anomaly-detector", "arlen-anomalyd", &[])
+        .expect("spawn anomaly-detector");
+    // No readiness socket, so give the startup catch-up a moment to finish before
+    // the live entry lands; an entry that races bootstrap would be learned instead.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    ingest
+        .submit(&violation("canary-tripped:structural"))
+        .await
+        .expect("the live trip is accepted");
+
+    // The detector's alert log, which is what the harness Notices surface reads.
+    let alerts = stack.data_home().join("arlen/anomaly/alerts.json");
+    let mut body = String::new();
+    for _ in 0..90 {
+        if let Ok(text) = std::fs::read_to_string(&alerts) {
+            if text.contains("policy-violation") {
+                body = text;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    assert!(
+        body.contains("policy-violation"),
+        "a PolicyViolation in the ledger must reach the alert log with no event bus running; \
+         alerts.json was {:?}",
+        std::fs::read_to_string(&alerts).ok()
+    );
+    assert!(
+        body.contains("\"critical\": true"),
+        "a tripwire firing is critical, not advisory: {body}"
+    );
+    assert!(
+        !body.contains("it-seed"),
+        "an entry already in the ledger at startup is baseline, not an alert: {body}"
+    );
+}
+
 /// IT-1 agent workflow path (the "AI query -> dry-run executor" piece, suggest
 /// mode): the ai-agent runs a deterministic workflow behaviour and audits its
 /// decision. The agent has no session bus in the harness (forced via an invalid
