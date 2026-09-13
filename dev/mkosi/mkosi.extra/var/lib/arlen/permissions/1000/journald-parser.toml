@@ -1,0 +1,26 @@
+# The journal tier's event-bus profile.
+#
+# Found on 13 September by the first run of a widened `check-emitters-declared`:
+# this daemon publishes its topic through a constant (`EVENT_TYPE`), which the
+# check could not see, so it had been reading as a producer that emits nothing.
+# The privacy sentinel had the same shape and the same missing profile; teaching
+# the gate to follow a constant turned up both.
+#
+# Without it, every classified service transition is dropped at the bus once
+# publish enforcement stops being shadow mode, and dropped silently: the daemon
+# keeps following the journal and reporting success while the graph stops hearing
+# about a network coming up or a session opening.
+#
+# `journald-parser`, the id `identity.rs` maps its libexec install path to. The
+# filename has to be that id or the profile is never found.
+#
+# One topic, publish only. It reads the journal and says what changed; nothing
+# another component publishes changes what systemd already logged.
+
+[info]
+app_id = "journald-parser"
+tier = "first-party"
+
+[event_bus]
+publish = ["system.service"]
+subscribe = []

@@ -58,6 +58,23 @@ IDENTITY = "sdk/permissions/src/identity.rs"
 # and the shell's hand-rolled helper.
 PUBLISH_CALL = re.compile(r'(?:emit_to_event_bus|\.emit|emit_event)\s*\(\s*"(?P<topic>[^"]+)"')
 
+#: The same call with the topic held in a CONSTANT rather than written inline:
+#: `publish(events, RECORDING_EVENT, payload)`. Added 13 September after the
+#: privacy sentinel emitted two topics this file could not see - it read the
+#: daemon as emitting nothing, asked for no profile, and under enforcement both
+#: events would have been dropped at the bus in silence. A gate matches the shape
+#: its author last happened to write, and the shape here was one indirection.
+PUBLISH_VIA_CONST = re.compile(
+    r'(?:emit_to_event_bus|\.emit|emit_event|publish)\s*\([^)]*?\b(?P<name>[A-Z][A-Z0-9_]{2,})\b'
+)
+
+#: A `const NAME: &str = "a.topic";` the call above can be naming. Only dotted
+#: values count, so a constant holding a socket name or a bus path is not read as
+#: a topic.
+CONST_TOPIC = re.compile(
+    r'const\s+(?P<name>[A-Z][A-Z0-9_]{2,})\s*:\s*&\s*str\s*=\s*"(?P<topic>[^"\s]+\.[^"\s]+)"'
+)
+
 # The resolver's own match arms: `"/usr/lib/..." => { return Ok("id"...`. Read
 # from the arms rather than the test table below them, because the table is a
 # SAMPLE - `arlen-auditd` has an arm and no table entry, and trusting the table
@@ -108,12 +125,23 @@ def emitters(repo: Path) -> dict[str, set[str]]:
             for f in d.rglob("*.rs"):
                 if any(s in str(f) for s in SKIP):
                     continue
-                for m in PUBLISH_CALL.finditer(f.read_text(encoding="utf-8", errors="replace")):
+                text = f.read_text(encoding="utf-8", errors="replace")
+                for m in PUBLISH_CALL.finditer(text):
                     t = m.group("topic")
                     # A dotted bus topic, not a Tauri window event or a log line
                     # behind a method that happens to be called `emit`.
                     if "." in t and "://" not in t and " " not in t:
                         topics.add(t)
+                # And the same call with the topic behind a constant. The constant
+                # has to be declared in this file: following one across a module
+                # would mean resolving Rust paths, and a producer that names its
+                # own topics is the shape this is for.
+                named = {m.group("name"): m.group("topic") for m in CONST_TOPIC.finditer(text)}
+                if named:
+                    for m in PUBLISH_VIA_CONST.finditer(text):
+                        topic = named.get(m.group("name"))
+                        if topic and "://" not in topic:
+                            topics.add(topic)
             if topics:
                 out[str(d.relative_to(repo))] = topics
     return out
