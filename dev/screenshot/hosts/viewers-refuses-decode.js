@@ -31,12 +31,13 @@
     invoke: function (cmd) {
       if (cmd === "initial_file") return Promise.resolve(PATH);
       if (cmd === "detect_media_kind") return Promise.resolve("image");
-      // The one refusal this fixture is about. A tagged, human sentence rather
-      // than a Rust error string: the surface decides between its own wording and
-      // quoting the reason, and quoting is only right when the reason reads as
-      // something a person wrote.
+      // The one refusal this fixture is about, and it answers the way the real
+      // command does since 13 September: a TOKEN, not a sentence. The window owns
+      // the wording - a backend sentence spliced into a translated one is half in
+      // the wrong language, which is what this fixture used to demonstrate without
+      // anybody noticing.
       if (cmd === "decode_image") {
-        return Promise.reject("Die Datei bricht nach dem Kopf ab.");
+        return Promise.reject("decode-failed");
       }
       if (cmd === "folder_position") return Promise.resolve([1, 3]);
       return Promise.reject("stub-host: no backend behind this window (" + cmd + ")");

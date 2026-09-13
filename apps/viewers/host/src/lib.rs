@@ -116,18 +116,55 @@ pub fn spawn_probe(
     decode_audio_frame(&frame).map_err(|e| format!("invalid probe frame: {e:?}"))
 }
 
+/// Why an open failed, as a TOKEN the window can say in the reader's language,
+/// plus the host's own text for the log.
+///
+/// The two path functions below used to answer with prose - "unsupported file
+/// format", "read /home/you/a.jpg: Permission denied (os error 13)" - and the
+/// window spliced it after a translated sentence, so half of what a German reader
+/// saw was English. The sentence belongs to the frontend and the detail belongs
+/// in the log, which is what this splits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenFailure {
+    /// A stable token. Never shown; the window maps it to a sentence.
+    pub token: &'static str,
+    /// The host's own text, for the log.
+    pub detail: String,
+}
+
+impl OpenFailure {
+    /// The file could not be read at all.
+    pub fn unreadable(detail: String) -> Self {
+        Self { token: "unreadable", detail }
+    }
+    /// Nothing here recognises the format.
+    pub fn unsupported_format(detail: String) -> Self {
+        Self { token: "unsupported-format", detail }
+    }
+    /// The format is known and this build ships no worker for it.
+    pub fn no_decoder(detail: String) -> Self {
+        Self { token: "no-decoder", detail }
+    }
+    /// The worker ran and did not give back a usable answer.
+    pub fn decode_failed(detail: String) -> Self {
+        Self { token: "decode-failed", detail }
+    }
+}
+
 /// Decode an on-disk image file: read it (bounded), detect the format, and run
 /// the matching sandboxed decoder. Errors for an audio/fallback file (no image
 /// worker), an unsupported format, or a decode failure.
-pub fn decode_image_path(worker_dir: &str, path: &Path) -> Result<DecodedImage, String> {
+pub fn decode_image_path(worker_dir: &str, path: &Path) -> Result<DecodedImage, OpenFailure> {
     let mut input = Vec::new();
     std::fs::File::open(path)
         .and_then(|f| f.take(MAX_INPUT_BYTES).read_to_end(&mut input).map(|_| ()))
-        .map_err(|e| format!("read {}: {e}", path.display()))?;
+        .map_err(|e| OpenFailure::unreadable(format!("read {}: {e}", path.display())))?;
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let detected = detect(name, &input).ok_or("unsupported file format")?;
-    let bin = worker_bin(detected.decoder).ok_or("no image decoder for this format")?;
-    spawn_decode(worker_dir, bin, detected.decoder, &input)
+    let detected = detect(name, &input)
+        .ok_or_else(|| OpenFailure::unsupported_format(format!("no format matched {name}")))?;
+    let bin = worker_bin(detected.decoder)
+        .ok_or_else(|| OpenFailure::no_decoder(format!("no image worker for {:?}", detected.decoder)))?;
+    spawn_decode(worker_dir, bin, detected.decoder, &input).map_err(OpenFailure::decode_failed)
 }
 
 /// The sandboxed worker binary for an audio [`Decoder`], or `None` for a
@@ -144,15 +181,17 @@ pub fn audio_worker_bin(decoder: Decoder) -> Option<&'static str> {
 /// Probe an on-disk audio file: read it (bounded), detect the format, and run
 /// the matching sandboxed probe worker, returning its [`AudioInfo`]. Errors for
 /// an image/unsupported file or a probe failure.
-pub fn probe_audio_path(worker_dir: &str, path: &Path) -> Result<AudioInfo, String> {
+pub fn probe_audio_path(worker_dir: &str, path: &Path) -> Result<AudioInfo, OpenFailure> {
     let mut input = Vec::new();
     std::fs::File::open(path)
         .and_then(|f| f.take(MAX_INPUT_BYTES).read_to_end(&mut input).map(|_| ()))
-        .map_err(|e| format!("read {}: {e}", path.display()))?;
+        .map_err(|e| OpenFailure::unreadable(format!("read {}: {e}", path.display())))?;
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let detected = detect(name, &input).ok_or("unsupported file format")?;
-    let bin = audio_worker_bin(detected.decoder).ok_or("no audio probe worker for this format")?;
-    spawn_probe(worker_dir, bin, detected.decoder, &input)
+    let detected = detect(name, &input)
+        .ok_or_else(|| OpenFailure::unsupported_format(format!("no format matched {name}")))?;
+    let bin = audio_worker_bin(detected.decoder)
+        .ok_or_else(|| OpenFailure::no_decoder(format!("no audio worker for {:?}", detected.decoder)))?;
+    spawn_probe(worker_dir, bin, detected.decoder, &input).map_err(OpenFailure::decode_failed)
 }
 
 

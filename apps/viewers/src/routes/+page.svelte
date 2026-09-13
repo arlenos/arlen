@@ -1,6 +1,8 @@
 <script lang="ts">
   import { printProblem, restoreProblem, trashProblem } from "$lib/trashProblem";
   import { t, locale } from "$lib/i18n/messages";
+  import { kt } from "@arlen/ui-kit/i18n/messages.kit";
+  import { ioWhyKey } from "@arlen/ui-kit/io-why";
   import { formatSize } from "@arlen/ui-kit/components/browser";
   import { initAppMenu, menuAction } from "$lib/menu";
   /// The viewer routes one window to one file by media type. When launched on a
@@ -55,6 +57,14 @@
   // keeps the mock/demo path (no Tauri runtime, or no file argument).
   let loaded = $state<Loaded | null>(null);
   let loadError = $state<string | null>(null);
+  /// The catalogue key for WHY the open failed, or null when there is no reason
+  /// this app can say in the reader's language.
+  ///
+  /// Separate from `loadError`, which holds the host's own text: that text is an
+  /// errno string or a runtime exception, and splicing it after a translated
+  /// sentence leaves half the sentence in English. The key is what the sentence
+  /// says; the raw text goes to the console for whoever is debugging.
+  let loadWhy = $state<string | null>(null);
 
   /// The file the failed open was about, when it is known.
   ///
@@ -103,16 +113,48 @@
   function hasReason(message: string): boolean {
     return message.trim() !== "" && !readsAsInternal(message);
   }
+  /// Record a failed open: the reason the reader gets, and the host's own text
+  /// for the console. `why` is null when nothing can be said about the cause,
+  /// which is the honest answer for a runtime exception.
+  function failed(why: string | null, raw: string) {
+    loadWhy = why;
+    loadError = raw;
+    if (why === null && raw.trim() !== "") console.warn("viewers: open failed", raw);
+  }
+  /// The catalogue key for a refusal the backend sent.
+  ///
+  /// The host answers with a TOKEN - `unreadable`, `unsupported-format`,
+  /// `no-decoder`, `decode-failed` - and each has a sentence here. Anything else
+  /// is a runtime error rather than a refusal, so it falls to the errno reader and
+  /// then to nothing: a text this app cannot say in the reader's language is not
+  /// quoted at them.
+  function whyOf(raw: string): string | null {
+    switch (raw) {
+      case "unreadable":
+        return "v.whyUnreadable";
+      case "unsupported-format":
+        return "v.whyUnsupportedKind";
+      case "no-decoder":
+        return "v.whyNoDecoder";
+      case "decode-failed":
+        return "v.whyDecode";
+      default:
+        return hasReason(raw) ? ioWhyKey(raw) : null;
+    }
+  }
   /// The open failure as one finished sentence, for the Notice at the top of
   /// the empty view.
   const loadText = $derived.by(() => {
     if (loadError === null) return "";
+    // The reason is a catalogue key or nothing at all; the host's own text never
+    // reaches this sentence.
+    const reason = loadWhy === null ? "" : loadWhy.startsWith("k.") ? $kt(loadWhy) : $t(loadWhy);
     if (failedName) {
-      return hasReason(loadError)
-        ? $t("v.couldNotOpenNamed", { name: failedName, reason: loadError })
+      return reason
+        ? $t("v.couldNotOpenNamed", { name: failedName, reason })
         : $t("v.couldNotOpenNamedUnknown", { name: failedName });
     }
-    return hasReason(loadError) ? $t("v.couldNotOpen", { reason: loadError }) : $t("v.couldNotOpenUnknown");
+    return reason ? $t("v.couldNotOpen", { reason }) : $t("v.couldNotOpenUnknown");
   });
 
   function basename(p: string): string {
@@ -152,13 +194,13 @@
         // No toplevel (vite): nothing to lose focus, so nothing to clear.
       });
     if (pinnedState === "load-error") {
-      loadError = "decode-image: unsupported JPEG progressive scan";
+      failed("v.whyDecode", "decode-image: unsupported JPEG progressive scan");
       return;
     }
     if (pinnedState === "internal-error") {
       // The half that has to be SUPPRESSED, so the guard can be seen working and
       // not just read.
-      loadError = "TypeError: undefined is not an object (evaluating 'window.__TAURI_INTERNALS__.invoke')";
+      failed(null, "TypeError: undefined is not an object (evaluating 'window.__TAURI_INTERNALS__.invoke')");
       return;
     }
     if (pinnedState === "no-file") {
@@ -178,7 +220,8 @@
       // same defect the `noFile` comment above records, one branch over, and it
       // survived that fix because only the `!path` case was covered.
       // `readsAsInternal` keeps a runtime error from being quoted at a person.
-      loadError = String(e);
+      const raw = String(e);
+      failed(whyOf(raw), raw);
       return;
     }
     if (!path) {
@@ -303,11 +346,12 @@
           },
         };
       } else {
-        loadError = `unsupported media kind: ${kind}`;
+        failed("v.whyUnsupportedKind", `unsupported media kind: ${kind}`);
         failedName = name;
       }
     } catch (e) {
-      loadError = String(e);
+      const raw = String(e);
+      failed(whyOf(raw), raw);
       failedName = name;
     }
   }
@@ -489,6 +533,7 @@
     lastDeleted = null;
     noFile = false;
     loadError = null;
+    loadWhy = null;
     failedName = null;
     actionError = null;
     currentPath = d.original;
@@ -513,7 +558,8 @@
       currentPath = neighbour;
       await openFile(neighbour);
     } catch (e) {
-      loadError = String(e);
+      const raw = String(e);
+      failed(whyOf(raw), raw);
     }
   }
 

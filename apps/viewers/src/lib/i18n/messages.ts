@@ -88,6 +88,10 @@ const messages: Catalogs = {
     "v.couldNotOpenUnknown": "Could not open this file.",
     "v.couldNotOpenNamed": "{$name} could not be opened: {$reason}",
     "v.couldNotOpenNamedUnknown": "{$name} could not be opened.",
+    "v.whyDecode": "It could not be decoded.",
+    "v.whyUnreadable": "It could not be read.",
+    "v.whyNoDecoder": "This build has no decoder for that format.",
+    "v.whyUnsupportedKind": "This kind of file is not one the viewer shows.",
     "v.nothingOpen": "No file is open. Open one from Files, or pass one on the command line.",
   },
   de: {
@@ -171,6 +175,10 @@ const messages: Catalogs = {
     "v.couldNotOpenUnknown": "Diese Datei konnte nicht geöffnet werden.",
     "v.couldNotOpenNamed": "{$name} konnte nicht geöffnet werden: {$reason}",
     "v.couldNotOpenNamedUnknown": "{$name} konnte nicht geöffnet werden.",
+    "v.whyDecode": "Sie konnte nicht dekodiert werden.",
+    "v.whyUnreadable": "Sie konnte nicht gelesen werden.",
+    "v.whyNoDecoder": "Dieser Build hat keinen Dekoder für dieses Format.",
+    "v.whyUnsupportedKind": "Diese Art von Datei zeigt der Betrachter nicht an.",
     "v.nothingOpen": "Es ist keine Datei geöffnet. Öffne eine aus Dateien, oder übergib eine auf der Kommandozeile.",
   },
 };

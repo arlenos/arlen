@@ -121,7 +121,6 @@ KNOWN: dict[str, tuple[int, str]] = {
     # A deliberate dev-only pin: the viewer assigns a TypeError string to exercise
     # its own internal-error guard, so the guard can be SEEN working rather than
     # read. Suppressed on the way to the screen, never shown.
-    "apps/viewers/src/routes/+page.svelte": (1, "the `internal-error` pin at :103, suppressed by the guard it tests"),
     # The kit's accessibility demo page. Its content is the demo.
     "sdk/ui-kit/src/lib/components/a11y-kitchen.svelte": (3, "the kit's demo page; the strings are the demo"),
     # THE FIELD FORM (`name: "..."`) reached these when it was added, and every one
