@@ -4,6 +4,7 @@
   /// header row sorts the columns the way the file list does (client
   /// side; the backend walk has no order contract).
   import { ChevronDown, ChevronUp } from "lucide-svelte";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import {
     entryIcon,
     formatModified,
@@ -59,6 +60,14 @@
 </script>
 
 <div class="search-results" role="list" aria-label={$t("f.results.aria")}>
+  <!-- A search that did not run is a refusal, not an empty result: it sits at
+       the top of the results in the one shape, and the empty state below stays
+       for "nothing matches" alone. -->
+  {#if $searchUnavailable}
+    <div class="note"><Notice tone="error" text={`${$t("f.results.noHostTitle")}. ${$t("f.results.noHostHint")}`} /></div>
+  {:else if $searchFailed}
+    <div class="note"><Notice tone="error" text={`${$t("f.results.failedTitle")}. ${$t("f.results.failedHint")}`} /></div>
+  {/if}
   {#if sorted && sorted.length > 0}
     <!-- A LIST WITH SORT CONTROLS, not a table. These were
          `<button role="columnheader" aria-sort=…>` inside a `role="row"` inside a
@@ -92,18 +101,10 @@
       {/each}
     </div>
   {/if}
-  {#if sorted && sorted.length === 0}
+  {#if sorted && sorted.length === 0 && !$searchUnavailable && !$searchFailed}
     <div class="sr-empty">
-      <span class="sr-empty-title">{$searchUnavailable
-          ? $t("f.results.noHostTitle")
-          : $searchFailed
-            ? $t("f.results.failedTitle")
-            : $t("f.results.emptyTitle")}</span>
-      <span class="sr-empty-hint">{$searchUnavailable
-          ? $t("f.results.noHostHint")
-          : $searchFailed
-            ? $t("f.results.failedHint")
-            : $t("f.results.emptyHint")}</span>
+      <span class="sr-empty-title">{$t("f.results.emptyTitle")}</span>
+      <span class="sr-empty-hint">{$t("f.results.emptyHint")}</span>
     </div>
   {/if}
   {#each sorted ?? [] as hit (hit.rel_path)}
@@ -234,6 +235,9 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
+  .note {
+    margin: 8px 16px 0;
+  }
   .sr-empty {
     margin: auto;
     display: flex;

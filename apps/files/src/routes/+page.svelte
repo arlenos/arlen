@@ -29,7 +29,10 @@
   import { addBookmark, homePath, loadPlaces } from "$lib/stores/places";
   import { infoOpen } from "$lib/stores/ui";
   import { templates, loadTemplates, type Template } from "$lib/stores/templates";
-  import { clipboard, paste, runOp, bulkRename, extractArchive, compressPaths } from "$lib/stores/ops";
+  import { clipboard, paste, runOp, bulkRename, extractArchive, compressPaths, opError } from "$lib/stores/ops";
+  import { openFailure } from "$lib/stores/openFailure";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import FmStatusBar from "$lib/components/FmStatusBar.svelte";
   import { locationReadReason } from "$lib/stores/location-read";
   import OpsOverlays from "$lib/components/OpsOverlays.svelte";
@@ -572,6 +575,20 @@
     {/if}
     <ContextMenu.Root>
       <ContextMenu.Trigger class="fm-browse">
+        <!-- The listing's refusals, at the top of the listing (design-system.md
+             6.11, thread two): an operation the filesystem would not do, and a
+             file that did not open. The first carried a red line along the
+             window's bottom edge and the second sat in the status bar, so
+             neither was where the person was looking. -->
+        {#if $opError}
+          <div class="note note-row">
+            <Notice tone="error" text={$t($opError.key, $opError.values)} />
+            <Button variant="ghost" size="sm" onclick={() => opError.set(null)}>{$t("f.dismiss")}</Button>
+          </div>
+        {/if}
+        {#if $openFailure}
+          <div class="note"><Notice tone="error" text={$t($openFailure.key, { what: $openFailure.what })} /></div>
+        {/if}
         {#if $duplicatesOpen}
           <FmDuplicates
             ontrash={async (paths) => {
@@ -865,6 +882,17 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+  }
+  .fm .note {
+    margin: 8px 16px 0;
+  }
+  .fm .note-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .fm .note-row :global(.notice) {
+    flex: 1;
   }
 
   .fm-panes {

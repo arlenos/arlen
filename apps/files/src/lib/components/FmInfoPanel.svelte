@@ -21,6 +21,7 @@
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { t } from "$lib/i18n/messages";
 
@@ -359,6 +360,9 @@
     {#if $info.conventional.kind !== "symlink"}
       <section class="sec">
         <span class="sec-title">{$t("f.info.permissions")}</span>
+        {#if permError}
+          <Notice tone="error" text={$t("f.info.permError")} />
+        {/if}
         <div class="perm">
           <span class="perm-label">{$t("f.info.you")}</span>
           <div class="perm-ctl">
@@ -415,9 +419,6 @@
               />
             </div>
           {/if}
-        {/if}
-        {#if permError}
-          <span class="err" role="alert">{$t("f.info.permError")}</span>
         {/if}
       </section>
     {/if}
@@ -754,8 +755,4 @@
     margin-top: 0.125rem;
   }
 
-  .err {
-    font-size: var(--text-2xs);
-    color: var(--color-error, #e5484d);
-  }
 </style>

@@ -16,6 +16,7 @@
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { PlacesSidebar, placeIcon } from "@arlen/ui-kit/components/browser";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Trash2, Clock, SlidersHorizontal } from "lucide-svelte";
   import { activeController } from "$lib/stores/tabs";
   import {
@@ -105,18 +106,14 @@
          places read leaves a sidebar that looks intact and is not. This says so
          where the missing places would have been. -->
     {#if $placesUnavailable}
-      <p class="places-unavailable group-data-[collapsible=icon]:hidden">
-        {$t("f.sidebar.placesUnavailable")}
-      </p>
+      <div class="note group-data-[collapsible=icon]:hidden"><Notice tone="error" text={$t("f.sidebar.placesUnavailable")} /></div>
     {/if}
     <!-- The accounts daemon answered and turned this app away. No Network group is
          rendered in that case, so without this the refusal would look like having
          no accounts - and the person would go looking in Settings for accounts
          they already have. -->
     {#if $networkDenied}
-      <p class="places-unavailable group-data-[collapsible=icon]:hidden">
-        {$t("f.sidebar.networkDenied")}
-      </p>
+      <div class="note group-data-[collapsible=icon]:hidden"><Notice tone="error" text={$t("f.sidebar.networkDenied")} /></div>
     {/if}
     {#if $savedFolders.length > 0}
       <SidebarGroup class="group-data-[collapsible=icon]:hidden">
@@ -126,7 +123,7 @@
              that work - so the line carries the part the list cannot: they are on
              screen and not on disk. -->
         {#if $foldersUnsaved}
-          <p class="folders-unsaved" role="alert">{$t("f.sidebar.foldersUnsaved")}</p>
+          <div class="note"><Notice tone="error" text={$t("f.sidebar.foldersUnsaved")} /></div>
         {/if}
         <SidebarMenu>
           {#each $savedFolders as f (f.id)}
@@ -222,18 +219,7 @@
   /* Quieter than a place, and it wraps: it is a sentence, not a row, and
      truncating it would leave "Your places could not be…" against a sidebar
      that is exactly as wide as it is. */
-  .folders-unsaved {
-    margin: 0;
-    padding: 0 0.5rem 0.25rem;
-    font-size: var(--text-xs);
-    line-height: 1.4;
-    color: var(--color-error, #f87171);
-  }
-  .places-unavailable {
-    margin: 0;
-    padding: 0.25rem 0.5rem 0.5rem;
-    font-size: var(--text-xs);
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
+  .note {
+    margin: 0.25rem 0.5rem 0.5rem;
   }
 </style>

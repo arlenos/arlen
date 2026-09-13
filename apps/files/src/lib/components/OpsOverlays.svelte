@@ -6,7 +6,7 @@
   /// the shared modal shell so it reads as one surface with the rest.
   import { Dialog } from "@arlen/ui-kit/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { conflict, opBusy, opError } from "$lib/stores/ops";
+  import { conflict, opBusy } from "$lib/stores/ops";
   import { t } from "$lib/i18n/messages";
 </script>
 
@@ -37,13 +37,6 @@
       </div>
     </div>
   </Dialog>
-{/if}
-
-{#if $opError}
-  <div class="op-errorline" role="alert">
-    <span>{$t($opError.key, $opError.values)}</span>
-    <button class="op-dismiss" onclick={() => opError.set(null)}>{$t("f.dismiss")}</button>
-  </div>
 {/if}
 
 <style>
@@ -115,36 +108,9 @@
     flex: 1;
   }
 
-  .op-errorline {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 6px 16px;
-    border-top: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
-    background: color-mix(in srgb, var(--color-error) 8%, transparent);
-    font-size: var(--text-xs);
-    color: var(--foreground);
-  }
   /* Wraps rather than ellipsising. This line carries the only account a person
      gets of a refused action, and "Kingston USB is still in use, so it ..." is a
      refusal that has been shown and still cannot be read - the same defect the
      line was added to fix, one size down. Long paths still break rather than
      widen the window. */
-  .op-errorline span {
-    flex: 1;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .op-dismiss {
-    height: var(--height-control-compact, 26px);
-    padding: 0 8px;
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-chip);
-    background: transparent;
-    color: var(--foreground);
-    font-size: var(--text-xs);
-  }
-  .op-dismiss:hover {
-    background: var(--control-bg-hover);
-  }
 </style>
