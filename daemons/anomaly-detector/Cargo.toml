@@ -30,5 +30,8 @@ os-sdk = { path = "../../sdk/os-sdk" }
 
 [dev-dependencies]
 tempfile = "3"
+# `start_paused` for the poll-cadence test: it waits a five-second retry and a
+# thirty-second poll interval, which is not a thing to do in wall-clock time.
+tokio = { version = "1", features = ["test-util"] }
 
 [workspace]
