@@ -400,14 +400,15 @@
         {#if !tauriAvailable && !$doc}
           <p class="center-note">{$t("pdf.hostAbsent")}</p>
         {:else if $launchFailure}
-          <p class="center-note">{$t("pdf.launchUnknown")}</p>
+          <div class="note"><Notice tone="error" text={$t("pdf.launchUnknown")} /></div>
         {:else if $failure}
           <!-- Every open failure arrives as a token and the sentence is written
                here, so it reaches a German reader in German. It used to be Rust's
                English prose interpolated into a translated frame, with the PDF
                parser's own account of the bytes on the end of it. An unrecognised
-               token falls to the plain sentence rather than being shown. -->
-          <p class="center-note">{$t(OPEN_FAILURE[$failure] ?? "pdf.failed", { path: $launchedPath ?? "" })}</p>
+               token falls to the plain sentence rather than being shown. At the
+               top of the reading surface, in the one shape. -->
+          <div class="note"><Notice tone="error" text={$t(OPEN_FAILURE[$failure] ?? "pdf.failed", { path: $launchedPath ?? "" })} /></div>
         {:else if !$doc}
           <div class="empty">
             <FileText size={28} strokeWidth={1.5} aria-hidden="true" />
@@ -495,6 +496,10 @@
   }
   .zoom-pct:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+  }
+  .note {
+    align-self: stretch;
+    margin: 12px 16px 0;
   }
   .center-note {
     margin: auto;
