@@ -9,7 +9,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import PopoverSelect from "@arlen/ui-kit/components/ui/popover-select/popover-select.svelte";
   import TimelineRow from "./TimelineRow.svelte";
-  import AlertBanner from "./AlertBanner.svelte";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { relativeTime } from "$lib/time";
   import {
     categorize,
@@ -153,12 +153,16 @@
   </div>
 </div>
 
+<!-- The record's refusals, at the top of the record, in the one shape
+     (design-system.md 6.11, thread two): a record that failed its safety
+     check, and one that could not be read. The empty line below keeps
+     "loading" and "no entries". -->
 {#if activity?.tampered}
-  <AlertBanner>{$t("h.activity.tampered")}</AlertBanner>
+  <div class="note"><Notice tone="error" text={$t("h.activity.tampered")} /></div>
 {/if}
 
 {#if error || (activity && !activity.available)}
-  <p class="empty">{$t("h.activity.unreadable")}</p>
+  <div class="note"><Notice tone="error" text={$t("h.activity.unreadable")} /></div>
 {:else if !activity}
   <p class="empty">{$t("h.activity.loading")}</p>
 {:else if activity.entries.length === 0}
@@ -225,6 +229,9 @@
     flex-wrap: wrap;
     gap: 0.5rem;
     flex-shrink: 0;
+  }
+  .note {
+    margin: 0.5rem var(--space-row, 0.75rem) 0;
   }
   .empty {
     margin: 0;

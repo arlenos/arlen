@@ -10,6 +10,7 @@
   import { mark } from "@arlen/ui-kit/i18n/rich";
   import Dialog from "@arlen/ui-kit/components/ui/dialog/dialog.svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
   import ChoiceList from "@arlen/ui-kit/components/ui/choice-list/choice-list.svelte";
   import PopoverSelect from "@arlen/ui-kit/components/ui/popover-select/popover-select.svelte";
@@ -91,7 +92,7 @@
     <div class="mint-body">
       {#if $mintError}
         <!-- A refused mint must never reach the "is now shared" screen. -->
-        <p class="mint-note err" role="alert">{$mintError}</p>
+        <div class="mint-refusal"><Notice tone="error" text={$mintError} /></div>
       {/if}
       {#if $mintMocked && !$mintResult}
         <!-- The scope menu and its reach numbers are invented, so the user would
@@ -334,8 +335,8 @@
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
-  .mint-note.err {
-    color: var(--color-fg-danger, #f87171);
+  .mint-refusal {
+    margin: 0 0 0.6rem;
   }
   .mint-result {
     display: flex;

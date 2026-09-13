@@ -7,7 +7,6 @@
   /// answer. All of them call the existing session store actions.
   import { tick } from "svelte";
   import {
-    AlertCircle,
     Bookmark,
     Check,
     Copy,
@@ -19,6 +18,7 @@
   } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import ToolCallCard from "./ToolCallCard.svelte";
   import ArtifactBlock from "./ArtifactBlock.svelte";
@@ -132,13 +132,13 @@
       </span>
     </div>
   {:else if message.role === "error"}
-    <div class="block error-block">
-      <AlertCircle size={14} strokeWidth={2} />
-      <span class="error-text">
-        {$t("h.msg.error")} <code>{message.text}</code>
-      </span>
+    <!-- The refusal in the one shape, with the way on beside it. The host's
+         own words about what went wrong stay in the record and reach the
+         console (design-system.md 6.10, 6.11), never the sentence a person reads. -->
+    <div class="block error-row">
+      <Notice tone="error" text={$t("h.msg.error")} />
       {#if canRegenerate}
-        <Button variant="outline" size="sm" class="self-center" disabled={$busy} onclick={doRegenerate}>
+        <Button variant="outline" size="sm" disabled={$busy} onclick={doRegenerate}>
           {$t("h.msg.regenerate")}
         </Button>
       {/if}
@@ -274,6 +274,14 @@
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
+  .error-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .error-row :global(.notice) {
+    flex: 1;
+  }
   .block {
     font-size: var(--text-base);
     line-height: 1.6;
@@ -303,35 +311,6 @@
   .thinking {
     background: transparent;
     padding-block: 0.25rem;
-  }
-  .error-block {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    background: color-mix(in srgb, var(--color-error) 10%, transparent);
-    border-radius: var(--radius-card);
-    padding: 0.75rem var(--space-card, 1rem);
-    color: var(--color-error);
-    font-size: var(--text-sm);
-    line-height: 1.5;
-  }
-  .error-block :global(svg) {
-    flex-shrink: 0;
-    margin-top: 0.125rem;
-  }
-  .error-text {
-    min-width: 0;
-    flex: 1;
-  }
-  /* The raw reason is recorded data; the code chip separates it from the
-     app's own sentence. */
-  .error-text code {
-    font-family: var(--font-mono, monospace);
-    font-size: var(--text-xs);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-    padding: 0.1em 0.3em;
-    border-radius: var(--radius-chip);
-    word-break: break-word;
   }
   .tools {
     display: flex;

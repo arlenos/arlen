@@ -7,6 +7,7 @@
   import { t } from "$lib/i18n/messages";
   import { ChevronDown, Undo2 } from "@lucide/svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
   import type { Tone } from "$lib/ledger";
 
@@ -86,7 +87,7 @@
       </div>
     {/if}
     {#if undoState === "failed"}
-      <p class="undo-note">{$t("h.timeline.undoFailed")}</p>
+      <div class="undo-note"><Notice tone="error" text={$t("h.timeline.undoFailed")} /></div>
     {/if}
   </div>
   <div class="end">
@@ -242,8 +243,6 @@
   }
   .undo-note {
     margin: 0.375rem 0 0;
-    font-size: var(--text-xs);
-    color: var(--color-error);
   }
   .end {
     display: flex;
