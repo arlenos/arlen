@@ -36,14 +36,53 @@ struct BehaviourShape {
     read_scope: &'static str,
 }
 
-/// The working-set introspection shape: the live loop status plus the enabled
-/// behaviours and their declared read scopes.
+/// The working-set introspection shape, as the transparency drawer declares it
+/// (`ai-transparency-surface.md`).
+///
+/// It used to be `{status, behaviours[]}` and the drawer reads
+/// `{available, held, entityCounts, activeBehaviour, declaredReads}`, so every
+/// field the Memory section rendered was undefined and the section was silently
+/// empty. The drawer's shape is the specified one and this answers it.
+///
+/// **`available` is the honest half.** The drawer defines it as "the endpoint
+/// answered", and distinguishes that from "holding nothing" on purpose. This
+/// daemon can say which behaviour is running and what it declared it may read; it
+/// cannot yet say what a running slice HOLDS, because nothing introspects a live
+/// slice. Reporting `held: false` would assert the AI is holding nothing while it
+/// may be holding plenty, so the answer is `available: false` while a slice is in
+/// flight and `held: false` only when the loop is genuinely idle - the one state
+/// where "holding nothing" is a measurement rather than a guess.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct WorkingSetShape {
-    /// The live loop status (`subscribing`/`idle`/`busy`).
+    /// Whether this answer is a measurement. False while the daemon cannot see
+    /// what a running slice holds.
+    available: bool,
+    /// Whether a context slice is held right now. Only meaningful when
+    /// `available`.
+    held: bool,
+    /// Per entity type, how many nodes are held. Empty until slice
+    /// introspection exists; never a fabricated zero-count row.
+    entity_counts: Vec<EntityCountShape>,
+    /// The behaviour whose work is holding the slice, if any.
+    active_behaviour: Option<String>,
+    /// The tier key that behaviour declared it reads.
+    declared_reads: Option<String>,
+    /// The live loop status (`subscribing`/`idle`/`busy`), kept because the
+    /// drawer's header renders it and it is the field that was never wrong.
     status: String,
     /// The enabled behaviours' shape.
     behaviours: Vec<BehaviourShape>,
+}
+
+/// How many nodes of one entity type are held. Node contents never travel.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EntityCountShape {
+    /// The entity type.
+    r#type: String,
+    /// How many are held.
+    count: u32,
 }
 
 /// One behaviour as the Settings behaviours panel renders it: what it is, where
@@ -165,7 +204,22 @@ fn working_set_json(status: &str, outcome: &LoadOutcome) -> String {
             }
         })
         .collect();
-    let shape = WorkingSetShape { status: status.to_string(), behaviours };
+    // Busy means a dispatch is in flight and this daemon cannot see into it, so
+    // the answer is "not available" rather than a held-count it would be making
+    // up. Idle and subscribing are both "nothing is running", where holding
+    // nothing is a measurement.
+    let running = status == "busy";
+    let shape = WorkingSetShape {
+        available: !running,
+        held: false,
+        entity_counts: Vec::new(),
+        // Which behaviour is running needs a dispatch hook this daemon does not
+        // have; absent is the truthful answer rather than the first enabled one.
+        active_behaviour: None,
+        declared_reads: None,
+        status: status.to_string(),
+        behaviours,
+    };
     serde_json::to_string(&shape).unwrap_or_else(|_| "{}".to_string())
 }
 
@@ -858,6 +912,30 @@ mod tests {
     fn an_empty_store_renders_an_empty_array() {
         let empty = serde_json::to_string(&graph_completed_actions(&CompensationStore::new(8))).unwrap();
         assert_eq!(empty, "[]");
+    }
+
+    /// The drawer reads five fields off this and used to get none of them.
+    #[test]
+    fn the_working_set_answers_the_shape_the_drawer_reads() {
+        let v: serde_json::Value =
+            serde_json::from_str(&working_set_json("idle", &LoadOutcome::default())).unwrap();
+        for field in ["available", "held", "entityCounts", "activeBehaviour", "declaredReads"] {
+            assert!(v.get(field).is_some(), "{field} is missing: {v}");
+        }
+        // Idle is the one state where holding nothing is a measurement.
+        assert_eq!(v["available"], true);
+        assert_eq!(v["held"], false);
+        assert_eq!(v["entityCounts"].as_array().unwrap().len(), 0);
+    }
+
+    /// While a dispatch is in flight this daemon cannot see what the slice holds,
+    /// and says so instead of reporting an empty one.
+    #[test]
+    fn a_busy_loop_reports_unavailable_rather_than_empty() {
+        let v: serde_json::Value =
+            serde_json::from_str(&working_set_json("busy", &LoadOutcome::default())).unwrap();
+        assert_eq!(v["available"], false);
+        assert_eq!(v["status"], "busy");
     }
 
     #[test]
