@@ -10,10 +10,12 @@
 //! and compose the line a person reads. The SEN-4 chain is joined inside this crate:
 //! [`sighting`] accumulates a tag's separated adverts and reduces them through
 //! [`movement`] into the summary [`trigger`] decides on, so four of the eight are
-//! reached, and so are [`sighting`], [`home_anchor`] and [`epoch`]: `arlen-sentineld`
-//! keeps tags and the learned resting place between sessions in its encrypted store,
-//! stamps each sighting with the awake-session it fell in, and prunes the tags on
-//! start. **[`recording`] and [`usb`] have no caller anywhere.**
+//! reached, and so are [`sighting`], [`home_anchor`], [`epoch`] and [`ble_scan`]:
+//! `arlen-sentineld` keeps tags and the learned resting place between sessions in
+//! its encrypted store, stamps each sighting with the awake-session it fell in,
+//! prunes the tags on start, and reads the proximity switch into the thresholds a
+//! monitor would be registered with. **[`recording`] and [`usb`] have no caller
+//! anywhere.**
 //!
 //! That is deliberate about the order rather than an oversight, and saying which is
 //! the point of this note. The cores were written first because they are the half
@@ -27,6 +29,7 @@
 //! paragraph, and one that is added goes in. A pure core is worth having early only
 //! while somebody can still tell, without measuring, which ones are waiting.
 
+pub mod ble_scan;
 pub mod epoch;
 pub mod exposure;
 pub mod home_anchor;

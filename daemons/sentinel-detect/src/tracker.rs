@@ -56,7 +56,7 @@ pub struct TrackerMatch {
 }
 
 /// Apple's company id in a BLE Manufacturer-Data field.
-const APPLE_COMPANY_ID: u16 = 0x004C;
+pub const APPLE_COMPANY_ID: u16 = 0x004C;
 /// Apple Find My message type byte (offline finding).
 const APPLE_FINDMY_TYPE: u8 = 0x12;
 /// The Apple Find My offline (separated) frame's length byte: a 25-byte payload
@@ -64,13 +64,13 @@ const APPLE_FINDMY_TYPE: u8 = 0x12;
 const APPLE_OFFLINE_LEN: u8 = 0x19;
 
 /// Samsung SmartTag Service-Data UUID.
-const SAMSUNG_UUID: u16 = 0xFD5A;
+pub const SAMSUNG_UUID: u16 = 0xFD5A;
 /// Tile Service-Data UUID.
-const TILE_UUID: u16 = 0xFEED;
+pub const TILE_UUID: u16 = 0xFEED;
 /// Google Find My Device Network Service-Data UUID.
-const GOOGLE_UUID: u16 = 0xFEAA;
+pub const GOOGLE_UUID: u16 = 0xFEAA;
 /// DULT standard Service-Data UUID.
-const DULT_UUID: u16 = 0xFCB2;
+pub const DULT_UUID: u16 = 0xFCB2;
 
 /// Classify a Manufacturer-Data field (a company id plus its payload bytes) as a
 /// finder-tag. Only Apple advertises its finder-tag over Manufacturer-Data; the
