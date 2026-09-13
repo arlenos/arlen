@@ -7,7 +7,6 @@
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
   import { t } from "$lib/i18n/messages";
-  import { openFailure } from "$lib/stores/openFailure";
   import { opDone } from "$lib/stores/ops";
   import type { EmptyReason } from "$lib/read-outcome";
 
@@ -68,18 +67,11 @@
   {#if selectionLine && !errored && !readReason && resultsCount === null}
     <span>{selectionLine}</span>
   {/if}
-  <!-- Why the last open did not open. Amber like the other machine-facts here,
-       and at the end so it reads after the count rather than displacing it: the
-       folder is still what it was, and one file refused to open. -->
   <!-- What the last operation did, when it took somebody's data out of sight.
        Quiet rather than amber: this is not a problem, it is an answer, and it
        carries the way back for the one that has one. -->
   {#if $opDone}
     <span class="did">{$t($opDone.key, { count: $opDone.count })}</span>
-  {/if}
-
-  {#if $openFailure}
-    <span class="reason">{$t($openFailure.key, { what: $openFailure.what })}</span>
   {/if}
 </div>
 
