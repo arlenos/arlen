@@ -9,5 +9,10 @@ description = "Physical-World Privacy Sentinel: the pure, testable detector logi
 path = "src/lib.rs"
 
 [dependencies]
+# Derive only. The crate stays pure - it reads no file and opens no socket - but
+# the tags it accumulates have to survive a suspend, and the daemon's encrypted
+# store needs a shape to seal. Defining a second mirror of these types over there
+# so this one could stay dependency-free would be the worse trade.
+serde = { version = "1", features = ["derive"] }
 
 [workspace]

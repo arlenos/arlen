@@ -18,7 +18,7 @@
 //! privacy-load-bearing step, not a nicety.
 
 /// A known finder-tag ecosystem.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TrackerBrand {
     /// Apple Find My (AirTag, 3rd-party Find My accessories like Chipolo ONE Spot).
     AppleFindMy,

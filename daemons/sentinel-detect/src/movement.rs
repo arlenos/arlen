@@ -18,7 +18,7 @@ pub const DISTINCT_LOCATION_METRES: f64 = 400.0;
 const EARTH_RADIUS_METRES: f64 = 6_371_008.8;
 
 /// A coarse location fix (decimal degrees), as GeoClue reports it.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Fix {
     /// Latitude in decimal degrees.
     pub lat: f64,
