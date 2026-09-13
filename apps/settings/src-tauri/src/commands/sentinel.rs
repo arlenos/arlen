@@ -22,7 +22,7 @@
 //! thread to keep the async runtime free - the same shape as the bottle commands.
 
 use arlen_sentineld::client::ask;
-use arlen_sentineld::protocol::{Request, Response, State};
+use arlen_sentineld::protocol::{Request, Response, SentinelState};
 use arlen_sentineld::server::socket_path;
 
 /// Run one ask on a blocking thread and map the answer.
@@ -54,7 +54,7 @@ fn done(response: Response) -> Result<(), String> {
 /// reporting rather than as a machine with nothing wrong. Those are different
 /// things and this page is the last one that should conflate them.
 #[tauri::command]
-pub async fn sentinel_get_state() -> Result<State, String> {
+pub async fn sentinel_get_state() -> Result<SentinelState, String> {
     match round_trip(Request::GetState).await? {
         Response::State(state) => Ok(*state),
         Response::Refused { message } | Response::Failed { message } => Err(message),

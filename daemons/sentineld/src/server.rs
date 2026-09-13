@@ -26,7 +26,7 @@ use tokio::net::{UnixListener, UnixStream};
 use crate::config::{self, Config, Detector};
 use crate::host;
 use crate::protocol::{
-    posture_wire, readout_incomplete, Detectors, Request, Response, State,
+    posture_wire, readout_incomplete, Detectors, Request, Response, SentinelState,
 };
 use crate::read;
 
@@ -111,7 +111,7 @@ pub struct Context {
 ///
 /// A detector that is off produces no lines. Showing the last readout of a
 /// detector nobody is running would be a page reporting on a watch that stopped.
-pub async fn current_state(cfg: &Config) -> State {
+pub async fn current_state(cfg: &Config) -> SentinelState {
     let (posture, incomplete) = if cfg.exposure.on {
         let readings = host::read_host().await;
         let lines = arlen_sentinel_detect::readout::compose(&read::postures(&readings));
@@ -120,7 +120,7 @@ pub async fn current_state(cfg: &Config) -> State {
     } else {
         (Vec::new(), false)
     };
-    State {
+    SentinelState {
         detectors: Detectors::from(cfg),
         posture,
         // NOT measured, and that is why it is an absence rather than `false`.
