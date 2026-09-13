@@ -141,7 +141,10 @@ fn control_caller_admitted(app_id: &str) -> bool {
     // `cargo test` compiled it happily; the image's release cross-build is what
     // said so.
     #[cfg(debug_assertions)]
-    if CONTROL_ADMITTED_DEV.contains(&app_id) || GRANT_MGMT_ADMITTED_DEV.contains(&app_id) {
+    if CONTROL_ADMITTED_DEV.contains(&app_id)
+        || GRANT_MGMT_ADMITTED_DEV.contains(&app_id)
+        || dev_extra_admits(app_id)
+    {
         return true;
     }
     false
@@ -164,6 +167,22 @@ const CONTROL_ADMITTED_DEV: &[&str] = &["dev.arlen-desktop-shell"];
 /// The same, for the grant-management half.
 #[cfg(debug_assertions)]
 const GRANT_MGMT_ADMITTED_DEV: &[&str] = &["dev.arlen-settings"];
+
+/// A debug-only test affordance, the same one the audit ingest and the module
+/// runtime carry: a test sets `ARLEN_CONSENT_EXTRA_ADMIT` to ONE extra dev id -
+/// its own cargo-run `dev.<test>-<hash>` id, which is hash-suffixed and so can
+/// never be a static entry - to stand in for the shell and answer a prompt.
+///
+/// EXACT, never a broad `dev.` prefix, and never in a release build. It exists
+/// because tightening these lists to exact ids (which was right: every locally
+/// built binary resolves to some `dev.<bin>`, so the prefix let all of them
+/// answer consent prompts) left the three end-to-end consent scenarios connecting
+/// as a caller nothing admits. They failed with a reset connection and no reason,
+/// which is the worst way for a test to tell you the policy moved.
+#[cfg(debug_assertions)]
+fn dev_extra_admits(app_id: &str) -> bool {
+    std::env::var("ARLEN_CONSENT_EXTRA_ADMIT").is_ok_and(|v| v == app_id)
+}
 
 /// App ids permitted ONLY to confer reach from a gesture they witnessed.
 ///
@@ -189,7 +208,7 @@ fn control_op_admitted(app_id: &str, request: &ControlRequest) -> bool {
         return matches!(request, ControlRequest::ConferFromGesture { .. });
     }
     #[cfg(debug_assertions)]
-    if CONTROL_ADMITTED_DEV.contains(&app_id) {
+    if CONTROL_ADMITTED_DEV.contains(&app_id) || dev_extra_admits(app_id) {
         return true;
     }
     #[cfg(debug_assertions)]

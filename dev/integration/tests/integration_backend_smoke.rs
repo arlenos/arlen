@@ -2274,21 +2274,27 @@ async fn the_consent_broker_comes_up_hermetically() {
 #[ignore = "needs audit-daemon + consent-broker binaries built and a per-user runtime dir"]
 async fn a_confirm_round_trips_through_the_consent_loop() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    if !arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker") {
+    // BOTH, and the audit daemon is not optional here. A consent decision is
+    // audited before the requester is told (S13), and a failed audit fails the
+    // decision closed to Denied - so without an audit sink this scenario does not
+    // test a weaker thing, it tests a different one: `a_denied_confirm` passed
+    // while proving nothing, and this one failed with "expected AllowedOnce, got
+    // Denied", which reads as a consent bug and was a missing binary.
+    if !(arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker")
+        && arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd"))
+    {
         eprintln!(
-            "SKIP a_confirm_round_trips_through_the_consent_loop: arlen-consent-broker not built (run `just integration-nightly`)"
+            "SKIP a_confirm_round_trips_through_the_consent_loop: arlen-consent-broker or arlen-auditd not built (run `just integration-nightly`)"
         );
         return;
     }
     let mut stack = EphemeralStack::new().expect("private runtime root");
-    if arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
-        stack
-            .spawn("daemons/audit-daemon", "arlen-auditd", &[])
-            .expect("spawn audit-daemon");
-        stack
-            .wait_ready("arlen/audit-ingest.sock")
-            .expect("audit ingest socket appears");
-    }
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_ready("arlen/audit-ingest.sock")
+        .expect("audit ingest socket appears");
     stack
         .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
         .expect("spawn consent-broker");
@@ -2391,21 +2397,27 @@ async fn a_confirm_round_trips_through_the_consent_loop() {
 #[ignore = "needs audit-daemon + consent-broker binaries built and a per-user runtime dir"]
 async fn a_denied_confirm_relays_the_refusal() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    if !arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker") {
+    // BOTH, and the audit daemon is not optional here. A consent decision is
+    // audited before the requester is told (S13), and a failed audit fails the
+    // decision closed to Denied - so without an audit sink this scenario does not
+    // test a weaker thing, it tests a different one: `a_denied_confirm` passed
+    // while proving nothing, and this one failed with "expected AllowedOnce, got
+    // Denied", which reads as a consent bug and was a missing binary.
+    if !(arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker")
+        && arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd"))
+    {
         eprintln!(
-            "SKIP a_denied_confirm_relays_the_refusal: arlen-consent-broker not built (run `just integration-nightly`)"
+            "SKIP a_denied_confirm_relays_the_refusal: arlen-consent-broker or arlen-auditd not built (run `just integration-nightly`)"
         );
         return;
     }
     let mut stack = EphemeralStack::new().expect("private runtime root");
-    if arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
-        stack
-            .spawn("daemons/audit-daemon", "arlen-auditd", &[])
-            .expect("spawn audit-daemon");
-        stack
-            .wait_ready("arlen/audit-ingest.sock")
-            .expect("audit ingest socket appears");
-    }
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_ready("arlen/audit-ingest.sock")
+        .expect("audit ingest socket appears");
     stack
         .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
         .expect("spawn consent-broker");
@@ -2541,21 +2553,27 @@ async fn consent_submit(
 #[tokio::test]
 #[ignore = "needs audit-daemon + consent-broker binaries built and a per-user runtime dir"]
 async fn a_remembered_grant_silently_admits_a_repeat_request() {
-    if !arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker") {
+    // BOTH, and the audit daemon is not optional here. A consent decision is
+    // audited before the requester is told (S13), and a failed audit fails the
+    // decision closed to Denied - so without an audit sink this scenario does not
+    // test a weaker thing, it tests a different one: `a_denied_confirm` passed
+    // while proving nothing, and this one failed with "expected AllowedOnce, got
+    // Denied", which reads as a consent bug and was a missing binary.
+    if !(arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker")
+        && arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd"))
+    {
         eprintln!(
-            "SKIP a_remembered_grant_silently_admits_a_repeat_request: arlen-consent-broker not built (run `just integration-nightly`)"
+            "SKIP a_remembered_grant_silently_admits_a_repeat_request: arlen-consent-broker or arlen-auditd not built (run `just integration-nightly`)"
         );
         return;
     }
     let mut stack = EphemeralStack::new().expect("private runtime root");
-    if arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
-        stack
-            .spawn("daemons/audit-daemon", "arlen-auditd", &[])
-            .expect("spawn audit-daemon");
-        stack
-            .wait_ready("arlen/audit-ingest.sock")
-            .expect("audit ingest socket appears");
-    }
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_ready("arlen/audit-ingest.sock")
+        .expect("audit ingest socket appears");
     stack
         .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
         .expect("spawn consent-broker");
