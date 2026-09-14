@@ -262,6 +262,11 @@ impl EphemeralStack {
             // hash-suffixed, so the three consent scenarios connected as a caller
             // nothing admits and got a reset socket with no reason attached.
             env.insert("ARLEN_CONSENT_EXTRA_ADMIT".to_string(), id.clone());
+            // The undo service and the AI engine's agent interface both gate on
+            // `is_user_surface`, whose only other escape hatch is a root-owned
+            // file under /var/lib - so without this the whole undo path had no
+            // way to be driven by a scenario at all.
+            env.insert("ARLEN_USER_SURFACE_EXTRA_ADMIT".to_string(), id.clone());
             // FirstParty is the DEFAULT and a scenario opts OUT with
             // `as_unprivileged`. This comment used to say "opt-in", which is the
             // opposite, and the mistake was not cosmetic: a scenario that forgets

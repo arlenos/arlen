@@ -960,6 +960,28 @@ const USER_SURFACES_DEV: &[&str] = &[
 /// readable here instead of resting on a `create_dir_all` three crates away.
 const EXTRA_USER_SURFACES: &str = "/var/lib/arlen/permissions/user-surfaces.extra";
 
+/// A debug-only test affordance, the same one the audit ingest, the module
+/// runtime and the consent broker carry: a test sets
+/// `ARLEN_USER_SURFACE_EXTRA_ADMIT` to ONE extra id - its own cargo-run
+/// `dev.<test>-<hash>` id, which is hash-suffixed and so can never be a static
+/// entry - to stand in for a user surface.
+///
+/// EXACT, never a prefix, and `#[cfg]`-gated so it cannot exist in a release
+/// build. It is here rather than in either caller because both of them - the
+/// undo service and the AI engine's agent interface - gate on this one predicate,
+/// and two copies of a security hatch is one more than anybody should have to
+/// audit.
+///
+/// WHY IT WAS NEEDED. The undo service serves the recent-actions list and the
+/// reversal, and nothing could drive it end to end: `[EXTRA_USER_SURFACES]` is a
+/// root-owned file under `/var/lib`, so a scenario had no way in and the whole
+/// undo path had no integration coverage at all. Its four sibling daemons each
+/// solved this the same way; this is that, once, for the two that share a gate.
+#[cfg(debug_assertions)]
+fn dev_extra_user_surface(app_id: &str) -> bool {
+    std::env::var("ARLEN_USER_SURFACE_EXTRA_ADMIT").is_ok_and(|v| v == app_id)
+}
+
 /// Surfaces the running image admits beyond the compiled-in list, or none.
 ///
 /// Fail-closed at every step: no file, unreadable, not owned by root, or writable
@@ -992,7 +1014,7 @@ pub fn is_user_surface(app_id: &str) -> bool {
         return true;
     }
     #[cfg(debug_assertions)]
-    if USER_SURFACES_DEV.contains(&app_id) {
+    if USER_SURFACES_DEV.contains(&app_id) || dev_extra_user_surface(app_id) {
         return true;
     }
     // Read per call rather than cached at startup, matching the per-call reload the
@@ -1246,6 +1268,43 @@ impl AsRawFd for OwnedFd {
 
 #[cfg(test)]
 mod tests {
+
+    /// The env hatch is EXACT and admits only what it names. Serialised against
+    /// the other env-touching tests by running the whole thing in one function:
+    /// `set_var` is process-wide, so two tests toggling it in parallel would
+    /// watch each other's value.
+    #[test]
+    fn the_debug_surface_hatch_admits_exactly_one_id() {
+        assert!(
+            !is_user_surface("dev.integration_smoke-abc123"),
+            "an unnamed caller is not a user surface"
+        );
+
+        // SAFETY: single-threaded within this test, and the variable is removed
+        // before it returns, so nothing else observes it set.
+        unsafe { std::env::set_var("ARLEN_USER_SURFACE_EXTRA_ADMIT", "dev.integration_smoke-abc123") };
+        assert!(
+            is_user_surface("dev.integration_smoke-abc123"),
+            "the named caller stands in for a user surface"
+        );
+        assert!(
+            !is_user_surface("dev.integration_smoke-abc124"),
+            "and only that one: a near miss is still refused"
+        );
+        assert!(
+            !is_user_surface("dev.integration_smoke"),
+            "a prefix of it is not it either"
+        );
+
+        unsafe { std::env::remove_var("ARLEN_USER_SURFACE_EXTRA_ADMIT") };
+        assert!(
+            !is_user_surface("dev.integration_smoke-abc123"),
+            "and it stops admitting the moment the variable goes"
+        );
+
+        // The compiled-in surfaces are unaffected by any of it.
+        assert!(is_user_surface("dev.arlen.settings"));
+    }
     use super::*;
 
     /// A release build admits exactly `USER_SURFACES`, so the property worth
