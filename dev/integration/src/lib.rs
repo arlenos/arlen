@@ -222,6 +222,16 @@ impl EphemeralStack {
             // user data dir. The audit daemon's HMAC key + ledger live here; the
             // daemon `create_dir_all`s `<data>/arlen` itself.
             ("XDG_DATA_HOME".to_string(), p("data")),
+            // And the STATE home, for the same reason and found the same way: the
+            // undo scenario spawned `arlen-ai-undo-signer`, which resolves
+            // `XDG_STATE_HOME` or falls back to `$HOME/.local/state` - so with this
+            // unset it minted an HMAC KEY and an undo log in the developer's real
+            // home. Not a stray directory: that daemon's whole custody rule is that
+            // a populated log with a missing key fails closed rather than silently
+            // re-keying, so a test leaving a key behind is precisely the thing it is
+            // built to notice. The clock's alarms and capsuled's signing key live
+            // under here too.
+            ("XDG_STATE_HOME".to_string(), p("state")),
             // The ai-agent resolves `ai.toml` from `ARLEN_AI_CONFIG` (it reads
             // `$HOME/.config`, NOT XDG_CONFIG_HOME), so point it at the seeded
             // config under the private config home. Absent file -> the agent's
@@ -309,6 +319,13 @@ impl EphemeralStack {
     /// (e.g. `arlen/graph.toml`, `arlen/ai.toml`) is read from here.
     pub fn config_home(&self) -> PathBuf {
         self.socket_path("config")
+    }
+
+    /// The private state home (`XDG_STATE_HOME` stand-in); a daemon that keeps
+    /// state it must not lose across a restart writes here, e.g. the clock's
+    /// `arlen/clock/state.json`.
+    pub fn state_home(&self) -> PathBuf {
+        self.socket_path("state")
     }
 
     /// The private data home (`XDG_DATA_HOME` stand-in); a daemon that persists
@@ -702,6 +719,9 @@ mod tests {
         // The private config + data homes keep config/state reads hermetic.
         assert!(env["XDG_CONFIG_HOME"].starts_with(&root));
         assert!(env["XDG_DATA_HOME"].starts_with(&root));
+        // The one that was missing: a daemon persisting under the state home
+        // wrote into the developer's real `~/.local/state` until this was set.
+        assert!(env["XDG_STATE_HOME"].starts_with(&root));
         // The audit sockets resolve under the runtime root's arlen/ subdir.
         assert!(stack.audit_read_socket().starts_with(&root));
         assert!(stack.audit_ingest_socket().ends_with("arlen/audit-ingest.sock"));
