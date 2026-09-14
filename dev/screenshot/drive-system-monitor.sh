@@ -153,17 +153,26 @@ await new Promise(r => setTimeout(r, 1000));
 const quit = [...document.querySelectorAll("button")]
   .find(b => /force quit|beenden/i.test(b.textContent||""));
 if (!quit) return "no Force Quit control";
-// TWO presses: the first turns the label into a question and returns.
-const first = quit.textContent.trim();
-quit.click(); await new Promise(r => setTimeout(r, 500));
-const asking = quit.textContent.trim();
-quit.click(); await new Promise(r => setTimeout(r, 1500));
-return JSON.stringify({ first, asking });
+// A DIALOG, not a two-press button. This read the trigger's own label twice and
+// called the app silent when it had in fact opened a `ConfirmDialog` naming the
+// process and warning about unsaved work - and its second press landed on the
+// trigger again, so nothing was ever confirmed and nothing was ever killed.
+// The dialog puts its title in `#confirm-dialog-title` and the destructive
+// button last in its own row.
+quit.click(); await new Promise(r => setTimeout(r, 800));
+const heading = document.querySelector("#confirm-dialog-title");
+if (!heading) return JSON.stringify({ asked: null, error: "no confirm dialog opened" });
+const asked = (heading.textContent || "").trim();
+const buttons = [...(heading.closest("div") || document).querySelectorAll("button")];
+const confirm = buttons[buttons.length - 1];
+if (!confirm) return JSON.stringify({ asked, error: "the dialog offered no button" });
+confirm.click(); await new Promise(r => setTimeout(r, 1500));
+return JSON.stringify({ asked });
 JS
   got=$(drive "$probes/p-kill.js" sysmon-kill.png)
   gone=$(wait_for_gone "$victim" && echo yes || echo no)
   say "force quit ends the process, and asks first" \
-    "$([ "$gone" = yes ] && printf '%s' "$got" | grep -q '"asking"' && echo 1 || echo 0)" \
+    "$([ "$gone" = yes ] && printf '%s' "$got" | grep -q '"asked":"[^"]' && echo 1 || echo 0)" \
     "$got (target $victim gone: $gone)"
   kill "$victim" 2>/dev/null
 fi
@@ -360,20 +369,23 @@ const stop = items.find(b => /^(stop|beenden)$/i.test((b.textContent || "").trim
 if (!stop) return JSON.stringify({ error: "no stop item", items: items.map(b => b.textContent.trim()) });
 const before = stop.textContent.trim();
 stop.click();
-await wait(300);
-// The SAME element, re-read. The first cut asked for `[role=menuitem].danger`,
-// which Force Quit already is - so it reported "armed" on a label that had not
-// changed at all, and passed for a reason unrelated to the guardrail.
-const after = stop.textContent.trim();
-// Read before dismissing: the menu staying open IS the behaviour (the warning
-// must be readable), and Escape would make that unmeasurable.
-const stillOpen = document.body.contains(menu);
-// Escape rather than a second click: the point is that the first press did NOT
-// act, and pressing again would be asking pid 1 to exit.
-document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-return JSON.stringify({ before, after, stillOpen,
+await wait(700);
+// A DIALOG, not a label that rewrites itself. This watched the menu item's own
+// text and reported the app as acting without asking, while a `ConfirmDialog`
+// was open beside it saying "It is a system service, and nothing here starts it
+// again." The warning is in the dialog's body, the unit's name in its heading.
+const heading = document.querySelector("#confirm-dialog-title");
+if (!heading) return JSON.stringify({ before, error: "no confirm dialog opened" });
+const shell = heading.closest("div") || document;
+const title = (heading.textContent || "").trim();
+const body = (shell.querySelector("p")?.textContent || "").trim();
+// CANCEL, never confirm - the first button in the row. Unchanged in spirit from
+// the Escape this replaces: the point is that the press did NOT act, and going
+// through with it would be asking pid 1 to exit.
+[...shell.querySelectorAll("button")][0]?.click();
+return JSON.stringify({ before, title, body,
   // Named the consequence, not merely different: "Stop?" would also be longer.
-  armed: /system service|Systemdienst/.test(after), namesIt: /systemd/.test(after) });
+  armed: /system service|Systemdienst/.test(body), namesIt: /systemd/.test(title) });
 JS
 got=$(drive "$probes/p-guardrail.js" sysmon-guardrail.png)
 if printf '%s' "$got" | grep -q '"skipped"'; then
@@ -381,7 +393,7 @@ if printf '%s' "$got" | grep -q '"skipped"'; then
 else
   say "stopping a system service asks before it acts" \
     "$(printf '%s' "$got" | grep -q '"armed":true' \
-       && printf '%s' "$got" | grep -q '"stillOpen":true' && echo 1 || echo 0)" "$got"
+       && printf '%s' "$got" | grep -q '"namesIt":true' && echo 1 || echo 0)" "$got"
 fi
 
 
