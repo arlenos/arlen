@@ -379,10 +379,14 @@ if (!heading) return JSON.stringify({ before, error: "no confirm dialog opened" 
 const shell = heading.closest("div") || document;
 const title = (heading.textContent || "").trim();
 const body = (shell.querySelector("p")?.textContent || "").trim();
-// CANCEL, never confirm - the first button in the row. Unchanged in spirit from
-// the Escape this replaces: the point is that the press did NOT act, and going
-// through with it would be asking pid 1 to exit.
-[...shell.querySelectorAll("button")][0]?.click();
+// ESCAPE, not a button. The dialog's shell owns Escape dismissal, and Escape
+// cannot confirm anything - whereas "click the first button" is a bet on DOM
+// order for a dialog whose other button stops a system service. The order is
+// right today (`ConfirmDialog` renders Cancel before the destructive one) and
+// that is exactly the kind of thing that is right until somebody reorders a
+// flex row. The original probe pressed Escape for this reason; reading the
+// dialog first is what changed, not how it gets out of it.
+document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 return JSON.stringify({ before, title, body,
   // Named the consequence, not merely different: "Stop?" would also be longer.
   armed: /system service|Systemdienst/.test(body), namesIt: /systemd/.test(title) });
