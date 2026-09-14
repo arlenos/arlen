@@ -145,24 +145,36 @@ export const SYS_DEFAULTS: Record<string, string | number | boolean> = {
   sndAction: "complete",
   sndDeviceAdded: "device-added",
   sndDeviceRemoved: "device-removed",
-  ansi0: "#1a1d24",
-  ansi1: "#dc2626",
-  ansi2: "#16a34a",
-  ansi3: "#ca8a04",
-  ansi4: "#2563eb",
-  ansi5: "#a855f7",
-  ansi6: "#06b6d4",
-  ansi7: "#e6e8ee",
-  ansi8: "#3a404d",
-  ansi9: "#f87171",
-  ansi10: "#4ade80",
-  ansi11: "#facc15",
-  ansi12: "#60a5fa",
-  ansi13: "#c084fc",
-  ansi14: "#22d3ee",
-  ansi15: "#ffffff",
-  termFg: "#e6e8ee",
-  termBg: "#0f1115",
+  // THE SIXTEEN ARE THE THEME'S, COPIED, and the copy is checked. `dark.toml`
+  // authors `[terminal.ansi]` precisely so the emitted GTK/Qt/kitty configs,
+  // the in-app xterm grid and this editor all paint the same muted set - and
+  // until 15 September this held a generic palette from before that decision
+  // (its blue was `#2563eb`, the theme's is `#7d9cc4`), so the grid showed one
+  // palette and the terminal another. The floor exists because a failed read
+  // must not blank a swatch, which means it cannot be dropped; what it can be
+  // is kept honest, and `dev/scripts/check-terminal-palette-agrees.py` does
+  // that against the theme file.
+  //
+  // `termFg`/`termBg` are not authored in the theme: the resolver synthesises
+  // them from `fg.primary` and `bg.app`, so these two track those.
+  ansi0: "#15161b",
+  ansi1: "#c96a6a",
+  ansi2: "#8fae74",
+  ansi3: "#d4b483",
+  ansi4: "#7d9cc4",
+  ansi5: "#b08bc4",
+  ansi6: "#83b3b1",
+  ansi7: "#c8c9cf",
+  ansi8: "#54565e",
+  ansi9: "#d98585",
+  ansi10: "#a6c98a",
+  ansi11: "#e3c99a",
+  ansi12: "#97b5da",
+  ansi13: "#c4a0d6",
+  ansi14: "#9bcac8",
+  ansi15: "#f2f3f7",
+  termFg: "#fafafa",
+  termBg: "#0f0f0f",
 };
 
 /// The user's per-field overrides (sparse: only edited fields).
