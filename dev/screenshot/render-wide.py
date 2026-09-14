@@ -562,7 +562,17 @@ class Render:
         js = (
             axe_src
             + "\n;window.__axe = null; window.__axeErr = null;"
-            " axe.run(document, {resultTypes:['violations']}).then("
+            # EXCLUDE A TOAST THAT IS LEAVING. Sonner marks an exiting toast
+            # `data-removed="true"` and animates it out, so axe composites a
+            # half-faded blend and reports a contrast nobody can act on - you
+            # cannot fix the contrast of a fade. It cost a finding on
+            # `/_qstest` (#a86466 on #1f0808, 4.26:1) and the same class was
+            # already written off once as "a toast measured mid-fade".
+            #
+            # Scoped to the leaving state ONLY: a toast a person can actually
+            # read has no `data-removed`, so its contrast is still measured.
+            " axe.run({exclude: [['[data-removed=\"true\"]']]},"
+            "         {resultTypes:['violations']}).then("
             "  r => { window.__axe = JSON.stringify(r.violations.map(v => ({id: v.id,"
             "    impact: v.impact, help: v.help, n: v.nodes.length,"
             "    first: v.nodes[0] && v.nodes[0].target.join(' '),"
