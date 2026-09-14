@@ -141,6 +141,12 @@ MOUNT_NS = (
 
 RESOLVES_PEER = ("app_id_from_pid", "ConnectionAuth")
 
+#: The one call that names the CALLER rather than a peer. A process may always
+#: read its own `/proc/self/exe`, so this spelling is not the defect above and a
+#: daemon that says out loud which id it will be judged as should not be punished
+#: for it - that line is how a refused read becomes diagnosable at all.
+SELF_RESOLUTION = "app_id_from_pid(std::process::id())"
+
 # `/proc/<pid>/exe` is ptrace-gated, and CAP_SYS_PTRACE is the documented bypass -
 # the same one `stamped-identity-plan.md` records from the 14 July host-proof. A
 # unit with no `User=` runs as root and keeps the default bounding set, so it reads
@@ -255,6 +261,16 @@ def resolves_peers(crate):
         code = "\n".join(
             line for line in text.splitlines() if not line.lstrip().startswith("//")
         )
+        # Resolving your OWN id is not resolving a peer's, and a mount namespace
+        # cannot refuse it: `/proc/self/exe` is readable by the process it belongs
+        # to whatever the sandbox says. Measured on 14 September inside a live
+        # Landlock fence - the peer's link came back EACCES and the fenced
+        # process could still read exactly one exe link, its own.
+        #
+        # Removed before matching rather than excused after, and ONLY this exact
+        # spelling: any other argument is a pid the caller got from somewhere, and
+        # that is the case this gate exists for.
+        code = code.replace(SELF_RESOLUTION, "")
         if any(n in code for n in RESOLVES_PEER):
             return rs.relative_to(REPO)
     return None

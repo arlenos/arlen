@@ -120,6 +120,20 @@ fn main() -> Result<()> {
     // $XDG_RUNTIME_DIR/arlen/knowledge.sock, else /run/arlen/knowledge.sock -
     // the exact resolution the daemon binds with.
     let socket = knowledge::utils::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock");
+    // The identity the DAEMON will judge this helper as, resolved the same way it
+    // resolves it, and said out loud at startup.
+    //
+    // Every answer here comes back through the read-scope gate, and a helper with
+    // no grant mounts perfectly and then serves an empty directory - the daemon
+    // logs `read denied ... app_id=X` and this side logged only "date query
+    // failed", so the two halves of the sentence were in different journals. The
+    // deployed binary resolves to `timeline`, which has a profile; a cargo-target
+    // one resolves to `dev.arlen-timeline`, which has none, so `~/.timeline` is
+    // empty in a dev run for a reason no message named.
+    match arlen_permissions::identity::app_id_from_pid(std::process::id()) {
+        Ok(id) => info!(app_id = %id, "timeline helper: the read scope is looked up under this id"),
+        Err(e) => warn!(error = %e, "timeline helper: cannot resolve its own id; the daemon will refuse its reads"),
+    }
     info!(%socket, %mount_path, "timeline helper: connecting to the knowledge read socket");
 
     let reader = SocketGraphReader::connect(socket)?;

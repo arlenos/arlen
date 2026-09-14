@@ -88,6 +88,36 @@ check(
   (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
 );
 
+const RESOLVES_SELF = `
+pub fn me() -> Option<String> {
+    arlen_permissions::identity::app_id_from_pid(std::process::id()).ok()
+}
+`;
+
+// A daemon saying which id IT will be judged as reads its own /proc/self/exe,
+// which no mount namespace refuses. Both halves are asserted together: excusing
+// the self-call must not also excuse the peer-call in the same file, or the
+// exemption becomes a way to smuggle one past the gate.
+check(
+  "resolving your own id is not resolving a peer's",
+  tree({
+    [`${U}/arlen-thing.service`]: unit("ProtectSystem=strict"),
+    "daemons/thing/Cargo.toml": CARGO,
+    "daemons/thing/src/lib.rs": RESOLVES_SELF,
+  }),
+  (code, out) => code === 0 && !out.includes("mount namespace"),
+);
+
+check(
+  "a peer resolution beside a self resolution is still caught",
+  tree({
+    [`${U}/arlen-thing.service`]: unit("ProtectSystem=strict"),
+    "daemons/thing/Cargo.toml": CARGO,
+    "daemons/thing/src/lib.rs": RESOLVES_SELF + RESOLVES,
+  }),
+  (code, out) => code === 1 && out.includes("mount namespace"),
+);
+
 check(
   "a sandboxed unit whose daemon resolves peers is caught",
   tree({
