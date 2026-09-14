@@ -616,7 +616,7 @@
          says "example meetings": a sample nobody labelled is indistinguishable
          from the real thing, and this one has a plausible account card with a
          plausible token in it. -->
-    <p class="sample-note">{$t("s.sampleShot")}</p>
+    <div class="note sample"><Notice tone="neutral" text={$t("s.sampleShot")} /></div>
   {/if}
   {#if actionFailed}
     <!-- Above the stage rather than over it: the canvas is what the person is
@@ -803,6 +803,9 @@
   .tool > .note {
     margin: 1rem 1rem 0.5rem;
   }
+  .tool > .note.sample + .note {
+    margin-top: 0;
+  }
   .note-row {
     display: flex;
     align-items: center;
@@ -823,13 +826,6 @@
   }
   .source-label {
     color: var(--color-fg-secondary, #9aa4b2);
-  }
-
-  .sample-note {
-    margin: 0 0 0.5rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-warning, #fbbf24);
   }
 
   /* The window when there is no capture: the refusal at its top, nothing under

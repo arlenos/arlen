@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   /// The macOS-style floating-thumbnail handoff (screenshot-capture-plan.md §2):
   /// after a capture a thumbnail floats briefly in a corner. Ignore it and it
@@ -86,8 +87,10 @@
   onmouseleave={resume}
   onclick={() => onAnnotate?.()}
 >
+  <!-- Over the picture, not painted onto it: a label inside sample data is
+       itself sample data (design-system.md 6.11, thread one). -->
+  {#if sample}<div class="thumb-note"><Notice tone="neutral" text={$t("s.sampleShot")} /></div>{/if}
   {#if src}<img class="thumb-img" {src} alt={$t("s.screenCapture")} />{/if}
-  {#if sample}<p class="thumb-sample">{$t("s.sampleShot")}</p>{/if}
 
   <div class="thumb-actions" role="group" aria-label={$t("s.captureActions")}>
     <button class="thumb-btn" title={$t("s.annotate")} aria-label={$t("s.annotate")} onclick={(e) => { stop(e); onAnnotate?.(); }}>
@@ -208,12 +211,7 @@
       transform: scaleX(0);
     }
   }
-  .thumb-sample {
-    margin: 0;
-    padding: 2px 6px;
-    font-size: 11px;
-    line-height: 1.3;
-    color: var(--color-fg-secondary);
-    text-align: center;
+  .thumb-note {
+    margin: 0 0 0.5rem;
   }
 </style>
