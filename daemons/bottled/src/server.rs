@@ -356,11 +356,26 @@ async fn forget_for(
             problem: Problem::CouldNotForget,
         };
     }
-    forget(bottles_dir, id, |p| {
+    let answer = forget(bottles_dir, id, |p| {
         arlen_freedesktop_trash::trash_for_current_user(&p.to_string_lossy())
             .map(|slot| PathBuf::from(slot.trashed().as_str()))
             .map_err(|e| format!("{e:?}"))
-    })
+    });
+    // AND WHAT ACTUALLY HAPPENED, the way the narrowing beside this one already
+    // records it. Measured on 14 September against a real ledger: a completed
+    // forget left one entry, `bottle.forget:<id>` with outcome `forgetting`, and
+    // a forget whose trash move had failed would have left exactly the same one.
+    // So the record said the daemon was about to throw somebody's files away and
+    // never that it did, which is the half the ledger exists for. Best effort,
+    // because the act is already done: a ledger that has gone down since the
+    // fail-closed check above must not turn a completed forget into an error, and
+    // there is nothing to undo by then anyway.
+    let outcome = match &answer {
+        Response::Refused { problem } => format!("kept:{problem:?}"),
+        _ => "forgotten".to_string(),
+    };
+    let _ = audit.submit(forget_event(&outcome, id)).await;
+    answer
 }
 
 /// Narrow a bottle's reach, gated and recorded.
@@ -598,6 +613,34 @@ mod tests {
         // The refusal is recorded too: a permission change nobody asked for is
         // exactly the thing somebody later wants to find in the ledger.
         assert_eq!(audit.count().await, 3);
+    }
+
+    /// A forget leaves TWO entries: the one written before anything moved, and
+    /// the one saying what came of it.
+    ///
+    /// The id here does not exist, so the act refuses before the trash is touched
+    /// - which is the point, since the trash this daemon uses is the real one and
+    /// a test must not put anything in it. What is being checked is that the
+    /// second record exists at all: with only the first, a forget that failed and
+    /// a forget that emptied somebody's bottle read identically in the ledger.
+    #[tokio::test]
+    async fn a_forget_records_what_came_of_it_and_not_only_that_it_began() {
+        use audit_proto::sink::MockAuditSink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let audit = MockAuditSink::accepting();
+        let answer = forget_for(dir.path(), "absent", Some("dev.arlen.settings"), &audit).await;
+        assert_eq!(
+            answer,
+            Response::Refused {
+                problem: Problem::NoSuchBottle
+            },
+        );
+        assert_eq!(
+            audit.count().await,
+            2,
+            "the intent and the outcome are two records, not one",
+        );
     }
 
     #[test]
