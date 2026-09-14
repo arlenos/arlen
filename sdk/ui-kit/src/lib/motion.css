@@ -12,10 +12,23 @@
    ============================================================ */
 
 :root {
-  /* Durations */
+  /* Durations.
+
+     THE THEME'S NAME IS THE BASE, and the direction matters. `sdk/theme`
+     emits `--duration-fast`, `--duration-normal` and `--duration-slow`; this
+     file used to define `--duration-medium` as the literal and
+     `--duration-normal` as an alias OF it, so a theme setting the middle
+     duration wrote to a variable nothing draws with while every component
+     kept reading `--duration-medium` at its hardcoded 250ms. Measured on
+     15 September: injecting `--duration-normal: 777ms` left
+     `--duration-medium` at 250. Fast and slow landed; the middle one never
+     did.
+
+     `--duration-micro` has no field in the theme at all, so it stays a
+     literal - that is a schema gap, written up rather than papered over. */
   --duration-micro:  100ms; /* tap/click feedback, scale-down */
   --duration-fast:   150ms; /* hover bg-shift, small transitions */
-  --duration-medium: 250ms; /* popover entry, overlay fade */
+  --duration-normal: 250ms; /* popover entry, overlay fade */
   --duration-slow:   350ms; /* page transitions, larger moves */
 
   /* Easings */
@@ -23,9 +36,9 @@
   --ease-in-out: cubic-bezier(0.4, 0.0, 0.2, 1);
   --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* Legacy aliases kept so existing components keep compiling while
-     they migrate. New code should use the names above. */
-  --duration-normal:  var(--duration-medium);
+  /* Aliases. `--duration-medium` is the name most components read, and it
+     now follows the themed one rather than the other way round. */
+  --duration-medium:  var(--duration-normal);
   --duration-instant: var(--duration-micro);
   --easing-default:   var(--ease-in-out);
   --easing-enter:     var(--ease-out);
@@ -53,8 +66,14 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root {
+    /* Both names, because the theme injects `--duration-normal` as an INLINE
+       style on the root element, which beats any stylesheet rule: setting only
+       the alias here would let a themed middle duration flow straight past a
+       person who asked for less motion. Setting `--duration-medium` directly
+       is what stops it. */
     --duration-micro:  0ms;
     --duration-fast:   0ms;
+    --duration-normal: 0ms;
     --duration-medium: 0ms;
     --duration-slow:   0ms;
   }
