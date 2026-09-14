@@ -103,7 +103,12 @@ impl ServerHandler for SystemMonitorMcp {
         Ok(ListToolsResult::with_all_items(vec![
             Self::no_arg_tool(
                 LIST_TOOL,
-                "List the currently-active processes (name and state). Read-only, no arguments.",
+                "Sample the processes that are ON-CPU or in uninterruptible I/O right now (name \
+                 and state). A SAMPLE, not an inventory: sleeping processes are not included, so \
+                 on an idle machine this is usually empty or one entry even though hundreds of \
+                 processes exist. An empty result means nothing was on-CPU at that instant, never \
+                 that nothing is running - ask resource_usage whether the machine is busy. \
+                 Read-only, no arguments.",
             ),
             Self::no_arg_tool(
                 RES_TOOL,
