@@ -38,6 +38,24 @@ async fn emit_to_targets(conn: &Connection, targets: &[(String, &str, &'static s
     }
 }
 
+/// Make the account directory watchable by creating it if it is not there yet.
+///
+/// On a fresh profile `~/.config/arlen/accounts` does not exist, and watching a
+/// missing directory fails `ENOENT` - so the watcher returned, and live
+/// notifications were off for the rest of the daemon's life. The account
+/// directory is only created when the FIRST account is written
+/// (`write_account_config`), which is after the watcher has already given up, so
+/// the very first account a person adds was the one nobody was told about.
+/// Measured on a fresh `XDG_CONFIG_HOME`: `cannot watch accounts dir ... No such
+/// file or directory`, every time.
+///
+/// Creating it is the daemon's own config directory and an empty one already
+/// means "no accounts" to the loader, so this adds no state and changes no
+/// answer.
+fn ensure_watchable(dir: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)
+}
+
 /// Watch the account-config directory and unicast `AccountsChanged` to granted
 /// apps' connections on every change. Returns if the watch cannot be established
 /// or ends (the daemon still serves its methods; only live notifications stop).
@@ -62,6 +80,10 @@ pub async fn run_account_watcher(
             return;
         }
     };
+    if let Err(e) = ensure_watchable(&accounts_dir) {
+        tracing::warn!(dir = %accounts_dir.display(), error = %e, "cannot create accounts dir");
+        return;
+    }
     if let Err(e) = watcher.watch(&accounts_dir, RecursiveMode::NonRecursive) {
         tracing::warn!(dir = %accounts_dir.display(), error = %e, "cannot watch accounts dir");
         return;
@@ -122,5 +144,37 @@ pub async fn run_peer_cleanup(conn: Connection, peers: Arc<Mutex<PeerRegistry>>)
                 }
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+
+    fn watcher() -> RecommendedWatcher {
+        RecommendedWatcher::new(move |_res| {}, notify::Config::default()).expect("watcher")
+    }
+
+    #[test]
+    fn a_fresh_profile_has_no_accounts_dir_and_could_not_be_watched() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("arlen/accounts");
+        // The state a first boot is actually in, and the failure it produced.
+        assert!(!dir.exists());
+        assert!(watcher().watch(&dir, RecursiveMode::NonRecursive).is_err());
+        // The fix, at the same call.
+        ensure_watchable(&dir).expect("create");
+        assert!(watcher().watch(&dir, RecursiveMode::NonRecursive).is_ok());
+    }
+
+    #[test]
+    fn an_existing_accounts_dir_is_left_alone() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().to_path_buf();
+        std::fs::write(dir.join("work.toml"), "x").expect("write");
+        ensure_watchable(&dir).expect("idempotent");
+        assert!(dir.join("work.toml").exists(), "creating must not disturb what is there");
     }
 }
