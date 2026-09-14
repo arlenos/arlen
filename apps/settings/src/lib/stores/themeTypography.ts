@@ -36,14 +36,23 @@ const METRIC_KEY: Record<string, string> = {
 /// What the fields fall back to before the resolved theme has been read, and if
 /// it cannot be read at all. The page renders the same either way; these are the
 /// house defaults rather than an invented set.
+/// THE SHIPPED THEME'S VALUES, COPIED, and the copy is checked by the test
+/// beside this file. It is the floor under a failed `theme_resolved_metrics`
+/// read, so it cannot be dropped - a row with no value is worse than a row with
+/// a stale one - but it had drifted: `size_base` read 15 where the theme says
+/// 14, and `weight_bold` read 700 where the theme says 600, so a machine that
+/// could not reach the backend was told its text is a pixel bigger and its bold
+/// heavier than anything it renders. The font names are the FAMILY the theme
+/// names first, not its whole fallback stack, because the row is a picker over
+/// known families.
 export const TYPO_DEFAULTS: Record<string, string | number> = {
   fontSans: "Inter Variable",
   fontMono: "JetBrains Mono",
-  sizeBase: 15,
+  sizeBase: 14,
   lineHeight: 1.5,
   weightNormal: 400,
   weightMedium: 500,
-  weightBold: 700,
+  weightBold: 600,
 };
 
 /// The active theme's resolved typography, once `load()` has read it.
