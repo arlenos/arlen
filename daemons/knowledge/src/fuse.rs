@@ -666,9 +666,34 @@ impl Filesystem for TimelineFs {
     }
 }
 
+/// Whether the mount point has to be cleared before anything can be mounted onto
+/// it, given the result of stat-ing it.
+///
+/// `exists()` was the guard here and it is false for the one case this cleanup is
+/// for. A FUSE mount whose server died stays in the mount table, and stat-ing it
+/// is refused with `ENOTCONN` - so `exists()` answers "no", the unmount is
+/// skipped, and `create_dir_all` then fails `EEXIST` because the directory entry
+/// is still there. Measured: SIGTERM the helper, start it again, and it exits
+/// with `File exists (os error 17)` every time. Under a supervisor that is a
+/// restart loop, and the user's `~/.timeline` reads "Transport endpoint is not
+/// connected" until somebody runs `fusermount -u` by hand.
+///
+/// A signal handler would make a clean stop tidy, but it cannot help after a
+/// SIGKILL or a crash, and this path has to work for those too - so the recovery
+/// lives here, where every death is the same.
+fn mount_point_needs_clearing(probe: &std::io::Result<std::fs::Metadata>) -> bool {
+    match probe {
+        // Present: possibly a live mount of ours from a previous run. Clearing a
+        // plain directory is a no-op, so this stays permissive.
+        Ok(_) => true,
+        // The stale mount: in the table, but its server is gone.
+        Err(e) => e.kind() == std::io::ErrorKind::NotConnected,
+    }
+}
+
 /// Mount the timeline FUSE filesystem. Blocks until unmount.
 pub fn mount(path: &str, graph: impl SyncGraphReader + Send + Sync + 'static) -> Result<()> {
-    if Path::new(path).exists() {
+    if mount_point_needs_clearing(&std::fs::metadata(Path::new(path))) {
         let _ = std::process::Command::new("fusermount")
             .args(["-u", "-z", path])
             .output();
@@ -690,6 +715,20 @@ pub fn mount(path: &str, graph: impl SyncGraphReader + Send + Sync + 'static) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dead_mount_is_cleared_even_though_it_does_not_exist() {
+        use std::io::{Error, ErrorKind};
+        // The case the old `exists()` guard missed: the server is gone, the mount
+        // is still in the table, and stat is refused.
+        assert!(mount_point_needs_clearing(&Err(Error::from(ErrorKind::NotConnected))));
+        // A plain directory or a live mount: clearing it is a no-op either way.
+        assert!(mount_point_needs_clearing(&std::fs::metadata(".")));
+        // Nothing there, and no permission to look: there is nothing to unmount,
+        // and running fusermount would only add a confusing failure.
+        assert!(!mount_point_needs_clearing(&Err(Error::from(ErrorKind::NotFound))));
+        assert!(!mount_point_needs_clearing(&Err(Error::from(ErrorKind::PermissionDenied))));
+    }
 
     #[test]
     fn sanitize_simple() {
