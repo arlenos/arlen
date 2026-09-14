@@ -228,6 +228,19 @@ pub fn is_enrolled_daemon_id(app_id: &str) -> bool {
 }
 
 /// Every per-user unit this resolver knows.
+///
+/// NOT EVERY SHIPPED UNIT, and the one absence is deliberate.
+/// `arlen-store-backend.service` ships on the image and is one of the two user
+/// units actually enabled there, and it is not in the table above because it
+/// presents no identity to anything: it BINDS `store.sock` and answers, and the
+/// only place it dials a socket is its own round-trip test. It reads other
+/// components' profiles to describe them in the store, which needs no identity of
+/// its own.
+///
+/// Written down because an unexplained gap in a security-relevant table invites
+/// the wrong repair. The day the store backend gains a client role - a graph read,
+/// an audit submit - it needs an entry here, and it will fail the way `notifyd`
+/// failed on the 15 August boot: refused at connect, with nothing saying why.
 pub fn enrolled_user_units() -> impl Iterator<Item = &'static str> {
     USER_UNIT_APP_IDS.iter().map(|(u, _)| *u)
 }
