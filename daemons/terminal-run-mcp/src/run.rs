@@ -156,6 +156,19 @@ pub async fn run_confined(req: &RunRequest) -> Result<RunOutcome, RunError> {
 
     let spawned = Command::new(BWRAP)
         .args(&argv)
+        // BWRAP'S OWN ENVIRONMENT, not the command's. `--clearenv` in the argv
+        // already gives the confined command an environment of exactly the
+        // variables the profile sets - but it clears the environment bwrap hands
+        // its child, not the one bwrap itself carries. bwrap is PID 1 in the new
+        // namespace, so a command inside can read that environment straight out of
+        // `/proc/1/environ`. Measured on 14 September: `head -c 60 /proc/1/environ`
+        // from inside a confined run came back with this server's `SHELL` and the
+        // session's sway IPC socket path. Nothing bwrap needs comes from its
+        // environment here (every setting travels in the argv), so it gets only the
+        // PATH the spawn needs to find it - which is the same shape `arlen-run`
+        // already uses for an app launch.
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -281,6 +294,42 @@ mod tests {
         assert_eq!(out.exit_code, Some(0));
         assert!(out.stdout.contains("hello-from-sandbox"), "stdout: {:?}", out.stdout);
         assert!(!out.timed_out);
+    }
+
+    /// The launcher's environment does not reach the sandbox, not even through
+    /// `/proc/1/environ`.
+    ///
+    /// `--clearenv` gives the COMMAND a clean environment, but bwrap is PID 1 in
+    /// the new namespace and keeps whatever it was started with, which a command
+    /// inside can simply read. Measured before the fix: a run came back with this
+    /// server's `SHELL` and the session's sway IPC socket path. The variable this
+    /// plants would have been there too.
+    #[tokio::test]
+    #[ignore = "needs bwrap + an unprivileged user namespace"]
+    async fn the_launchers_environment_does_not_reach_the_sandbox() {
+        // Set on THIS process, which is what spawns bwrap in the test.
+        std::env::set_var("ARLEN_RUN_LEAK_CANARY", "must-not-appear");
+        let dir = tempfile::tempdir().unwrap();
+        let request = RunRequest {
+            command: "cat".to_string(),
+            args: vec!["/proc/1/environ".to_string()],
+            read_only_roots: vec![PathBuf::from("/")],
+            workdir: dir.path().to_path_buf(),
+            network: NetworkPolicy::None,
+            timeout: DEFAULT_TIMEOUT,
+        };
+        let out = run_confined(&request).await.unwrap();
+        assert_eq!(out.exit_code, Some(0), "stderr: {:?}", out.stderr);
+        assert!(
+            !out.stdout.contains("ARLEN_RUN_LEAK_CANARY"),
+            "the launcher's environment reached PID 1: {:?}",
+            out.stdout,
+        );
+        assert!(
+            out.stdout.starts_with("PATH="),
+            "PID 1 should carry only the PATH the spawn needs: {:?}",
+            out.stdout,
+        );
     }
 
     #[tokio::test]
