@@ -54,7 +54,7 @@ const messages: Catalogs = {
     "cal.sets.name": "Set name",
     "cal.calendarColor": "Colour of {$name}",
     "cal.form.calendar": "Calendar",
-    "cal.sample": "Example calendar - not your files.",
+    "cal.sample": "Example calendar, not your files.",
     "cal.more": "+{$n} more",
     "cal.allDayRow": "All day",
     "cal.form.title": "New event",
