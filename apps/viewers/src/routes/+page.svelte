@@ -691,14 +691,22 @@
 {:else if framed}
   <main class="frame" style="width:{w}px;height:{h}px">
     {@render appTitle()}
+    {@render sampleLine()}
     {@render face(demo)}
   </main>
 {:else}
   <main class="fill">
     {@render appTitle()}
+    {@render sampleLine()}
     {@render face(demo)}
   </main>
 {/if}
+
+{#snippet sampleLine()}
+  <!-- The demo face is a drawing, not a file: said at the top of it, in the one
+       shape (design-system.md 6.11, thread one). -->
+  <div class="note note-top"><Notice tone="neutral" text={$t("v.sample")} /></div>
+{/snippet}
 
 {#if printStatus}
   <!-- Its own bar rather than the error one: a print that was cancelled, or a

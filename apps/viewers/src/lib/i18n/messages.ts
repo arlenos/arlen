@@ -10,6 +10,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "v.app.title": "Viewer",
+    "v.sample": "Example picture, not a file on this machine.",
     "v.audioPlayer": "Audio player",
     "v.imageViewer": "Image viewer",
     "v.videoPlayer": "Video player",
@@ -96,6 +97,7 @@ const messages: Catalogs = {
   },
   de: {
     "v.app.title": "Betrachter",
+    "v.sample": "Beispielbild, keine Datei auf diesem Rechner.",
 
     "v.audioPlayer": "Audioplayer",
     "v.imageViewer": "Bildbetrachter",
