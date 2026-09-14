@@ -254,5 +254,57 @@ console.log("subscribe scope:");
   );
 }
 
+{
+  // A topic held in a CONSTANT, the shape the privacy sentinel and the journald
+  // parser both use. Until 14 September this file read them as emitting nothing,
+  // so their publish grants were checked by nobody.
+  const r = run({
+    [`${PROFILES}/demo-const.toml`]:
+      '[info]\napp_id = "demo-const"\n\n[event_bus]\npublish = []\n',
+    "daemons/demo-const/src/lib.rs":
+      'const RECORDING_EVENT: &str = "sentinel.recording_device.nearby";\n' +
+      "async fn go(events: &E) { publish(events, RECORDING_EVENT, payload).await; }\n",
+  });
+  check(
+    "a topic held in a constant is an emit",
+    r.code === 1 && r.out.includes("sentinel.recording_device.nearby"),
+  );
+}
+
+{
+  // A topic returned from a FUNCTION the emit names, the dogfood injector's
+  // shape - and the power daemon's, which is how two sleep transitions went
+  // undeclared for as long as the helper has existed.
+  const r = run({
+    [`${PROFILES}/demo-call.toml`]:
+      '[info]\napp_id = "demo-call"\n\n[event_bus]\npublish = []\n',
+    "daemons/demo-call/src/mode.rs":
+      'fn topic(&self) -> &str { match self { Mode::A => "power.suspend", _ => "power.resume" } }\n',
+    "daemons/demo-call/src/main.rs":
+      "async fn go(emitter: &E, mode: Mode) { emitter.emit(mode.topic(), payload).await; }\n",
+  });
+  check(
+    "a topic returned from a function is an emit",
+    r.code === 1 && r.out.includes("power.suspend"),
+  );
+}
+
+{
+  // And the narrowing that keeps the two above honest: only a function the emit
+  // NAMES is read, so an unrelated dotted string elsewhere in the crate is not a
+  // topic. Without this the rule would ask for a grant per stray literal.
+  const r = run({
+    [`${PROFILES}/demo-stray.toml`]:
+      '[info]\napp_id = "demo-stray"\n\n[event_bus]\npublish = []\n',
+    "daemons/demo-stray/src/main.rs":
+      'fn unrelated() -> &str { "some.other.string" }\n' +
+      "async fn go(emitter: &E) { emitter.emit(TOPIC, payload).await; }\n",
+  });
+  check(
+    "a dotted string no emit names is not a topic",
+    r.code === 0 && !r.out.includes("some.other.string"),
+  );
+}
+
 console.log(failures ? `\n${failures} failure(s)` : "\nboth directions hold");
 process.exit(failures ? 1 : 0);

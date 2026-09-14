@@ -4,6 +4,16 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """A bus subscription or publish the profile does not grant is dropped, not refused.
 
+AND IT READ THE TOPIC ONLY WHERE IT WAS WRITTEN AT THE CALL, until the same day.
+A topic can reach an emit three ways - as a literal, as a constant, or as the
+return of a function the call names - and this file saw the first. So the power
+daemon's two sleep transitions and the dogfood injector's three topics read as no
+emit at all, their grants were checked by nobody, and one of them was in fact
+wrong: `powerd.toml` declared one topic of the three it sends, which under the
+enforce cutover would have silenced the clock's stopwatch across a suspend. All
+three shapes are read now, and the last is narrowed to functions an emit actually
+NAMES so an unrelated dotted string is never mistaken for a topic.
+
 SEVENTEEN OF ITS OWN NOTES WERE NOISE UNTIL 14 SEPTEMBER, which is worth reading
 before trusting the note list. Every app that grants `app.presence.set` and
 friends publishes them from its FRONTEND through a shell plugin command, so the
@@ -350,19 +360,88 @@ def shell_surface_topics() -> set[str]:
     return set(module.TOPIC.values())
 
 
+#: An emit whose topic is a CONSTANT rather than a literal: `publish(events,
+#: RECORDING_EVENT, payload)`. The same shape `check-emitters-declared.py` grew on
+#: 13 September; this file never did, which is why the privacy sentinel and the
+#: journald parser both read as emitting nothing.
+PUBLISH_VIA_CONST = re.compile(
+    r'(?:emit_to_event_bus|\.emit|emit_event|publish)\s*\([^)]*?\b(?P<name>[A-Z][A-Z0-9_]{2,})\b'
+)
+
+#: A `const NAME: &str = "a.topic";` the call above can be naming. Dotted values
+#: only, so a constant holding a socket name or a bus path is not read as a topic.
+CONST_TOPIC = re.compile(
+    r'const\s+(?P<name>[A-Z][A-Z0-9_]{2,})\s*:\s*&\s*str\s*=\s*"(?P<topic>[^"\s]+\.[^"\s]+)"'
+)
+
+#: An emit whose topic is a CALL: `emitter.emit(mode.topic(), payload)`. One more
+#: indirection than the constant above, and the last one in the tree: the dogfood
+#: injector picks its topic per mode, and the power daemon picks its sleep
+#: transition the same way. Only the function NAME is taken here; its body is read
+#: below.
+PUBLISH_VIA_CALL = re.compile(
+    r'(?:emit_to_event_bus|\.emit|emit_event|publish)\s*\([^)]*?\b(?P<name>[a-z_][a-z0-9_]*)\s*\('
+)
+
+#: A dotted lowercase literal, the shape every bus topic has. Read only from the
+#: body of a function an emit call actually names, so an unrelated dotted string
+#: elsewhere in the crate is never mistaken for a topic.
+DOTTED_LITERAL = re.compile(r'"(?P<topic>[a-z][a-z0-9_]*(?:\.[a-z0-9_*]+)+)"')
+
+
+def fn_bodies(text: str) -> dict[str, str]:
+    """Every function in `text` by name, with its body."""
+    out: dict[str, str] = {}
+    for m in re.finditer(r"fn\s+(?P<name>\w+)[^{;]*\{", text, re.S):
+        out[m.group("name")] = body_of(text, m.end() - 1)
+    return out
+
+
 def publishes_of(directory: Path) -> set[str]:
-    """Every topic this app emits onto the bus."""
+    """Every topic this app emits onto the bus.
+
+    THREE SHAPES, because the topic is not always written at the call. It can be
+    a literal, a constant, or the return of a function the emit names - and this
+    file saw only the first until 14 September, which is how the power daemon's
+    two sleep transitions and the dogfood injector's three topics both read as no
+    emit at all while their grants went unchecked.
+    """
     found: set[str] = set()
+    texts = []
     for f in directory.rglob("*.rs"):
         if any(s in str(f) for s in SKIP):
             continue
-        text = f.read_text(encoding="utf-8", errors="replace")
+        texts.append(f.read_text(encoding="utf-8", errors="replace"))
+
+    # Constants and function bodies are crate-wide: the emit and the definition
+    # are routinely in different files (`sleep.rs` names the topic, `main.rs`
+    # emits it).
+    consts: dict[str, str] = {}
+    bodies: dict[str, str] = {}
+    for text in texts:
+        consts.update(dict(CONST_TOPIC.findall(text)))
+        bodies.update(fn_bodies(text))
+
+    def keep(topic: str) -> bool:
+        # A dotted topic, not a Tauri window event or a log line that happens to
+        # sit behind a method called `emit`.
+        return "." in topic and "://" not in topic and " " not in topic
+
+    for text in texts:
         for m in PUBLISH_CALL.finditer(text):
-            topic = m.group("topic")
-            # A dotted topic, not a Tauri window event or a log line that happens
-            # to sit behind a method called `emit`.
-            if "." in topic and "://" not in topic and " " not in topic:
+            if keep(m.group("topic")):
+                found.add(m.group("topic"))
+        for m in PUBLISH_VIA_CONST.finditer(text):
+            topic = consts.get(m.group("name"))
+            if topic and keep(topic):
                 found.add(topic)
+        for m in PUBLISH_VIA_CALL.finditer(text):
+            body = bodies.get(m.group("name"))
+            if body is None:
+                continue
+            for lit in DOTTED_LITERAL.finditer(body):
+                if keep(lit.group("topic")):
+                    found.add(lit.group("topic"))
     return found
 
 
