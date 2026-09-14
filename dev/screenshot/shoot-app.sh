@@ -155,7 +155,17 @@ if [ -e "$SHOOT_APP" ]; then
         # next run fails with "nothing is serving http://localhost:1434" and the
         # reader is now two wrong turns from the truth. Naming the command that
         # works costs a line and saves that. Walked into it on 14 September.
-        echo "inject result: REFUSED: $SHOOT_APP is older than its source ($_newer). This suite would be testing old code; rebuild with (cd apps/<app> && npm run build && npx tauri build --no-bundle) - a plain cargo build --release leaves it pointing at devUrl - or set SHOOT_ALLOW_STALE=1 to run it anyway."
+        #
+        # And WHICH command depends on the binary this suite asked for, which is
+        # the second half of the same trap: a drive that serves its frontend
+        # wants the DEBUG build (it is the one that loads the served port), so
+        # sending its reader to a release build would be the same wrong turn
+        # pointing the other way. Read off the path rather than assumed.
+        case "$SHOOT_APP" in
+          */target/debug/*) _how="npx tauri build --debug --no-bundle" ;;
+          *) _how="npx tauri build --no-bundle" ;;
+        esac
+        echo "inject result: REFUSED: $SHOOT_APP is older than its source ($_newer). This suite would be testing old code; rebuild with (cd apps/<app> && npm run build && $_how) - a plain cargo build leaves it pointing at devUrl with nothing on that port - or set SHOOT_ALLOW_STALE=1 to run it anyway."
         exit 4
       fi
     fi
