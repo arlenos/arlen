@@ -52,7 +52,13 @@ CARRIED = {
     "or stop resolving an identity it never uses (it calls only `verify_alive`, "
     "and builds its correlation id from the uid) - and the second needs a "
     "constructor `ConnectionAuth` does not have. Put to the planner in "
-    "coder-reports.md; the refusal is at least loud now.",
+    "coder-reports.md; the refusal is at least loud now. AND THE FENCE IS THE "
+    "ONLY THING MISSING: measured the same evening with the fence lifted and a "
+    "nameable caller - a minted capsule is presented, verified, op-counted and "
+    "SERVED, the slice comes back, the ledger records `capsule.read -> served`, "
+    "and the fourth read against a max_ops of three is refused `exhausted`. So "
+    "whichever way the fork goes, nothing else has to be built for this feature "
+    "to work.",
 }
 
 
