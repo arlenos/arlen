@@ -323,6 +323,13 @@ impl EphemeralStack {
         self.runtime.path().join("arlen").join("audit-ingest.sock")
     }
 
+    /// The capsule daemon's read socket path
+    /// (`$XDG_RUNTIME_DIR/arlen/capsule.sock`), where a holder presents a signed
+    /// grant and is served the frozen slice.
+    pub fn capsule_socket(&self) -> PathBuf {
+        self.runtime.path().join("arlen").join("capsule.sock")
+    }
+
     /// The consent broker's intake socket path
     /// (`$XDG_RUNTIME_DIR/arlen/consent-intake.sock`), where an app raises a
     /// consent request and blocks for the decision.

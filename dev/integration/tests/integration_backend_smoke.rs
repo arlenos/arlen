@@ -1618,6 +1618,139 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
     );
 }
 
+/// IT-1 capsule audit: a refused capsule read is recorded, and the record says
+/// nothing about what was asked for.
+///
+/// WHY THIS ONE IS WORTH A SCENARIO. `capsuled` is the daemon that hands a slice
+/// of somebody's graph to somebody else, so its ledger entry is the only durable
+/// evidence a read happened - and the entry has to be evidence WITHOUT being a
+/// second copy of the thing it is evidence about. Both halves are asserted here:
+/// that an entry lands at all, and that the scope, the slice hash and the
+/// revocation handle the caller presented appear nowhere in the page.
+///
+/// It also pins a thing that broke silently once already. `capsuled` runs behind
+/// its own Landlock write-fence and submits to the audit daemon as
+/// `dev.arlen-capsuled` from a cargo target; that id has to be admitted or the
+/// daemon serves nobody and says nothing. Measured by hand on 14 September, which
+/// is exactly the kind of check that should not stay a hand measurement.
+///
+/// The grant is deliberately unsigned rubbish: the refusal path is reachable
+/// without minting anything, and refusing is the outcome worth recording.
+#[tokio::test]
+#[ignore = "needs arlen-auditd + arlen-capsuled built (run `just integration-nightly`)"]
+async fn a_refused_capsule_read_is_audited_without_naming_what_was_asked_for() {
+    use audit_proto::ReadClient;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    for (dir, bin) in [
+        ("daemons/audit-daemon", "arlen-auditd"),
+        ("daemons/capsuled", "arlen-capsuled"),
+    ] {
+        if !arlen_integration::binary_built(dir, bin) {
+            eprintln!(
+                "SKIP a_refused_capsule_read_is_audited_without_naming_what_was_asked_for: {bin} not built (run `just integration-nightly`)"
+            );
+            return;
+        }
+    }
+
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_ready("arlen/audit-ingest.sock")
+        .expect("audit ingest socket");
+    stack
+        .wait_ready("arlen/audit-read.sock")
+        .expect("audit read socket");
+    stack
+        .spawn("daemons/capsuled", "arlen-capsuled", &[])
+        .expect("spawn capsuled");
+    stack
+        .wait_ready("arlen/capsule.sock")
+        .expect("capsule socket");
+
+    // The three things the entry must not contain, chosen so a leak of any one of
+    // them is unmistakable rather than a substring of something ordinary.
+    let slice_hash = "1d".repeat(32);
+    let handle = "7e".repeat(16);
+    let root = "/work/it/capsule-secret-root";
+    let request = serde_json::json!({
+        "grant": {
+            "scope": { "roots": [root], "expand_hops": 0 },
+            "slice_hash": slice_hash,
+            "audience_hex": "ab".repeat(32),
+            "expires_at_micros": i64::MAX,
+            "max_ops": 3,
+            "originating_user": "it",
+            "revocation_handle": handle,
+        },
+        // Sixty-four zero bytes: well-formed length, no signature behind it.
+        "signature": vec![0u8; 64],
+    });
+
+    let body = serde_json::to_vec(&request).expect("serialise the presented grant");
+    let mut sock = tokio::net::UnixStream::connect(stack.capsule_socket())
+        .await
+        .expect("connect to the capsule socket");
+    sock.write_all(&(body.len() as u32).to_be_bytes())
+        .await
+        .expect("write the frame length");
+    sock.write_all(&body).await.expect("write the grant");
+
+    let mut len = [0u8; 4];
+    sock.read_exact(&mut len)
+        .await
+        .expect("capsuled answers rather than closing the connection");
+    let mut reply = vec![0u8; u32::from_be_bytes(len) as usize];
+    sock.read_exact(&mut reply).await.expect("read the answer");
+    let reply = String::from_utf8_lossy(&reply).to_string();
+    assert_eq!(
+        reply, "ERROR: refused:bad-signature",
+        "an unsigned grant must be refused for the signature, not for anything else"
+    );
+
+    let reader = ReadClient::new(stack.audit_read_socket());
+    let page = reader.recent(16).await;
+    assert!(page.available, "the audit read API must answer");
+    assert!(!page.tampered, "the appended entry must leave the chain intact");
+
+    let entry = page
+        .entries
+        .iter()
+        .find(|e| e.subject == "capsule.read")
+        .unwrap_or_else(|| {
+            panic!(
+                "the refused read must be in the ledger, got subjects {:?}",
+                page.entries
+                    .iter()
+                    .map(|e| e.subject.clone())
+                    .collect::<Vec<_>>()
+            )
+        });
+    assert_eq!(
+        entry.actor, "dev.arlen-capsuled",
+        "the ledger records the daemon the kernel attested, not anything it claimed"
+    );
+    assert!(
+        entry.outcome.starts_with("refused:"),
+        "the outcome names the refusal, got {:?}",
+        entry.outcome
+    );
+
+    // The no-second-copy half. Serialising the whole page is the blunt way to ask
+    // it, and blunt is right here: it catches a leak through any field, including
+    // one added later.
+    let rendered = serde_json::to_string(&page.entries).expect("render the page");
+    for secret in [slice_hash.as_str(), handle.as_str(), root] {
+        assert!(
+            !rendered.contains(secret),
+            "the audit entry must not carry {secret:?}; a record of a read is not a copy of it"
+        );
+    }
+}
+
 /// IT-1 settings broker: it says exactly what it changed, and a refused batch
 /// changes nothing.
 ///
