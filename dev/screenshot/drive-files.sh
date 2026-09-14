@@ -234,6 +234,11 @@ if (!row) return JSON.stringify({ error: "no report.pdf row" });
 row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
 await wait(2500);
 out.status = [...document.querySelectorAll(".status-bar span")].map(s => s.textContent.trim());
+// The refusal is NOT in the status bar. It is a Notice in `.note`, beside the
+// listing, and reading only the status bar reported a correct app as silent:
+// the window plainly said "The shell is not answering, so nothing opened this."
+// while this case failed on `4 items`. Measured 14 September by collecting both.
+out.note = [...document.querySelectorAll(".note")].map(s => s.textContent.trim());
 return JSON.stringify(out);
 JS
 
