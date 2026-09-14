@@ -1618,6 +1618,153 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
     );
 }
 
+/// IT-1 clock: an alarm reaches a person who asked for alarms only.
+///
+/// The defect this guards, measured on a live bus before it was fixed: the
+/// notification daemon's alarms-only Do-Not-Disturb decides by CATEGORY and not
+/// by urgency, and every clock notification went out as `x-arlen.clock`, which
+/// matches none of the spec prefixes. The clock announced, the daemon received,
+/// and nothing was broadcast - in the one mode a person chooses precisely so
+/// their alarm still reaches them.
+///
+/// A unit test on the category is not enough for that. What went wrong lived
+/// between two daemons, so this asserts the delivery: DND set to alarms-only, an
+/// alarm seeded at the next minute, and a client on the notification socket -
+/// where a shell would be - waiting to be told. "Was it broadcast" cannot be read
+/// anywhere else; a suppressed notification is stored in the database too.
+#[tokio::test]
+#[ignore = "needs arlen-clockd + arlen-notifyd built and dbus-daemon on PATH; waits for a minute boundary"]
+async fn an_alarm_reaches_the_socket_under_alarms_only_dnd() {
+    use prost::Message;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    if !(arlen_integration::binary_built("daemons/clock", "arlen-clockd")
+        && arlen_integration::binary_built("daemons/notification-daemon", "arlen-notifyd"))
+    {
+        eprintln!("SKIP an_alarm_reaches_the_socket_under_alarms_only_dnd: arlen-clockd or arlen-notifyd not built (run `just integration-nightly`)");
+        return;
+    }
+    if which_dbus_daemon().is_none() {
+        eprintln!("SKIP an_alarm_reaches_the_socket_under_alarms_only_dnd: no dbus-daemon on PATH");
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    let bus = stack.start_session_bus().expect("a session bus of our own");
+    stack.wait_ready("dbus-session.sock").expect("the private bus binds");
+
+    // Alarms only. Every other mode would let this through for the wrong reason:
+    // `off` lets everything through, and `priority` keys on urgency, which the
+    // alarm has always had.
+    std::fs::write(
+        stack.config_home().join("arlen/notifications.toml"),
+        "[dnd]\nmode = \"alarms\"\n",
+    )
+    .expect("seed the DND config");
+
+    // The next minute boundary at least fifteen seconds out, so the daemon is up
+    // and watching before its alarm is due. Alarms are wall-clock `HH:MM`, so a
+    // boundary is the soonest a real one can be.
+    use chrono::Timelike;
+    let now = chrono::Local::now();
+    let due = (now + chrono::Duration::seconds(75))
+        .with_second(0)
+        .and_then(|t| t.with_nanosecond(0))
+        .expect("truncate to the minute");
+    let state = serde_json::json!({
+        "wake_capable": false,
+        "alarms": [{
+            "id": "it-alarm",
+            "time": due.format("%H:%M").to_string(),
+            "label": "Integration alarm",
+            "days": [],
+            "on_date": due.format("%Y-%m-%d").to_string(),
+            "payload": serde_json::Value::Null,
+            "enabled": true,
+            "fire_late": false,
+            "next_fire_at": serde_json::Value::Null,
+        }],
+        "timers": [],
+        "focus": serde_json::Value::Null,
+        "focus_config": {"focus_min": 25, "break_min": 5, "rounds": 4},
+        "stopwatch": {"running": false, "started_at": serde_json::Value::Null,
+                      "accumulated_ms": 0, "laps": []},
+        "world": [],
+    });
+    let clock_state = stack.state_home().join("arlen/clock");
+    std::fs::create_dir_all(&clock_state).expect("clock state dir");
+    std::fs::write(
+        clock_state.join("state.json"),
+        serde_json::to_string_pretty(&state).expect("state json"),
+    )
+    .expect("seed the alarm");
+
+    stack
+        .spawn("daemons/notification-daemon", "arlen-notifyd", &[("DBUS_SESSION_BUS_ADDRESS", &bus)])
+        .expect("spawn notification daemon");
+    stack
+        .wait_ready("arlen/notification.sock")
+        .expect("the notification socket binds");
+    stack
+        .spawn("daemons/clock", "arlen-clockd", &[("DBUS_SESSION_BUS_ADDRESS", &bus)])
+        .expect("spawn clock daemon");
+
+    // Where a shell sits. Connect BEFORE the alarm is due: the daemon broadcasts
+    // to the clients it has, so one that arrives afterwards learns nothing, which
+    // is how the first hand measurement of this counted zero.
+    let mut sock = tokio::net::UnixStream::connect(stack.socket_path("arlen/notification.sock"))
+        .await
+        .expect("connect to the notification socket");
+    let hello = notification_proto::ClientMessage {
+        msg: Some(notification_proto::client_message::Msg::Hello(
+            notification_proto::ClientHello { client_name: "integration".to_string() },
+        )),
+    };
+    let bytes = hello.encode_to_vec();
+    sock.write_all(&(bytes.len() as u32).to_be_bytes()).await.expect("write hello len");
+    sock.write_all(&bytes).await.expect("write hello");
+
+    // Read frames until the alarm arrives or the wait is plainly longer than a
+    // minute boundary could be.
+    let deadline = Duration::from_secs(110);
+    let found = tokio::time::timeout(deadline, async {
+        loop {
+            let mut len = [0u8; 4];
+            if sock.read_exact(&mut len).await.is_err() {
+                return None;
+            }
+            let mut body = vec![0u8; u32::from_be_bytes(len) as usize];
+            if sock.read_exact(&mut body).await.is_err() {
+                return None;
+            }
+            let Ok(msg) = notification_proto::ServerMessage::decode(&body[..]) else {
+                continue;
+            };
+            if let Some(notification_proto::server_message::Msg::Added(added)) = msg.msg {
+                if let Some(n) = added.notification {
+                    if n.summary == "Integration alarm" {
+                        return Some(n);
+                    }
+                }
+            }
+        }
+    })
+    .await;
+
+    let alarm = found
+        .expect("the alarm was due well inside the wait")
+        .expect("the notification socket stayed open");
+    assert_eq!(
+        alarm.app_name, "Clock",
+        "the alarm is the clock's, and the surface groups by that name"
+    );
+    assert!(
+        alarm.category.starts_with("alarm") || alarm.category.starts_with("x-alarm"),
+        "alarms-only DND decides by category, so an alarm has to carry one it \
+         recognises; this one said {:?}",
+        alarm.category
+    );
+}
+
 /// IT-1 undo service: an unreadable log is an error, an empty one is a list.
 ///
 /// The distinction this asserts is the whole reason `recent` returns what it
