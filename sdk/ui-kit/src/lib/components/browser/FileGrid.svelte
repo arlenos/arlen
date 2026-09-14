@@ -131,15 +131,35 @@
   }
 </script>
 
-<div class="file-grid" role="grid" aria-label={$kt("k.browser.files")} bind:this={gridEl}>
+<!-- A LISTBOX, NOT A GRID. It said `role="grid"` and held tiles directly, so
+     every tile was a `gridcell` with no `row` between it and the grid - axe
+     reports `aria-required-children` and `aria-required-parent`, both critical,
+     and a screen reader entering it is told "grid" and then finds no rows to
+     navigate. Wrapping each tile in a one-cell row would satisfy the checker
+     and describe the thing wrongly: a tile view has no columns, no column
+     headers and nothing to sort, which is exactly what separates it from the
+     list view beside it (that one IS a grid, and has all three). What it
+     actually is - one flat set of items, multi-selectable, with the cursor
+     carried by `aria-activedescendant` - is a listbox, and it already behaved
+     like one. `aria-multiselectable` states the range-select the grid role
+     could never express. -->
+<div
+  class="file-grid"
+  role="listbox"
+  aria-multiselectable="true"
+  aria-label={$kt("k.browser.files")}
+  bind:this={gridEl}
+>
   {#if padTop > 0}
-    <div class="fg-spacer" style:height="{padTop}px"></div>
+    <div class="fg-spacer" style:height="{padTop}px" aria-hidden="true"></div>
   {/if}
   {#each slice as entry, sliceIndex (entry.name)}
     {@const i = start + sliceIndex}
     {@const url = thumbnails?.get(thumbKey?.(entry) ?? "") ?? null}
     <FileTile
       id={idBase ? `${idBase}-item-${i}` : undefined}
+      posinset={i + 1}
+      setsize={entries.length}
       {entry}
       {icon}
       thumbnail={url}
@@ -152,7 +172,7 @@
     />
   {/each}
   {#if padBottom > 0}
-    <div class="fg-spacer" style:height="{padBottom}px"></div>
+    <div class="fg-spacer" style:height="{padBottom}px" aria-hidden="true"></div>
   {/if}
 </div>
 

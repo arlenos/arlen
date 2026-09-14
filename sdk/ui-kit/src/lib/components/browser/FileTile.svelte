@@ -12,6 +12,8 @@
 
   let {
     id,
+    posinset,
+    setsize,
     entry,
     selected = false,
     focused = false,
@@ -25,6 +27,12 @@
     /// Stable element id so the grid container can point
     /// `aria-activedescendant` at the cursored tile (screen-reader focus).
     id?: string;
+    /// Where this tile sits in the WHOLE listing, one-based, and how long that
+    /// listing is. Both are stated because only the visible tiles are in the
+    /// DOM: without them a reader counts what it can see and announces "3 of
+    /// 12" in a folder of four hundred.
+    posinset?: number;
+    setsize?: number;
     entry: FileEntry;
     selected?: boolean;
     focused?: boolean;
@@ -65,17 +73,36 @@
 <!-- Keyboard navigation is owned by the grid container (FileBrowser), which
      moves the cursor and exposes the active tile via aria-activedescendant; a
      per-tile key handler would double-handle. The onclick is a pointer
-     affordance only. -->
+     affordance only.
+
+     NO `tabindex`, and that is the listbox pattern rather than an omission: the
+     container is the single tab stop and nothing ever calls `focus()` on a tile
+     (the cursor scrolls by arithmetic, not by focusing). A `tabindex="-1"` here
+     was left over from the gridcell role and said this was a control a keyboard
+     could reach, which it never was.
+
+     The name is stated rather than read off the text, because the text is not
+     the name: it carries zero-width breaks so a long filename wraps at a
+     separator instead of mid-extension. -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- The compiler's rule is that an `option` needs a tabindex. The APG's is that
+     a listbox driven by `aria-activedescendant` must NOT give its options one -
+     two tab stops for one widget is the bug that rule prevents. The house gate
+     `check-role-keeps-its-tab-stop` agrees with the APG and refuses the
+     tabindex, so this is the compiler's crude form of a rule already held
+     correctly one level up. -->
+<!-- svelte-ignore a11y_interactive_supports_focus -->
 <div
   {id}
   class="file-tile"
   class:selected
   class:focused
   class:hidden-entry={entry.is_hidden}
-  role="gridcell"
-  tabindex={-1}
+  role="option"
+  aria-label={entry.name}
   aria-selected={selected}
+  aria-posinset={posinset}
+  aria-setsize={setsize}
   onclick={ontileclick}
   ondblclick={ontiledblclick}
   oncontextmenu={ontilecontextmenu}
