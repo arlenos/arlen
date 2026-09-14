@@ -4031,3 +4031,173 @@ async fn a_transfer_is_recorded_in_both_profiles_ledgers() {
         page.entries.iter().map(|e| e.subject.clone()).collect::<Vec<_>>()
     );
 }
+
+/// IT-1 connections daemon: the credential authority hands out a scope, never a
+/// secret, and the one method that returns raw bytes refuses everyone but the
+/// egress authoriser.
+///
+/// This daemon holds every stored API key and refresh token on the machine, so
+/// the interesting question is not whether the happy path works but what the
+/// three methods do to a caller that is almost authorized. The test process is
+/// exactly that: it holds a real grant for one connection, so it is a legitimate
+/// requester, and it is not `ai-proxy`, so it must never see a byte of the secret
+/// it is otherwise entitled to use.
+///
+/// The store is seeded through the daemon's own `CredentialStore` under the same
+/// master key the daemon loads, rather than through a test hatch: there is no
+/// hatch, and there does not need to be one.
+#[tokio::test]
+#[ignore = "needs arlen-connectionsd + arlen-auditd built and dbus-daemon on PATH"]
+async fn the_connections_daemon_hands_out_scope_and_never_the_secret() {
+    use connections::broker::{ConnectionId, CredentialKind};
+    use connections::master::MasterSecret;
+    use connections::store::{Credential, CredentialStore};
+
+    if !(arlen_integration::binary_built("daemons/connections", "arlen-connectionsd")
+        && arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd"))
+    {
+        eprintln!("SKIP the_connections_daemon_hands_out_scope_and_never_the_secret: arlen-connectionsd or arlen-auditd not built (run `just integration-nightly`)");
+        return;
+    }
+    if which_dbus_daemon().is_none() {
+        eprintln!("SKIP the_connections_daemon_hands_out_scope_and_never_the_secret: no dbus-daemon on PATH");
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    let bus = stack.start_session_bus().expect("a session bus of our own");
+    stack
+        .wait_ready("dbus-session.sock")
+        .expect("the private bus binds");
+
+    // The release audit is fail-closed, so a ledger has to be there before any
+    // handout can be decided at all.
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_ready("arlen/audit-ingest.sock")
+        .expect("audit ingest socket");
+
+    // One grant, for this test's own attested id: it may reach `probe-service`
+    // with a two-scope ceiling and one allowed host. `other-service` is deliberately
+    // ungranted, and the host allowlist is what a minted egress token is bound to.
+    let me = arlen_integration::own_app_id().expect("the test resolves to an app id");
+    let config_dir = stack.config_home().join("arlen");
+    std::fs::create_dir_all(&config_dir).expect("the config dir");
+    std::fs::write(
+        config_dir.join("connections.toml"),
+        format!(
+            "[[grant]]\napp_id = \"{me}\"\nconnection = \"probe-service\"\n\
+             max_scope = [\"read\", \"write\"]\nallowed_hosts = [\"api.example.test\"]\n"
+        ),
+    )
+    .expect("write the grant config");
+
+    // Seed a credential under the same master key the daemon will load. Creating
+    // the key here rather than waiting for the daemon to mint it keeps the two
+    // sides deterministic: whoever gets there first writes it, the other loads it.
+    let store_dir = stack.state_home().join("arlen").join("connections");
+    std::fs::create_dir_all(&store_dir).expect("the credential store dir");
+    let master = MasterSecret::load_or_create(&store_dir.join("master.key"))
+        .expect("the store master secret");
+    let store = CredentialStore::new(*master.bytes(), &store_dir);
+    let id = ConnectionId::new("probe-service").expect("a valid connection id");
+    store
+        .put(
+            &id,
+            &Credential {
+                kind: CredentialKind::ApiKey,
+                secret: b"the-secret-nobody-should-see".to_vec(),
+            },
+        )
+        .expect("seed one credential");
+
+    stack
+        .spawn(
+            "daemons/connections",
+            "arlen-connectionsd",
+            &[("DBUS_SESSION_BUS_ADDRESS", &bus)],
+        )
+        .expect("spawn connections daemon");
+
+    let conn = zbus::connection::Builder::address(bus.as_str())
+        .expect("bus address")
+        .build()
+        .await
+        .expect("connect to the private bus");
+    let proxy = zbus::Proxy::new(
+        &conn,
+        "org.arlen.Connections1",
+        "/org/arlen/Connections1",
+        "org.arlen.Connections1",
+    )
+    .await
+    .expect("a proxy for the connections interface");
+
+    // Poll until the daemon owns the name; a proxy built before that answers
+    // ServiceUnknown, which is not one of the answers being measured.
+    let mut granted: Option<Vec<String>> = None;
+    for _ in 0..80 {
+        match proxy
+            .call::<_, _, Vec<String>>(
+                "RequestCredential",
+                &("probe-service", vec!["read".to_string()]),
+            )
+            .await
+        {
+            Ok(scope) => {
+                granted = Some(scope);
+                break;
+            }
+            Err(e) if e.to_string().contains("ServiceUnknown") => {}
+            Err(e) => panic!("a granted request must be authorized, got {e}"),
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert_eq!(
+        granted.as_deref(),
+        Some(&["read".to_string()][..]),
+        "a request inside the ceiling is granted exactly what it asked for",
+    );
+
+    // A connection this caller holds no grant for is refused, and the refusal says
+    // nothing about whether a credential is stored for it.
+    let ungranted = proxy
+        .call::<_, _, Vec<String>>("RequestCredential", &("other-service", Vec::<String>::new()))
+        .await;
+    let said = ungranted.expect_err("an ungranted connection must be refused").to_string();
+    assert!(
+        said.contains("not authorized"),
+        "the refusal is the uniform one, got {said}",
+    );
+
+    // Minting an egress token is allowed: the caller names only the connection,
+    // and the daemon binds the destination from ITS OWN config.
+    let token = proxy
+        .call::<_, _, String>("MintEgressCapability", &("probe-service",))
+        .await
+        .expect("a granted caller may mint an egress token for its connection");
+    assert!(!token.is_empty(), "the minted token is not empty");
+
+    // And here is the boundary that matters. The same caller, holding its own
+    // freshly minted valid token, naming the host its own config allows, asking
+    // for the connection it is granted, must still not receive the secret: only
+    // an allowlisted egress authoriser may fetch raw bytes, and this is not one.
+    let fetched = proxy
+        .call::<_, _, Vec<u8>>(
+            "FetchEgressCredential",
+            &("probe-service", token.as_str(), "api.example.test"),
+        )
+        .await;
+    let said = fetched
+        .expect_err("a non-authoriser must never receive the raw credential")
+        .to_string();
+    assert!(
+        said.contains("not authorized"),
+        "the raw-credential refusal is the uniform one, got {said}",
+    );
+    assert!(
+        !said.contains("the-secret-nobody-should-see"),
+        "and the refusal carries no part of the secret, got {said}",
+    );
+}
