@@ -234,7 +234,12 @@
 
   .cb-exit {
     flex-shrink: 0;
-    color: var(--color-error);
+    /* The exit code sits ON a tint, not on the surface: the chip around it is
+       13% foreground, and the plain error colour measures 3.6:1 there - under
+       the 4.5 a 12px number needs. Mixed toward the foreground, which is the
+       same move the destructive button makes and right in both themes because
+       the foreground is always the surface's high-contrast pole. */
+    color: color-mix(in srgb, var(--color-error) 72%, var(--foreground));
     font-size: var(--text-xs);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
