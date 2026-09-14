@@ -18,8 +18,29 @@ use crate::state::{Alarm, FocusPhase, FocusSession, Timer};
 const URGENCY_NORMAL: u8 = 1;
 const URGENCY_CRITICAL: u8 = 2;
 
-/// A notification to raise: summary, body, urgency.
-pub type Notification = (String, String, u8);
+/// A notification to raise: summary, body, urgency, category.
+pub type Notification = (String, String, u8, &'static str);
+
+/// The freedesktop category for a time the person set that has now arrived.
+///
+/// It matters which word this is. The notification daemon's "alarms only"
+/// Do-Not-Disturb decides by CATEGORY and not by urgency, matching the spec's
+/// `alarm*` / `reminder*` prefixes - so an alarm announced under a category that
+/// does not begin with one of those is suppressed in the one mode a person
+/// chooses specifically so their alarm still reaches them.
+///
+/// Measured, because reading it was not enough: DND set to alarms-only, an alarm
+/// due two minutes out. The clock announced it, the daemon received it, and it
+/// was never broadcast. Every clock notification used to go out as
+/// `x-arlen.clock`, which appears exactly once in this tree - here - under a
+/// comment saying the notification daemon routes on it. Nothing does.
+const CATEGORY_ALARM: &str = "alarm";
+
+/// A timer or a focus phase. Deliberately NOT `alarm`: these did not pierce
+/// alarms-only DND before and still do not, because whether a Pomodoro round
+/// ending should wake somebody who asked for alarms only is a question about
+/// what people want, not a bug. It is in `coder-reports.md` for the planner.
+const CATEGORY_CLOCK: &str = "x-arlen.clock";
 
 /// What to say for the alarms `startup::resume` judged worth ringing late.
 ///
@@ -54,12 +75,14 @@ pub fn for_alarm(alarm: &Alarm) -> Notification {
             format!("Alarm - {}", alarm.time),
             String::new(),
             URGENCY_CRITICAL,
+            CATEGORY_ALARM,
         )
     } else {
         (
             label.to_string(),
             format!("Alarm - {}", alarm.time),
             URGENCY_CRITICAL,
+            CATEGORY_ALARM,
         )
     }
 }
@@ -70,6 +93,7 @@ pub fn for_timer(timer: &Timer) -> Notification {
         "Timer finished".to_string(),
         humanise(timer.duration_ms),
         URGENCY_NORMAL,
+        CATEGORY_CLOCK,
     )
 }
 
@@ -83,16 +107,19 @@ pub fn for_focus(next: Option<&FocusSession>) -> Notification {
             "Time for a break".to_string(),
             format!("Round {} of {} done.", s.round, s.rounds),
             URGENCY_NORMAL,
+            CATEGORY_CLOCK,
         ),
         Some(s) => (
             "Break over".to_string(),
             format!("Round {} of {}.", s.round, s.rounds),
             URGENCY_NORMAL,
+            CATEGORY_CLOCK,
         ),
         None => (
             "Focus session finished".to_string(),
             String::new(),
             URGENCY_NORMAL,
+            CATEGORY_CLOCK,
         ),
     }
 }
@@ -126,7 +153,7 @@ fn humanise(ms: i64) -> String {
 /// Best-effort by design: a clock whose notification daemon is down still keeps
 /// time, still advances, still arms the next wake. Losing the announcement is
 /// bad and is logged; refusing to keep time over it would be worse.
-pub async fn send(conn: &zbus::Connection, (summary, body, urgency): Notification) {
+pub async fn send(conn: &zbus::Connection, (summary, body, urgency, category): Notification) {
     let proxy = match zbus::Proxy::new(
         conn,
         "org.freedesktop.Notifications",
@@ -144,8 +171,10 @@ pub async fn send(conn: &zbus::Connection, (summary, body, urgency): Notificatio
     let hints: std::collections::HashMap<&str, zbus::zvariant::Value> =
         std::collections::HashMap::from([
             ("urgency", zbus::zvariant::Value::U8(urgency)),
-            // The category the notification daemon reads for its own routing.
-            ("category", zbus::zvariant::Value::new("x-arlen.clock")),
+            // The category the notification daemon's alarms-only Do-Not-Disturb
+            // decides by. An alarm carries `alarm`; a timer or a focus phase
+            // carries our own name and does not pierce.
+            ("category", zbus::zvariant::Value::new(category)),
         ]);
     // Notify(app_name, replaces_id, app_icon, summary, body, actions, hints, expire_timeout).
     // Timeout 0 means the daemon's own policy decides; a clock has no business
@@ -172,6 +201,51 @@ pub async fn send(conn: &zbus::Connection, (summary, body, urgency): Notificatio
 
 #[cfg(test)]
 mod tests {
+
+    /// The freedesktop prefixes the notification daemon's alarms-only mode
+    /// matches on, copied here rather than imported: the two crates do not share
+    /// a dependency, so what holds them together is this test naming the
+    /// contract out loud.
+    fn pierces_alarms_only_dnd(category: &str) -> bool {
+        let c = category.to_ascii_lowercase();
+        c.starts_with("alarm")
+            || c.starts_with("x-alarm")
+            || c.starts_with("reminder")
+            || c.starts_with("x-reminder")
+    }
+
+    #[test]
+    fn an_alarm_reaches_a_person_who_asked_for_alarms_only() {
+        // The defect this guards, measured before it was fixed: DND set to
+        // alarms-only, an alarm due two minutes out, the clock announced it, the
+        // notification daemon received it, and it was never broadcast. That mode
+        // decides by CATEGORY and not by urgency, and every clock notification
+        // went out as `x-arlen.clock`.
+        let (_, _, _, category) = for_alarm(&alarm("Wake up"));
+        assert!(
+            pierces_alarms_only_dnd(category),
+            "an alarm announced as {category:?} is suppressed in the one mode a \
+             person chooses so their alarm still reaches them"
+        );
+    }
+
+    #[test]
+    fn a_timer_and_a_focus_phase_do_not_pierce_it() {
+        // Unchanged behaviour, asserted so it stays a decision rather than
+        // drifting: whether a Pomodoro round ending should wake somebody who
+        // asked for alarms only is a question for a person, and until it is
+        // answered these carry our own name.
+        let (_, _, _, timer) = for_timer(&Timer {
+            id: "t".into(),
+            duration_ms: 60_000,
+            ends_at: None,
+            remaining_ms: None,
+            paused: false,
+        });
+        assert!(!pierces_alarms_only_dnd(timer), "a timer is not an alarm");
+        let (_, _, _, focus) = for_focus(None);
+        assert!(!pierces_alarms_only_dnd(focus), "a focus phase is not an alarm");
+    }
 
     #[test]
     fn a_late_ring_says_what_a_punctual_one_would_and_skips_an_id_with_no_alarm() {
@@ -227,11 +301,11 @@ mod tests {
     /// wrote leads when there is one and the time leads when there is not.
     #[test]
     fn an_alarm_names_itself_by_whichever_it_has() {
-        let (summary, body, _) = for_alarm(&alarm("Wake up"));
+        let (summary, body, _, _) = for_alarm(&alarm("Wake up"));
         assert_eq!(summary, "Wake up");
         assert!(body.contains("07:00"));
 
-        let (summary, _, _) = for_alarm(&alarm(""));
+        let (summary, _, _, _) = for_alarm(&alarm(""));
         assert!(summary.contains("07:00"), "the time carries it instead");
     }
 
@@ -239,7 +313,7 @@ mod tests {
     /// notification.
     #[test]
     fn a_blank_label_falls_back_to_the_time() {
-        let (summary, _, _) = for_alarm(&alarm("   "));
+        let (summary, _, _, _) = for_alarm(&alarm("   "));
         assert!(summary.contains("07:00"));
     }
 
