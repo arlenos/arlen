@@ -1618,6 +1618,128 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
     );
 }
 
+/// IT-1 undo service: an unreadable log is an error, an empty one is a list.
+///
+/// The distinction this asserts is the whole reason `recent` returns what it
+/// does. Its own doc records the author running it and changing an empty array
+/// to an error, because "you have done nothing" is the wrong thing to say to
+/// somebody at the moment their undo is unavailable. Nothing could check it: the
+/// interface admits only a user surface, and the only hatch beyond the
+/// compiled-in three is a root-owned file under `/var/lib`, so no scenario could
+/// get past the gate. `ARLEN_USER_SURFACE_EXTRA_ADMIT` (debug-only, exact, one
+/// id, set by `base_env`) is what opens it.
+///
+/// It is also the first caller of `start_session_bus`, which was written for the
+/// go-live undo rehearsal and has been waiting for a bus-owning daemon to test
+/// ever since the agent that owned that name was retired.
+#[tokio::test]
+#[ignore = "needs arlen-undod + arlen-ai-undo-signer built and dbus-daemon on PATH (debug, for the surface admission)"]
+async fn an_unreadable_undo_log_is_an_error_and_an_empty_one_is_a_list() {
+    if !(arlen_integration::binary_built("daemons/undo-service", "arlen-undod")
+        && arlen_integration::binary_built("ai", "arlen-ai-undo-signer"))
+    {
+        eprintln!("SKIP an_unreadable_undo_log_is_an_error_and_an_empty_one_is_a_list: arlen-undod or arlen-ai-undo-signer not built (run `just integration-nightly`)");
+        return;
+    }
+    if which_dbus_daemon().is_none() {
+        eprintln!("SKIP an_unreadable_undo_log_is_an_error_and_an_empty_one_is_a_list: no dbus-daemon on PATH");
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    let bus = stack.start_session_bus().expect("a session bus of our own");
+    stack
+        .wait_ready("dbus-session.sock")
+        .expect("the private bus binds");
+
+    // The signer is deliberately NOT started yet: an undo service whose log it
+    // cannot reach is the first half of what this asserts.
+    stack
+        .spawn("daemons/undo-service", "arlen-undod", &[("DBUS_SESSION_BUS_ADDRESS", &bus)])
+        .expect("spawn undo service");
+
+    let conn = zbus::connection::Builder::address(bus.as_str())
+        .expect("bus address")
+        .build()
+        .await
+        .expect("connect to the private bus");
+    let proxy = zbus::Proxy::new(&conn, "org.arlen.Undo1", "/org/arlen/Undo1", "org.arlen.Undo1")
+        .await
+        .expect("a proxy for the undo interface");
+
+    // The daemon takes its name a moment after it starts, and a proxy built
+    // before that answers `ServiceUnknown` - which is neither of the two answers
+    // this scenario is about. So poll until the name is actually there, and read
+    // whatever it says then.
+    let mut message = String::new();
+    for _ in 0..60 {
+        match proxy.call::<_, _, String>("Recent", &()).await {
+            Ok(list) => panic!("with no signer the log is unreadable, yet Recent answered {list:?}"),
+            Err(e) => {
+                let said = e.to_string();
+                if !said.contains("ServiceUnknown") {
+                    message = said;
+                    break;
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert!(
+        !message.is_empty(),
+        "the undo service never took org.arlen.Undo1"
+    );
+    assert!(
+        message.contains("could not be read"),
+        "an unreadable log must say so rather than read as an empty history: {message}"
+    );
+    assert!(
+        !message.contains("may not read or reverse"),
+        "the test caller must be admitted by the surface hatch; it was refused instead: {message}"
+    );
+
+    // Now the log exists and is empty, which is a different answer.
+    stack
+        .spawn("ai", "arlen-ai-undo-signer", &[])
+        .expect("spawn the undo signer");
+    stack
+        .wait_ready("arlen/undo-signer.sock")
+        .expect("the signer binds its socket");
+
+    let mut listed = None;
+    for _ in 0..40 {
+        if let Ok(list) = proxy.call::<_, _, String>("Recent", &()).await {
+            listed = Some(list);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert_eq!(
+        listed.as_deref(),
+        Some("[]"),
+        "a reachable log with nothing in it is an empty LIST, not a failure"
+    );
+
+    // And the outcome vocabulary: a refusal is an error, an outcome is a word.
+    let outcome: String = proxy
+        .call("Enact", &("no-such-op",))
+        .await
+        .expect("an unknown id is an outcome, not an error");
+    assert_eq!(
+        outcome, "no-such-action",
+        "an id the log never held is said in the outcome vocabulary"
+    );
+}
+
+/// `dbus-daemon` on PATH, or `None`. The session-bus scenarios need it and say so
+/// rather than failing on a machine that simply does not have it.
+fn which_dbus_daemon() -> Option<std::path::PathBuf> {
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|d| d.join("dbus-daemon"))
+            .find(|p| p.is_file())
+    })
+}
+
 /// IT-1 anomaly detector: a recorded policy violation reaches the person.
 ///
 /// The detector is the one component whose job is to INTERRUPT somebody, and it
