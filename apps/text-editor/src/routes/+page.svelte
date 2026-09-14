@@ -457,7 +457,11 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
              sample proposal; the document it is written about deserves the same
              sentence. -->
         <div class="note"><Notice tone="neutral" text={$t("te.demoDoc")} /></div>
-        <Canvas doc={file.content} fileType={file.type} {focusMode} {lineNumbers} />
+        <!-- The canvas is plain prose with no scroller of its own, so the box
+             that holds it is the one that scrolls. -->
+        <div class="reading">
+          <Canvas doc={file.content} fileType={file.type} {focusMode} {lineNumbers} />
+        </div>
       {/if}
     </main>
     {#if $proposal}
@@ -533,9 +537,35 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     display: flex;
     min-height: 0;
   }
+  /* THE SURFACE DOES NOT SCROLL; WHAT IS IN IT DOES. It used to carry
+     `overflow-y: auto` over a buffer that is `height: 100%`, so the moment a
+     refusal notice appeared above the buffer the whole surface grew past its
+     box by exactly the notice's height and started scrolling - two nested
+     scrollers fighting, and the refusal scrolling away from the thing it was
+     about. axe rates it serious for a second reason: the outer region scrolls
+     and, under this engine, nothing inside it reports as tabbable, so a
+     keyboard has no way to reach what the scroll hides.
+
+     A column now: the notices take their height, the reading or editing
+     surface takes the rest and owns its own scrolling. CodeMirror already
+     brings one; the demo canvas is plain content, so it gets the `reading`
+     box. */
   .editor {
     flex: 1;
-    overflow-y: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     padding: 1.5rem 2rem;
+  }
+  .editor > :global(.buffer) {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+  .reading {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 </style>
