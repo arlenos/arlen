@@ -69,6 +69,7 @@ pub use file::{
 };
 pub use watcher::ThemeWatcher;
 
+use crate::color::{clamp_contrast, BODY_CONTRAST_FLOOR};
 use std::path::PathBuf;
 
 /// The canonical bundled default themes, embedded at compile time. This crate
@@ -939,6 +940,7 @@ fn resolve_terminal(c: &ColorTokens, section: Option<TerminalSection>) -> Termin
             cursor = rgba;
         }
     }
+    let mut authored_slot = [false; 16];
     if let Some(a) = section.and_then(|t| t.ansi) {
         let slots = [
             a.black, a.red, a.green, a.yellow, a.blue, a.magenta, a.cyan, a.white,
@@ -948,9 +950,38 @@ fn resolve_terminal(c: &ColorTokens, section: Option<TerminalSection>) -> Termin
         for (i, authored) in slots.into_iter().enumerate() {
             if let Some(rgba) = authored.as_deref().and_then(parse_hex) {
                 ansi[i] = rgba;
+                authored_slot[i] = true;
             }
         }
     }
+
+    // THE SYNTHESISED HUES HAVE TO BE READABLE ON THE BACKGROUND THEY LAND ON.
+    // The eight hue slots are projected from semantic tokens that were sized for
+    // a different job: `info` is a status accent, a badge or an icon beside its
+    // own label, and the adapters clamp it to the 3.0 status floor for exactly
+    // that reason. As ANSI blue it is body text - a prompt path, a directory in
+    // `ls --color` - and the house dark theme shipped it at 3.65:1 against
+    // `bg.app`, which is the classic unreadable-dark-blue every terminal user
+    // knows. Measured, not assumed: axe found it in the settings terminal
+    // preview, which draws the real palette rather than a picture of one.
+    //
+    // Only the HUES, and only the ones we synthesised.
+    //
+    // The four neutrals (black, white, bright-black, bright-white) are left
+    // alone on purpose: black's whole job in a dark palette is to sit near the
+    // background, and bright-black is the muted slot programs reach for when
+    // they want text to recede. Clamping those to a body floor would not make
+    // them readable, it would make them stop being black and grey.
+    //
+    // An authored slot is never touched. A base16 or Catppuccin import carries a
+    // canonical ANSI mapping its users can name from memory, and silently
+    // moving it would be the same lie as an unreadable default, one level up.
+    for i in [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14] {
+        if !authored_slot[i] {
+            ansi[i] = clamp_contrast(ansi[i], bg, BODY_CONTRAST_FLOOR);
+        }
+    }
+
     TerminalTokens { fg, bg, cursor, ansi }
 }
 
@@ -1214,6 +1245,7 @@ pub fn load_theme_from_disk(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::contrast_ratio;
 
     const SAMPLE_BUNDLED: &str = r##"
 [meta]
@@ -1920,6 +1952,59 @@ button = 12
     }
 
     #[test]
+    fn a_synthesised_hue_is_lifted_to_the_body_floor_and_the_neutrals_are_not() {
+        // The live path this guards is the Appearance colour editor: change
+        // `info` and, with no `[terminal.ansi]` authored, the terminal's blue
+        // follows it. A UI accent is allowed to sit at the 3.0 status floor
+        // because it appears as a badge beside its own label; the same value as
+        // ANSI blue is a prompt path in `ls --color`, which is body text.
+        let user = "[color.semantic]\ninfo = \"#1b3a8a\"\nsuccess = \"#14532d\"\n";
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
+        let bg = t.terminal.bg;
+
+        // The semantic tokens themselves are untouched - the lift belongs to the
+        // terminal projection, not to the palette the UI paints with.
+        assert_eq!(t.color.info, parse_hex("#1b3a8a").unwrap(), "info is left as authored");
+        assert!(
+            contrast_ratio(t.color.info, bg) < BODY_CONTRAST_FLOOR,
+            "the fixture has to start below the floor or this test proves nothing"
+        );
+
+        for (i, what) in [(4usize, "blue"), (2, "green"), (12, "bright blue"), (10, "bright green")] {
+            let ratio = contrast_ratio(t.terminal.ansi[i], bg);
+            assert!(
+                ratio >= BODY_CONTRAST_FLOOR,
+                "synthesised {what} reads on its own background, got {ratio:.2}"
+            );
+        }
+
+        // Black stays black. Lifting it to a body floor would not make it
+        // readable, it would stop it being the slot programs pick to recede.
+        assert_eq!(t.terminal.ansi[0], t.color.border_default, "black keeps the synthesis");
+        assert_eq!(t.terminal.ansi[8], t.color.fg_disabled, "bright black is still the muted slot");
+        assert!(
+            contrast_ratio(t.terminal.ansi[0], bg) < BODY_CONTRAST_FLOOR,
+            "and it is genuinely still a low-contrast neutral"
+        );
+    }
+
+    #[test]
+    fn an_authored_ansi_slot_is_never_lifted() {
+        // A base16 or Catppuccin import carries an ANSI mapping its users can
+        // name from memory. Moving it silently would be the same lie as an
+        // unreadable default, one level up - so the floor applies only to what
+        // we synthesised.
+        let user = "[color]\n[color.bg]\napp = \"#101010\"\n[terminal.ansi]\nblue = \"#1b3a8a\"\n";
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
+        let authored = parse_hex("#1b3a8a").unwrap();
+        assert_eq!(t.terminal.ansi[4], authored, "the authored slot is honoured verbatim");
+        assert!(
+            contrast_ratio(authored, t.terminal.bg) < BODY_CONTRAST_FLOOR,
+            "and it is below the floor, so this is the lift declining to fire"
+        );
+    }
+
+    #[test]
     fn an_invalid_authored_ansi_slot_keeps_the_synthesis() {
         // Typed fail-to-default: a non-hex authored slot cannot reach the
         // resolved palette (it parses to None and the synthesis stands).
@@ -1955,3 +2040,4 @@ button = 12
         assert_eq!(t.icons.theme, "Papirus-Dark");
     }
 }
+
