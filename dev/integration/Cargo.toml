@@ -51,6 +51,9 @@ arlen-ai-core = { path = "../../ai/ai-core" }
 # The accessibility scenario speaks the config broker through the client the
 # shell and Settings link, rather than hand-rolling its framing.
 arlen-config-broker = { path = "../../daemons/config-broker" }
+# The cross-profile transfer scenario builds the daemon's own `DualLedger` over
+# two real per-profile ingest sockets, rather than restating its wire shape here.
+transfer-daemon = { path = "../../daemons/transfer-daemon" }
 
 [build-dependencies]
 prost-build = "0.13"

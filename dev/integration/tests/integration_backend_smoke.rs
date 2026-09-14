@@ -3891,3 +3891,143 @@ async fn setting_one_config_family_leaves_the_other_alone() {
         "the test affordance must not reach the AI master switches, got {refused:?}"
     );
 }
+
+/// IT-1 transfer daemon: a cross-profile transfer is recorded in BOTH profiles'
+/// ledgers, and either ledger being down refuses the transfer.
+///
+/// The Transfer Daemon is the only service that touches two profile uids, so its
+/// central claim is dual-ledger: neither side can later deny a transfer happened
+/// nor misattribute it, and no byte crosses without a record in both. Until now
+/// that was proven against two `MockAuditSink`s in the crate's own tests, which
+/// cannot show the claim surviving a real socket, a real framing and a real
+/// connect failure.
+///
+/// The two profiles here are two `arlen-auditd` instances under separate runtime
+/// and data roots, which is what two profiles ARE from this daemon's side: two
+/// independent ledgers reached over two per-uid ingest sockets. The actor each
+/// daemon stamps is this test rather than `transferd` (the same accommodation the
+/// audit-chain scenario makes), because the actor comes from `SO_PEERCRED` and
+/// cannot be asserted by the submitter - which is the property being relied on,
+/// not one being worked around.
+#[tokio::test]
+#[ignore]
+async fn a_transfer_is_recorded_in_both_profiles_ledgers() {
+    use audit_proto::{ReadClient, LedgerAuditSink};
+    use audit_proto::client::AuditClient;
+    use transfer_daemon::audit::{outcome, DualLedger, DualLedgerError};
+    use transfer_daemon::request::{ProfileId, TransferType};
+
+    if !arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
+        eprintln!("SKIP a_transfer_is_recorded_in_both_profiles_ledgers: arlen-auditd not built (run `just integration-nightly`)");
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+
+    // The source profile's ledger: the stack's own auditd.
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn the source profile's audit daemon");
+    stack
+        .wait_ready("arlen/audit-ingest.sock")
+        .expect("source ingest socket");
+    stack
+        .wait_ready("arlen/audit-read.sock")
+        .expect("source read socket");
+
+    // The destination profile's ledger: a second auditd with its own runtime and
+    // data roots, so it shares no socket, no key and no ledger file with the
+    // first. That separation is the whole point of the dual write.
+    let dest_root = stack.runtime_dir().join("profile-dest");
+    let dest_data = dest_root.join("data");
+    std::fs::create_dir_all(&dest_data).expect("the destination profile's data home");
+    let dest_root_s = dest_root.to_string_lossy().to_string();
+    let dest_data_s = dest_data.to_string_lossy().to_string();
+    stack
+        .spawn(
+            "daemons/audit-daemon",
+            "arlen-auditd",
+            &[
+                ("XDG_RUNTIME_DIR", &dest_root_s),
+                ("XDG_DATA_HOME", &dest_data_s),
+            ],
+        )
+        .expect("spawn the destination profile's audit daemon");
+    let dest_ingest = dest_root.join("arlen/audit-ingest.sock");
+    let dest_read = dest_root.join("arlen/audit-read.sock");
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while std::time::Instant::now() < deadline && !(dest_ingest.exists() && dest_read.exists()) {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(
+        dest_ingest.exists() && dest_read.exists(),
+        "the destination profile's audit daemon must bind its own sockets under {}",
+        dest_root.display(),
+    );
+
+    let source = ProfileId::new("work").expect("a valid profile id");
+    let dest = ProfileId::new("personal").expect("a valid profile id");
+    let ledger = DualLedger::new(
+        std::sync::Arc::new(LedgerAuditSink::new(AuditClient::new(
+            stack.audit_ingest_socket(),
+        ))),
+        std::sync::Arc::new(LedgerAuditSink::new(AuditClient::new(dest_ingest.clone()))),
+    );
+
+    ledger
+        .record(&source, &dest, TransferType::File, outcome::ALLOWED)
+        .await
+        .expect("two live ledgers must both record the decision");
+
+    // Both ledgers carry it, and what they carry is content-free: the coarse
+    // subject and the two profile NAMES, never a path.
+    for (label, read_socket) in [
+        ("source", stack.audit_read_socket()),
+        ("destination", dest_read.clone()),
+    ] {
+        let page = ReadClient::new(read_socket).recent(16).await;
+        assert!(page.available, "the {label} profile's read API must answer");
+        assert!(
+            !page.tampered,
+            "the {label} profile's hash chain must stay intact"
+        );
+        let entry = page
+            .entries
+            .iter()
+            .find(|e| e.subject == "transfer.file")
+            .unwrap_or_else(|| {
+                panic!(
+                    "the {label} profile's ledger must carry the transfer, got subjects {:?}",
+                    page.entries.iter().map(|e| e.subject.clone()).collect::<Vec<_>>()
+                )
+            });
+        assert_eq!(entry.outcome, outcome::ALLOWED, "{label} outcome");
+        assert_eq!(
+            entry.node_types,
+            vec!["work".to_string(), "personal".to_string()],
+            "the {label} record names the two profiles and nothing else",
+        );
+    }
+
+    // One ledger unreachable: the record fails, so the caller refuses the
+    // transfer. Removing the socket file leaves the daemon up and the path
+    // unresolvable, which is what a down ledger looks like to a connecting sink.
+    std::fs::remove_file(&dest_ingest).expect("unbind the destination ingest socket");
+    let err = ledger
+        .record(&source, &dest, TransferType::Clipboard, outcome::ALLOWED)
+        .await
+        .expect_err("an unreachable destination ledger must fail the record");
+    assert!(
+        matches!(err, DualLedgerError::Dest(_)),
+        "the failure must name the destination ledger, got {err:?}",
+    );
+
+    // And the reachable side still holds its half, which is the documented
+    // behaviour: both writes are attempted so the live ledger keeps the record
+    // even though the caller treats the pair as failed.
+    let page = ReadClient::new(stack.audit_read_socket()).recent(16).await;
+    assert!(
+        page.entries.iter().any(|e| e.subject == "transfer.clipboard"),
+        "the source ledger keeps its half of a half-failed record, got subjects {:?}",
+        page.entries.iter().map(|e| e.subject.clone()).collect::<Vec<_>>()
+    );
+}
