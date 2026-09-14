@@ -1,0 +1,36 @@
+# The dogfood event injector's bus scope.
+#
+# `arlen-event-emit` ships on the image (build phase 09-dogfood, /usr/bin, so
+# identity rule (2) resolves it to `event-emit`) and it exists to put a synthetic
+# event on the bus when the KG-AI loop cannot be driven by really opening a file.
+# It had no profile at all until 14 September, which under the enforce cutover
+# means no declared scope, which means the bus drops every event it sends - and an
+# ungranted publish is DROPPED, not refused, so the tool would go on printing its
+# confirmation while nothing arrived. The one tool whose whole job is to prove
+# delivery would be the one lying about it.
+#
+# THREE TOPICS, from `Mode::topic()`: the default file-open injection and the two
+# shell stand-ins (`--menu`, `--shortcut`) it grew so a menu action could be
+# driven without the shell. It also SUBSCRIBES to what it is about to emit, which
+# is how it confirms delivery rather than claiming it, so the subscribe list
+# mirrors the publish list.
+#
+# WHY THE GATE DID NOT ASK FOR THIS FILE. `check-emitters-declared.py` scans
+# `daemons/` and `apps/`, and this is neither; and its topics come back from a
+# helper (`Mode::topic()` returns a literal per arm) rather than sitting inline in
+# the emit call, which is the same shape that hid the power daemon's sleep
+# transitions earlier today. Two instances of one blind spot in one afternoon.
+[info]
+app_id = "event-emit"
+
+[event_bus]
+publish = [
+    "file.opened",
+    "app.menu.action_invoked",
+    "app.shortcut.action_invoked",
+]
+subscribe = [
+    "file.opened",
+    "app.menu.action_invoked",
+    "app.shortcut.action_invoked",
+]
