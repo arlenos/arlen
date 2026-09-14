@@ -118,7 +118,7 @@ say "pressing the one thing it offers reaches a page that explains itself" \
      && printf '%s' "$after" | grep -qE "did not start|nicht gestartet" && echo 1 || echo 0)" "$after"
 
 say "and that page says nothing is being captured rather than showing a recorder" \
-  "$(printf '%s' "$after" | grep -qE "Nothing is being captured|Es wird nichts aufgenommen" \
+  "$(printf '%s' "$after" | grep -qE "Nothing is being captured|Es wird nichts aufgezeichnet" \
      && echo 1 || echo 0)" "$after"
 
 # GERMAN. This window is nothing but sentences about what is not happening -

@@ -28,7 +28,8 @@ const messages: Catalogs = {
     "mt.openUnavailable": "This note cannot be opened in the editor from here.",
     "mt.openNoHandler": "No app on this machine opens this kind of file.",
     "mt.captureUnavailable": "Recording did not start. Nothing is being captured.",
-    "mt.captureNoEngine": "Recording did not start: this machine has no speech engine installed.",
+    "mt.captureNoEngine":
+      "Recording did not start: this machine has no speech engine installed. Nothing is being captured.",
     "mt.stopFailed": "Recording did not stop. The microphone may still be on.",
     "mt.captureRetry": "Try again",
     "mt.sample": "Example note, not a real meeting.",
@@ -83,7 +84,8 @@ const messages: Catalogs = {
     "mt.openUnavailable": "Diese Notiz lässt sich von hier aus nicht im Editor öffnen.",
     "mt.openNoHandler": "Keine App auf diesem Rechner öffnet diese Art Datei.",
     "mt.captureUnavailable": "Die Aufnahme hat nicht begonnen. Es wird nichts aufgezeichnet.",
-    "mt.captureNoEngine": "Die Aufnahme hat nicht begonnen: auf diesem Rechner ist keine Spracherkennung installiert.",
+    "mt.captureNoEngine":
+      "Die Aufnahme hat nicht begonnen: auf diesem Rechner ist keine Spracherkennung installiert. Es wird nichts aufgezeichnet.",
     "mt.stopFailed": "Die Aufnahme wurde nicht beendet. Das Mikrofon ist m\u00f6glicherweise noch an.",
     "mt.captureRetry": "Erneut versuchen",
     "mt.sample": "Beispielnotiz, kein echtes Meeting.",
