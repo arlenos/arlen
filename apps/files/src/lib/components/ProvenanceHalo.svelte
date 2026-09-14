@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   /// The provenance halo (provenance-halo.md, PH-R4): a pull-only, dismissable
   /// micro-surface summoned by a calm gesture, answering where a file came from in
   /// plain language. Model-free, offline, never steals focus. The honesty lives in
@@ -43,7 +44,7 @@
         <!-- Sample data, said plainly. The chain below describes a different
              file and can carry an `attested` step, so leaving it unlabelled
              would present invented lineage as this file's verified origin. -->
-        <p class="ph-sample">{$t("f.prov.sample")}</p>
+        <div class="ph-note"><Notice tone="neutral" text={$t("f.prov.sample")} /></div>
       {/if}
       <div class="ph-subject">{$chain.subject}</div>
       <div class="ph-steps">
@@ -111,13 +112,8 @@
   }
   /* The sample caveat sits ABOVE the chain: it qualifies everything below it,
      so it must be read first, not discovered after the origin claims. */
-  .ph-sample {
-    margin: 0;
-    font-size: var(--text-2xs);
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    padding-bottom: 0.15rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  .ph-note {
+    margin: 0 0 0.5rem;
   }
   .ph-incomplete {
     /* Amber, like every other absent-or-refused read in Arlen: this is a fact
