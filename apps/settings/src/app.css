@@ -39,11 +39,12 @@
   --color-accent:            var(--color-fg-primary);
   --color-accent-hover:      var(--color-fg-secondary);
   --color-accent-foreground: var(--color-fg-inverse);
-  --color-border:         #262626;
+  --color-border:         #27272a;
   --color-border-strong:  #63636b;
   --color-error:          #ef4444;
   --color-warning:        #eab308;
-  --color-success:        #10b981;
+  --color-success:        #22c55e;
+  --color-info:           #3b82f6;
 
   /* Card elevation (themes/*.toml [depth].shadow_card). Dark layers by surface
      lightness, so none; the light override sets the soft lift. */
