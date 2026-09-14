@@ -150,7 +150,12 @@ if [ -e "$SHOOT_APP" ]; then
       echo "   built). Whatever this run reports is about the old code - rebuild" >&2
       echo "   before believing a failure." >&2
       if [ "${SHOOT_ALLOW_STALE:-0}" != 1 ]; then
-        echo "inject result: REFUSED: $SHOOT_APP is older than its source ($_newer). This suite would be testing old code; rebuild, or set SHOOT_ALLOW_STALE=1 to run it anyway."
+        # The command, not just "rebuild". For an APP the obvious one is a trap:
+        # `cargo build --release` produces a binary that loads `devUrl`, so the
+        # next run fails with "nothing is serving http://localhost:1434" and the
+        # reader is now two wrong turns from the truth. Naming the command that
+        # works costs a line and saves that. Walked into it on 14 September.
+        echo "inject result: REFUSED: $SHOOT_APP is older than its source ($_newer). This suite would be testing old code; rebuild with (cd apps/<app> && npm run build && npx tauri build --no-bundle) - a plain cargo build --release leaves it pointing at devUrl - or set SHOOT_ALLOW_STALE=1 to run it anyway."
         exit 4
       fi
     fi
