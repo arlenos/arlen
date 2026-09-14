@@ -69,6 +69,13 @@
     </div>
   </SidebarHeader>
   <SidebarContent>
+    {#if $calendarMocked}
+      <!-- At the top of the rail the sample fills, not under the list it
+           describes (design-system.md 6.11, thread one). -->
+      <SidebarGroup class="pb-0">
+        <div class="side-notes"><Notice tone="neutral" text={$t("cal.sample")} /></div>
+      </SidebarGroup>
+    {/if}
     <!-- The nav landmark for the rail: the New event button, the mini month and
          the calendar list. Named, because an unnamed landmark is one a reader
          cannot choose between. -->
@@ -142,9 +149,6 @@
            sample, caution for a service that is not arming reminders, error
            for files that are missing from what is shown. -->
       <div class="side-notes">
-        {#if $calendarMocked}
-          <Notice tone="neutral" text={$t("cal.sample")} />
-        {/if}
         {#if $agenda && !$agenda.service_running && !launched && !$calendarMocked}
           <Notice tone="caution" text={$t("cal.serviceDown")} />
         {/if}
