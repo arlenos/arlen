@@ -178,4 +178,11 @@ say "and says it failed, in the wire's own word" \
   "no error-fatal on the wire: $(printf '%s' "$wire" | grep -oE 'member=[A-Za-z]+' | tr '\n' ' ')"
 
 [ "$fail" = 0 ] && echo "a failed file operation ends its progress row, in a word the zone can render"
+# Cleared at the start and left behind at the end, which put a directory called
+# `arlen-drive-*` in the home of whoever ran this and kept it there - three of
+# them had been sitting in mine since 9 September. Removed on a PASS only: a run
+# that failed is the one whose files somebody wants to look at, and that is the
+# whole reason this was not just deleted at the top.
+[ "$fail" = 0 ] && rm -rf "$work"
+
 exit "$fail"
