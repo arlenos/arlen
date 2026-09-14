@@ -48,17 +48,23 @@ RESOLVES = ("ConnectionAuth::extract_from", "path_to_app_id", "app_id_from_pid")
 #: permanent exemption.
 CARRIED = {
     "daemons/capsuled": "found 14 September by starting it: the fence blocks the "
-    "peer-exe read, so it admits nobody. The fix is a real fork - drop the fence, "
-    "or stop resolving an identity it never uses (it calls only `verify_alive`, "
-    "and builds its correlation id from the uid) - and the second needs a "
-    "constructor `ConnectionAuth` does not have. Put to the planner in "
-    "coder-reports.md; the refusal is at least loud now. AND THE FENCE IS THE "
-    "ONLY THING MISSING: measured the same evening with the fence lifted and a "
-    "nameable caller - a minted capsule is presented, verified, op-counted and "
-    "SERVED, the slice comes back, the ledger records `capsule.read -> served`, "
-    "and the fourth read against a max_ops of three is refused `exhausted`. So "
-    "whichever way the fork goes, nothing else has to be built for this feature "
-    "to work.",
+    "peer-exe read, so it admitted nobody on EITHER socket. It is two sockets with "
+    "different needs, not one fork, and only one of them was ever a fork. The READ "
+    "socket never used the identity it resolved - it called `verify_alive` and built "
+    "its correlation id from the uid - so it now authenticates with "
+    "`PeerPidfd::from_socket` instead: SO_PEERPIDFD for liveness, SO_PEERCRED for the "
+    "uid, no `/proc/<peer>/exe`, and a pinned pidfd that cannot be recycled under it. "
+    "Measured fenced from a separate process: a well-formed grant comes back "
+    "`refused:bad-signature`, so the whole serve path runs. WHAT IS LEFT IS THE "
+    "CONTROL SOCKET, and it is a real fork: `mint_caller_admitted(auth.app_id())` "
+    "gates minting on an app-id allowlist, so it needs the name the fence denies it. "
+    "Drop the fence for the daemon, or move mint admission to something a fenced "
+    "process can still read. Put to the planner in coder-reports.md. AND THE FENCE IS "
+    "THE ONLY THING MISSING: measured with the fence lifted and a nameable caller - a "
+    "minted capsule is presented, verified, op-counted and SERVED, the slice comes "
+    "back, the ledger records `capsule.read -> served`, and the fourth read against a "
+    "max_ops of three is refused `exhausted`. So whichever way the fork goes, nothing "
+    "else has to be built for this feature to work.",
 }
 
 
