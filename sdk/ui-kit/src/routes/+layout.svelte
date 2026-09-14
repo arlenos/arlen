@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { loadTheme, applyTokens, PANDA_TOKENS, type SurfaceTokens } from "$lib/theme";
+  import { loadTheme, applyTokens, DARK_TOKENS, type SurfaceTokens } from "$lib/theme";
   import "../app.css";
   import { listen } from "@tauri-apps/api/event";
 
-  // Apply Panda tokens immediately before first render
-  applyTokens(PANDA_TOKENS);
+  // The shipped defaults before first render, so a dev route never flashes
+  // an unthemed surface and never draws one the system does not ship.
+  applyTokens(DARK_TOKENS);
 
   onMount(() => {
     // onMount's cleanup must be a sync function, not a Promise, so the async
@@ -17,7 +18,7 @@
       try {
         await loadTheme();
       } catch {
-        // No Tauri backend (e.g. browser dev mode), Panda already applied
+        // No Tauri backend (e.g. browser dev mode), the defaults already stand
       }
       // Subscribe to live theme changes
       unlisten = await listen<SurfaceTokens>("arlen://theme-changed", ({ payload }) => {
