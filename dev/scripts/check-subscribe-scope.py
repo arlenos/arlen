@@ -4,6 +4,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """A bus subscription or publish the profile does not grant is dropped, not refused.
 
+THE SUBSCRIBE SIDE HAD THE SAME GAP, closed the same evening. It read only an
+inline `subscribe(vec![...])`, so three more shapes were invisible: a vec bound to
+a variable first (the clock daemon, listening for both sleep transitions), an
+element that is a call (the dogfood injector's `mode.topic()`), and the
+hand-rolled registration that writes the three protocol lines straight onto the
+socket instead of calling `subscribe` at all (`code-indexer`). Six notes became
+two, and the two that remain are a real question rather than a blind spot.
+
 AND IT READ THE TOPIC ONLY WHERE IT WAS WRITTEN AT THE CALL, until the same day.
 A topic can reach an emit three ways - as a literal, as a constant, or as the
 return of a function the call names - and this file saw the first. So the power
@@ -163,6 +171,23 @@ OUT_OF_TREE = {
     "compositor": "cosmic-comp fork, separate repo (~/Repositories/compositor)",
 }
 
+#: Ids whose subscription set is DERIVED AT RUNTIME, so no static read can find
+#: it and the note below would be permanent noise rather than a question.
+#:
+#: One entry, and its own profile is where the reason is written: the engine's
+#: patterns come from `orchestrator::subscription_types(&behaviours)`, so the set
+#: changes when a behaviour is added, enabled or disabled. A list in the profile
+#: is a snapshot of a shipped configuration rather than a property of the binary,
+#: which the profile says at length - including that a new event-triggered
+#: behaviour needs a line there or is silently inert under enforcement. That
+#: coupling is a real design question and it is recorded in the profile, not here.
+#:
+#: Stated rather than silent, the same way `NOT_SHIPPED` is in the sibling gate:
+#: an entry here is a decision somebody can disagree with, an absence is not.
+DERIVED_SUBSCRIPTIONS = {
+    "ai-agent": "the engine derives its patterns from the enabled behaviours' triggers",
+}
+
 # `consumer.subscribe(vec!["a.b".into(), "c.".into()])` and friends.
 SUBSCRIBE_CALL = re.compile(r"\.subscribe\s*\(\s*vec!\s*\[(?P<body>[^\]]*)\]", re.S)
 
@@ -179,6 +204,16 @@ SUBSCRIPTIONS_CONST = re.compile(
 )
 
 STRING = re.compile(r'"([^"]*)"')
+
+#: `subscribe(types)` where `types` was bound to a `vec![...]` earlier in the
+#: function. One indirection past the inline form, and the clock daemon's shape -
+#: it listens for both sleep transitions and read as subscribing to nothing.
+SUBSCRIBE_VIA_BINDING = re.compile(r"\.subscribe\s*\(\s*(?P<name>[a-z_][a-z0-9_]*)\s*[,)]")
+
+#: The hand-rolled consumer registration: the three protocol lines written
+#: straight onto the socket instead of calling `subscribe`. `code-indexer` sends
+#: `b"file.opened\n"` itself and so reads as subscribing to nothing.
+SUBSCRIBE_VIA_WIRE = re.compile(r'write_all\(\s*b"(?P<topic>[a-z][a-z0-9_.,*]*)\\n"')
 
 # An SDK helper that subscribes on the caller's behalf. `subscribe_menu_actions`
 # does `subscribe(vec![MENU_ACTION_INVOKED])` inside os-sdk, so the topic appears
@@ -455,12 +490,45 @@ def subscriptions_of(
     source, which is exactly why it has to be read from the manifest.
     """
     found: set[str] = set(linked_plugin_topics(directory, plugins))
+    texts = []
     for f in directory.rglob("*.rs"):
         if any(s in str(f) for s in SKIP):
             continue
-        text = f.read_text(encoding="utf-8", errors="replace")
+        texts.append(f.read_text(encoding="utf-8", errors="replace"))
+
+    bodies: dict[str, str] = {}
+    for text in texts:
+        bodies.update(fn_bodies(text))
+
+    for text in texts:
         for m in SUBSCRIBE_CALL.finditer(text):
-            found.update(s for s in STRING.findall(m.group("body")) if s)
+            body = m.group("body")
+            found.update(s for s in STRING.findall(body) if s)
+            # `subscribe(vec![mode.topic().to_string()])` - the element is a call,
+            # so the literal lives in that function. Same resolution the publish
+            # side does, and the dogfood injector is the reason both need it.
+            for call in re.finditer(r"\b([a-z_][a-z0-9_]*)\s*\(", body):
+                fn = bodies.get(call.group(1))
+                if fn:
+                    found.update(t.group("topic") for t in DOTTED_LITERAL.finditer(fn))
+        # `let types = vec!["power.suspend".to_string(), ...]; subscribe(types)` -
+        # the vec is bound before the call, which is how the clock daemon reads as
+        # subscribing to nothing while it listens for both sleep transitions.
+        for m in SUBSCRIBE_VIA_BINDING.finditer(text):
+            name = m.group("name")
+            for b in re.finditer(
+                rf"let\s+(?:mut\s+)?{re.escape(name)}\s*(?::[^=]+)?=\s*vec!\s*\[(?P<body>[^\]]*)\]",
+                text,
+                re.S,
+            ):
+                found.update(t for t in STRING.findall(b.group("body")) if t)
+        # The hand-rolled registration: a consumer that writes the three protocol
+        # lines itself rather than calling `subscribe`. `code-indexer` does this,
+        # and reads as subscribing to nothing.
+        for m in SUBSCRIBE_VIA_WIRE.finditer(text):
+            topic = m.group("topic")
+            if "." in topic:
+                found.update(t for t in topic.split(",") if t)
         for m in SUBSCRIPTIONS_CONST.finditer(text):
             joined = "".join(STRING.findall(m.group("body")))
             found.update(t for t in joined.split(",") if t)
@@ -500,6 +568,11 @@ def main() -> int:
             continue
 
         app_id = profile.get("info", {}).get("app_id", path.stem)
+        if app_id in DERIVED_SUBSCRIPTIONS:
+            carried.append(
+                f"{path.name}: subscription set is derived at runtime - "
+                f"{DERIVED_SUBSCRIPTIONS[app_id]}; the publish half is still checked"
+            )
         if app_id in OUT_OF_TREE:
             carried.append(f"{path.name}: {OUT_OF_TREE[app_id]}")
             continue
@@ -522,7 +595,7 @@ def main() -> int:
         # nothing" while staying declared, which is what keeps a system-tier app
         # bounded instead of exempt. Only a non-empty grant with nothing behind
         # it is worth a word.
-        if subscribe and not wanted:
+        if subscribe and not wanted and app_id not in DERIVED_SUBSCRIPTIONS:
             # An UNUSED grant, which is the other direction and not a break: extra
             # scope is permissive, so nothing goes quiet. It is still worth saying,
             # because "erring narrow" is what these profiles claim about themselves
