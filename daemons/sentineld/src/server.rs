@@ -244,8 +244,14 @@ async fn fix(surface: &str) -> Response {
 
 /// Serve one connection: authenticate, read one request, answer, close.
 pub async fn serve_connection(ctx: &Context, mut stream: UnixStream) {
-    if PeerPidfd::from_socket(&stream, current_uid()).is_err() {
-        tracing::warn!("peer auth refused; dropping");
+    if let Err(e) = PeerPidfd::from_socket(&stream, current_uid()) {
+        // The reason, not just the refusal. `.is_err()` threw it away, so an
+        // operator watching this daemon saw that somebody was turned away and
+        // could not tell a cross-uid caller from a kernel without SO_PEERPIDFD -
+        // two problems with nothing in common and no way to pick between them.
+        // This is the surface that tells a person their machine is being
+        // watched, so a refusal it cannot explain is the wrong kind of quiet.
+        tracing::warn!(error = %e, "sentinel peer refused: it is not this user, so nothing was answered");
         return;
     }
     let mut len = [0u8; 4];
