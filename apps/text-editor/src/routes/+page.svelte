@@ -456,7 +456,7 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
              machine at all. The app already says this about a sample lens and a
              sample proposal; the document it is written about deserves the same
              sentence. -->
-        <p class="demo-note">{$t("te.demoDoc")}</p>
+        <div class="note"><Notice tone="neutral" text={$t("te.demoDoc")} /></div>
         <Canvas doc={file.content} fileType={file.type} {focusMode} {lineNumbers} />
       {/if}
     </main>
@@ -483,11 +483,6 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   }
   .note-row :global(.notice) {
     flex: 1;
-  }
-  .demo-note {
-    margin: 0 0 var(--space-3);
-    color: var(--color-fg-secondary);
-    font-size: var(--text-sm);
   }
   .app {
     display: flex;

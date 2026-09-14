@@ -43,7 +43,7 @@
     {#if $mocked}
       <!-- A named principal, a scope and concrete hunks against the open file:
            unlabelled this reads as a real pending edit to accept. -->
-      <p class="sample">{$t("te.review.sample")}</p>
+      <div class="note"><Notice tone="neutral" text={$t("te.review.sample")} /></div>
     {:else if $unavailable}
       <div class="note"><Notice tone="error" text={$t("te.review.unavailable")} /></div>
     {/if}
@@ -135,12 +135,6 @@
   }
   .close:hover {
     color: var(--color-fg-primary);
-  }
-  .sample {
-    margin: 0 0 0.5rem;
-    font-size: var(--text-2xs);
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .note {
     margin: 0 0 0.5rem;

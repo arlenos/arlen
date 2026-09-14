@@ -6,6 +6,7 @@
   import { lens, openRelated, type ProvenanceStep } from "$lib/stores/lens";
   import { t, locale } from "$lib/i18n/messages";
   import { relativeTime } from "@arlen/ui-kit/i18n";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
 
   /// How long ago, in the reader's language.
   ///
@@ -41,21 +42,20 @@
          sample rather than saying why. Kept, with the stale premise removed: a
          comment that explains a fixture by a gap that has since closed invites
          the next reader to leave it alone for a reason that no longer holds. -->
-    <p class="sample">
-      {$t("te.lens.sample")}
-      <!-- And when a past time was asked for, say that it went nowhere. The
-           picker keeps its own label whatever happens, so without this the window
-           shows "1 week ago" beside a sample that has no relationship to any time
-           and nothing anywhere admits the request was not answered. -->
-      {#if $lens.asOfActive}{$t("te.lens.sample.asOf")}{/if}
-    </p>
+    <!-- One Notice, in the shape every sample line has. When a past time was
+         asked for, the same strip says that it went nowhere: the picker keeps
+         its own label whatever happens, so without this the window shows
+         "1 week ago" beside a sample that has no relationship to any time. -->
+    <div class="note">
+      <Notice tone="neutral" text={$lens.asOfActive ? `${$t("te.lens.sample")} ${$t("te.lens.sample.asOf")}` : $t("te.lens.sample")} />
+    </div>
   {/if}
   <section class="sec">
+    {#if $lens.provenanceMocked && !$lens.mocked}
+      <div class="note"><Notice tone="neutral" text={$t("te.lens.sampleSection")} /></div>
+    {/if}
     <h2 class="sec-title">
       {$t("te.lens.provenance")}
-      {#if $lens.provenanceMocked && !$lens.mocked}
-        <span class="sec-sample">{$t("te.lens.sampleSection")}</span>
-      {/if}
       <!-- These two sections cannot answer as-of: their edges carry no stamps, so
            they show the present even while the project section shows the past.
            Saying so beats letting the panel read as one consistent moment.
@@ -90,14 +90,12 @@
   </section>
 
   <section class="sec">
+    {#if $lens.relatedMocked && !$lens.mocked}
+      <div class="note"><Notice tone="neutral" text={$t("te.lens.sampleSection")} /></div>
+    {/if}
     <h2 class="sec-title">
       {$t("te.lens.related")}
       {#if $lens.asOfActive && !$lens.mocked}<span class="sec-sample">{$t("te.lens.showingNow")}</span>{/if}
-      {#if $lens.relatedMocked && !$lens.mocked}
-        <!-- The whole-panel caption is gone once provenance and project are real,
-             so this section has to say for itself that it is still a sample. -->
-        <span class="sec-sample">{$t("te.lens.sampleSection")}</span>
-      {/if}
     </h2>
     {#if $lens.related.length > 0}
       <div class="rel">
@@ -167,13 +165,8 @@
     margin-bottom: 1.75rem;
   }
   /* Calm, not an alert - it qualifies the panel, it does not warn about it. */
-  .sample {
+  .note {
     margin: 0 0 0.9rem;
-    font-size: var(--text-2xs);
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
   }
   .sec-sample {
     margin-inline-start: 0.4rem;
