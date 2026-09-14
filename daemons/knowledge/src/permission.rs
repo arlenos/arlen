@@ -18,6 +18,24 @@ use crate::token::{EntityScope, InstanceScope, RelationScope};
 /// An entry with 3 segments (`"system.File.path"`) is a field-level grant.
 /// An entry with 2 segments (`"system.Session"`) grants all fields.
 /// An entry ending in `.*` (`"com.anki.*"`) is a wildcard type grant.
+///
+/// THE SEGMENT COUNT IS THE WHOLE GRAMMAR, which is a trap once a namespace is
+/// itself dotted. A foreign-app bridge writes under a delegated namespace like
+/// `md.obsidian`, so its type is `md.obsidian.Note` - three segments, which this
+/// reads as the type `md.obsidian` with the field `Note`. The entry parses, the
+/// scope it produces matches nothing the bridge writes, and nothing says so: the
+/// daemon answers `permission denied for md.obsidian.Note` for a profile that
+/// appears to name exactly that type. Measured on 14 September by running the
+/// Obsidian floor against a live daemon; `md.obsidian.Note.*` does not help
+/// either, since a `.*` grant covers what is UNDER the prefix and not the prefix
+/// itself. The entry that works is `md.obsidian.*`.
+///
+/// This is not fixable here: `md.obsidian.Note` is genuinely ambiguous between
+/// (type `md.obsidian`, field `Note`) and (type `md.obsidian.Note`, all fields),
+/// and only the registered schemas can say which - which this pure parser does
+/// not see. The test below pins the behaviour so it cannot drift silently; whether
+/// a profile entry naming no registered type should be REFUSED at mint is a
+/// question for whoever owns the profile grammar.
 fn parse_scope_entries(entries: &[String]) -> Vec<EntityScope> {
     // Group field-level entries by entity type.
     let mut type_fields: HashMap<String, Vec<String>> = HashMap::new();
@@ -270,6 +288,51 @@ pub fn installed_app_ids() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A bridged type in a dotted namespace is NOT granted by naming it.
+    ///
+    /// The grammar counts segments, so `md.obsidian.Note` is read as the type
+    /// `md.obsidian` with the field `Note` - a scope for a type nothing declares.
+    /// Pinned rather than fixed because the string is genuinely ambiguous here;
+    /// see the note on `parse_scope_entries`. The working entry is on the end.
+    #[test]
+    fn naming_a_bridged_type_does_not_grant_it_but_the_wildcard_does() {
+        use crate::token::CapabilityToken;
+
+        let named = parse_scope_entries(&["md.obsidian.Note".to_string()]);
+        assert_eq!(named.len(), 1);
+        assert_eq!(
+            named[0].entity_type, "md.obsidian",
+            "the type name is read as a namespace and the type as a field",
+        );
+
+        let token = CapabilityToken::new(
+            "bridge-ingest".to_string(),
+            1,
+            Vec::new(),
+            named,
+            Vec::new(),
+            InstanceScope::Own,
+        );
+        assert!(
+            !token.can_write("md.obsidian.Note"),
+            "so the entry that looks like the grant is not one",
+        );
+
+        let wildcard = parse_scope_entries(&["md.obsidian.*".to_string()]);
+        let token = CapabilityToken::new(
+            "bridge-ingest".to_string(),
+            1,
+            Vec::new(),
+            wildcard,
+            Vec::new(),
+            InstanceScope::Own,
+        );
+        assert!(
+            token.can_write("md.obsidian.Note"),
+            "and the wildcard over the namespace is the one that works",
+        );
+    }
 
     /// Parse a canonical profile from a `[graph]`-only test body. The canonical
     /// type requires an `[info]` section, so prepend a minimal one; the scope
