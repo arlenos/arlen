@@ -38,6 +38,20 @@
 app_id = "powerd"
 tier = "first-party"
 
+# THREE TOPICS, NOT ONE. `power.state` is the polled snapshot; the other two are
+# the sleep transitions `sleep.rs` publishes off logind's `PrepareForSleep`, and
+# they were missing here until 14 September. They went unnoticed because the
+# static scan that reads publishes (`check-subscribe-scope.py`) matches a string
+# LITERAL as the first argument of an emit call, and this daemon does neither: the
+# topic is chosen inside `sleep_event_type` and handed to `emit_transition` as a
+# variable, so the scan sees no topic and the profile looked complete.
+#
+# WHAT IT COSTS, and it is not the record: the clock daemon subscribes to exactly
+# these two so its stopwatch does not count time spent asleep. An ungranted
+# publish is DROPPED, not refused - the emitting code sees success - so under the
+# enforce cutover the clock's receiver would simply go quiet and the stopwatch
+# would count through a suspend. Its own code warns loudly when it cannot reach
+# the bus at all; this is the same outcome arriving with nothing said.
 [event_bus]
-publish = ["power.state"]
+publish = ["power.state", "power.suspend", "power.resume"]
 subscribe = []
