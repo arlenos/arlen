@@ -97,7 +97,7 @@
       {#if $mintMocked && !$mintResult}
         <!-- The scope menu and its reach numbers are invented, so the user would
              be choosing what to share out of data that is not theirs. -->
-        <p class="mint-note">{$t("h.mint.exampleData")}</p>
+        <div class="mint-refusal"><Notice tone="neutral" text={$t("h.mint.exampleData")} /></div>
       {/if}
       {#if $mintResult}
         <div class="mint-result">
