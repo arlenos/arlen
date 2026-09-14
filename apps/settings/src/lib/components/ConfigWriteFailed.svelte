@@ -17,24 +17,14 @@
   /// wants - "the control shows what you set, the system still has the old value"
   /// - would be false here, because the control does not.
   import { t } from "$lib/i18n/messages";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
 
   let { failed }: { failed: boolean } = $props();
 </script>
 
+<!-- The kit Notice, in the one shape every refusal has (design-system.md 6.11,
+     thread two). It sits inside the page's SectionGrid, spanning it, so it gets
+     the grid's column rather than sitting 120px left of everything else. -->
 {#if failed}
-  <p class="config-write-failed" role="alert">{$t("s.config.notSaved")}</p>
+  <Notice tone="error" class="span-full" text={$t("s.config.notSaved")} />
 {/if}
-
-<style>
-  /* The same centred column as `ConfigUnavailable`, for the same reason recorded
-     there: a child dropped straight into `Page` gets neither the header's column
-     nor the grid's, and sits 120px left of everything else on the page. */
-  .config-write-failed {
-    width: 100%;
-    max-width: var(--width-section-body, 46rem);
-    margin: 0 auto 0.75rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-error, #f87171);
-  }
-</style>

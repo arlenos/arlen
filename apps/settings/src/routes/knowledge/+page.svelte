@@ -136,8 +136,8 @@
   title={$t("s.know.title")}
   description={$t("s.know.desc")}
 >
-  <ConfigWriteFailed failed={$graph.writeFailed} />
   <SectionGrid>
+    <ConfigWriteFailed failed={$graph.writeFailed} />
     {#if $graph.error}
       <Notice tone="error" class="span-full" text={$t("s.config.unavailable")} />
     {/if}

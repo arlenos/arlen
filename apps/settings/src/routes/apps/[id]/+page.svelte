@@ -167,7 +167,7 @@
     </Section>
 
     {#if uninstallError}
-      <p class="uninstall-error span-full" role="alert">{uninstallError}</p>
+      <Notice tone="error" class="span-full" text={uninstallError} />
     {/if}
 
     {#if unverified}
@@ -226,7 +226,7 @@
             <p class="no-schema">{$t("s.apps.activityNone")}</p>
           {:else}
             {#if $appAudit.tampered}
-              <p class="no-schema" role="alert">{$t("s.apps.activityTampered")}</p>
+              <Notice tone="error" text={$t("s.apps.activityTampered")} />
             {/if}
             {#each $appAudit.entries as e (e.index)}
               <Row
@@ -305,12 +305,6 @@
 />
 
 <style>
-  .uninstall-error {
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--destructive);
-  }
-
   /* The unverified banner qualifies everything below it, so it sits above
      everything and keeps the warning register (never red alarm). */
   .banner {

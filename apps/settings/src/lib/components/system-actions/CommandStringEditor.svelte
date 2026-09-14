@@ -16,6 +16,7 @@
   import { Pencil, Check, X, RotateCcw } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
 
   let {
     value,
@@ -105,15 +106,15 @@
 
 {#if editing}
   <div class="editor">
+    {#if error}
+      <Notice tone="error" text={error} />
+    {/if}
     <Input
       bind:value={draft}
       placeholder={placeholder ?? $t("s.cmdEditor.placeholder")}
       onkeydown={onKeydown}
       autofocus
     />
-    {#if error}
-      <div class="error" role="alert">{error}</div>
-    {/if}
     <div class="buttons">
       <Button variant="ghost" size="sm" onclick={cancel}>
         <X size={14} />
@@ -190,11 +191,6 @@
     flex-direction: column;
     gap: 0.375rem;
     width: 100%;
-  }
-
-  .error {
-    font-size: var(--text-xs);
-    color: var(--destructive);
   }
 
   .buttons {

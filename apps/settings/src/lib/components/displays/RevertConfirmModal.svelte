@@ -20,6 +20,7 @@
     type MonitorConfig,
   } from "$lib/stores/displays";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
   import { mark } from "@arlen/ui-kit/i18n/rich";
@@ -198,6 +199,9 @@
            Two definitions of that id existed, in two catalogue files, and the
            merge order decided which one every caller got. -->
       <h2 id="revert-title">{$t("s.revert.title")}</h2>
+      {#if error}
+        <Notice tone="error" text={error} />
+      {/if}
       <p class="body">
         {#if pendingRevertId}
           {$t("s.revert.reverting")}
@@ -209,10 +213,6 @@
       </p>
 
       <progress class="bar" max={COUNTDOWN_SECONDS} value={secondsLeft}></progress>
-
-      {#if error}
-        <p class="error" role="alert">{error}</p>
-      {/if}
 
       <div class="actions">
         <Button
@@ -306,16 +306,6 @@
   .bar::-moz-progress-bar {
     background: var(--color-accent);
     border-radius: var(--radius-chip);
-  }
-
-  .error {
-    margin: 0;
-    padding: 8px 10px;
-    background: color-mix(in srgb, var(--destructive) 18%, transparent);
-    border: 1px solid color-mix(in srgb, var(--destructive) 40%, transparent);
-    border-radius: var(--radius-chip);
-    font-size: 0.8rem;
-    color: var(--destructive);
   }
 
   .actions {

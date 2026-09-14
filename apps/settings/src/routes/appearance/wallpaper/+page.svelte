@@ -12,6 +12,7 @@
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SwatchGrid, Swatch } from "@arlen/ui-kit/components/ui/swatch-grid";
   import { ImagePlus } from "lucide-svelte";
   import {
@@ -45,18 +46,16 @@
 <Page back={{ href: "/appearance", label: $t("s.nav.appearance") }} title={$t("s.wallpaper.title")} description={$t("s.wallpaper.desc")}>
   <SectionGrid>
     <Section label={$t("s.wallpaper.choose")}>
+      <!-- Empty would read as "no wallpapers installed", which is never true and
+           is not what happened; a change that did not land leaves the highlight
+           on the wallpaper that is actually up. Both at the top of the section. -->
+      {#if $wallpapersUnavailable}
+        <Notice tone="error" text={$t("s.wallpaper.unavailable")} />
+      {/if}
+      {#if $wallpaperChangeFailed}
+        <Notice tone="error" text={$t("s.wallpaper.changeFailed")} />
+      {/if}
       <div class="wp-inset">
-        {#if $wallpapersUnavailable}
-          <!-- Empty here would read as "no wallpapers installed", which is never
-               true and is not what happened. Inside the inset, not above it:
-               `.wp-note` has no padding of its own because the inset provides
-               it, so placing it outside drew the text across the box's border. -->
-          <p class="wp-note">{$t("s.wallpaper.unavailable")}</p>
-        {/if}
-        <!-- The highlight is back on the wallpaper that is actually up. -->
-        {#if $wallpaperChangeFailed}
-          <p class="wp-note" role="alert">{$t("s.wallpaper.changeFailed")}</p>
-        {/if}
         <SwatchGrid min="8rem" label={$t("s.wallpaper.choose")}>
           {#each $wallpapers as w (w.id)}
             <Swatch label={w.name} color={w.thumb} active={$currentId === w.id} onclick={() => setWallpaper(w.id)} />
@@ -92,10 +91,5 @@
     align-items: flex-start;
     gap: 1rem;
     padding: 0.75rem 1rem 1.1rem;
-  }
-  .wp-note {
-    margin: 0;
-    font-size: var(--text-xs);
-    color: var(--color-fg-secondary, #a1a1aa);
   }
 </style>

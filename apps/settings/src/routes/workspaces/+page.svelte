@@ -107,8 +107,8 @@
   title={$t("s.ws.title")}
   description={$t("s.ws.desc")}
 >
-  <ConfigWriteFailed failed={$compositor.writeFailed} />
   <SectionGrid>
+    <ConfigWriteFailed failed={$compositor.writeFailed} />
     {#if $compositor.error}
       <Notice tone="error" class="span-full" text={$t("s.config.unavailable")} />
     {/if}

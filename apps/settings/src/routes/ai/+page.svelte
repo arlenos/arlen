@@ -18,6 +18,7 @@
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
@@ -95,6 +96,8 @@
     try {
       explanation = await invoke<string>("ai_explain");
     } catch (e) {
+      // The host's words are for the console; the row says it in the catalogue.
+      console.warn("settings: the explanation was not built", e);
       explainError = String(e);
       explanation = null;
     } finally {
@@ -263,8 +266,8 @@
   title={$t("s.ai.title")}
   description={$t("s.ai.desc")}
 >
-  <ConfigWriteFailed failed={$ai.writeFailed} />
   <SectionGrid>
+    <ConfigWriteFailed failed={$ai.writeFailed} />
     <Section label={$t("s.ai.assistant")}>
       <Row
         label={$t("s.ai.enable")}
@@ -448,7 +451,7 @@
         {/snippet}
         {#snippet below()}
           {#if explainError}
-            <p class="explain-error" role="alert" title={explainError}>{$t("s.ai.explain.failed")}</p>
+            <Notice tone="error" text={$t("s.ai.explain.failed")} />
           {:else if explanation}
             <p class="explain-text">{explanation}</p>
           {/if}
@@ -494,10 +497,5 @@
     line-height: 1.55;
     color: var(--foreground);
     white-space: pre-wrap;
-  }
-  .explain-error {
-    margin: 0.5rem 0 0;
-    font-size: var(--text-sm);
-    color: var(--color-error);
   }
 </style>

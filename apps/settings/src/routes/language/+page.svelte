@@ -11,6 +11,7 @@
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { t, locale, CATALOGS, SOURCE_LOCALE } from "$lib/i18n/messages";
 
@@ -71,7 +72,7 @@
   <SectionGrid>
     <Section label={$t("s.lang.section")}>
       {#if writeFailed}
-        <p class="write-failed" role="alert">{$t("s.lang.writeFailed")}</p>
+        <Notice tone="error" text={$t("s.lang.writeFailed")} />
       {/if}
       <Row label={$t("s.lang.ui")} description={$t("s.lang.uiDesc")} id="language-ui">
         {#snippet control()}
@@ -88,10 +89,4 @@
 </Page>
 
 <style>
-  .write-failed {
-    margin: 0 0 0.5rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-error, #f87171);
-  }
 </style>
