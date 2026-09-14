@@ -75,6 +75,25 @@ describe("load", () => {
 /// Nothing compared them, so the drift was invisible for as long as it took
 /// somebody to open the page with no backend - the same shape as the terminal
 /// swatch grid one store over, and the sound row before that.
+describe("load", () => {
+  it("shows the family rather than the whole font stack", async () => {
+    // What `theme_resolved_metrics` actually hands over is the theme's stack.
+    // The row is a picker over families, so the stack matches no option, and a
+    // value that matches nothing used to make the picker show its first entry
+    // as though that were the setting.
+    backend(
+      {
+        "typography.font_sans": '"Inter Variable", ui-sans-serif, system-ui, sans-serif',
+        "typography.font_mono": '"JetBrainsMono Nerd Font Mono", "JetBrains Mono", ui-monospace',
+      },
+      null,
+    );
+    await load();
+    expect(get(effective).fontSans).toBe("Inter Variable");
+    expect(get(effective).fontMono).toBe("JetBrainsMono Nerd Font Mono");
+  });
+});
+
 describe("TYPO_DEFAULTS", () => {
   /// The shipped theme file itself, pulled in as text rather than read through
   /// `node:fs`: this app's tsconfig carries no node types, and a test that has

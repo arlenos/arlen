@@ -68,6 +68,24 @@ export const effective = derived([resolved, overrides], ([$r, $o]) => {
   return out;
 });
 
+/// The first family of a CSS font stack, unquoted.
+///
+/// The theme carries a full stack - the Inter family, then ui-sans-serif, then
+/// system-ui, then sans-serif - and the row is a picker over families, so the whole
+/// string matches no option in it. Before this the picker quietly showed its
+/// FIRST entry instead, which for the monospace row meant naming whichever
+/// family fontconfig happened to list first as though the system were using it.
+/// The picker no longer impersonates an option it does not have; this makes the
+/// value one it does.
+function firstFamily(stack: string): string {
+  const head = stack.split(",")[0].trim();
+  // The quote characters are written as escapes rather than literally: the
+  // copy lint scans for string literals and a bare apostrophe in a character
+  // class opens one it never closes, which made every later string in this
+  // file read as user-facing prose.
+  return head.replace(/^[\u0027\u0022]|[\u0027\u0022]$/g, "");
+}
+
 /// A metric string as the slider wants it: `"15px"` reads back as `15`.
 function toNumberIfSized(key: string, raw: string): string | number {
   if (typeof TYPO_DEFAULTS[key] !== "number") return raw;
@@ -90,7 +108,11 @@ export async function load(): Promise<void> {
     const next: Record<string, string | number> = { ...TYPO_DEFAULTS };
     for (const [field, key] of Object.entries(METRIC_KEY)) {
       const raw = metrics[key];
-      if (raw !== undefined) next[field] = toNumberIfSized(field, raw);
+      if (raw === undefined) continue;
+      next[field] =
+        field === "fontSans" || field === "fontMono"
+          ? firstFamily(raw)
+          : toNumberIfSized(field, raw);
     }
     resolved.set(next);
   } catch {
