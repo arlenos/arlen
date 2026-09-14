@@ -211,11 +211,31 @@ async fn handle(stream: UnixStream, caller_uid: u32, ctx: ServeContext) {
     let auth = match ConnectionAuth::extract_from(&stream, caller_uid) {
         Ok(a) => a,
         Err(e) => {
-            tracing::debug!(error = %e, "capsule peer rejected at admission");
+            // WARN, not debug, and the reason with it. A refused caller gets a
+            // reset socket and nothing else, so at the default level this daemon
+            // served nobody and said nothing about it - measured: the whole serve
+            // path refuses every caller under the write-fence this daemon
+            // installs on itself, because resolving a peer's identity reads
+            // `/proc/<pid>/exe` and landlock denies that for a peer outside the
+            // domain. The knowledge daemon carries the same finding as the reason
+            // it is deliberately unfenced. Which way capsuled should go is in
+            // `coder-reports.md`; that it should SAY SO is not a design question.
+            tracing::warn!(
+                uid = caller_uid,
+                error = %e,
+                "capsule peer refused: its identity could not be resolved, so nothing was served"
+            );
             return;
         }
     };
-    if auth.verify_alive().is_err() {
+    if let Err(e) = auth.verify_alive() {
+        // The pid-reuse guard. Also silent until now, and it is a different
+        // sentence: the caller was named and then went away.
+        tracing::warn!(
+            uid = caller_uid,
+            error = %e,
+            "capsule peer refused: it did not outlive its own connection"
+        );
         return;
     }
     // A fresh correlation id per connection links the audit entry to this read.
