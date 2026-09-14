@@ -129,7 +129,29 @@ impl Clock {
                 .map(|was_armed| format!("nothing due, wake withdrawn: {was_armed}")),
         };
         match outcome {
-            Ok(described) => info!("{described}"),
+            Ok(described) => {
+                info!("{described}");
+                // The mirror of the refusal below, and the reason it is needed:
+                // `wake_capable` answers false for a power daemon it cannot
+                // reach, which is honest when asked and stale ever after. A
+                // daemon that started before `Power1` claimed the bus name holds
+                // that false for the life of the session unless the machine
+                // sleeps - and a wake that was just ACCEPTED is proof the daemon
+                // is there now. Without this the app goes on telling a person
+                // alarms will not wake this machine while the wake it armed a
+                // moment ago says otherwise.
+                //
+                // Only for an armed wake: a successful `CancelWake` proves the
+                // daemon is reachable and nothing about whether it can wake
+                // anything. And the PROPERTY is re-read rather than the
+                // description that came back with the reply - matching English
+                // across a process boundary is the coupling `wake_capable`
+                // documents itself against.
+                if at_ms.is_some() {
+                    let capable = wake_capable().await;
+                    self.state.lock().await.wake_capable = capable;
+                }
+            }
             Err(e) => {
                 warn!("the power daemon refused the wake request: {e}");
                 // Learned from the refusal rather than assumed: whatever the
