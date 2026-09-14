@@ -256,4 +256,11 @@ say "and not by handing over an errno" \
   "$(printf '%s' "$got" | grep -qiE "os error|i/o:|errno" && echo 0 || echo 1)" "$got"
 
 [ "$fail" = 0 ] && echo "a folder that opens, a rename and a delete that reach the disk, an undo that restores it, a search that goes deeper than the folder, and a refusal that says why"
+# Cleared at the start and left behind at the end, which put a directory called
+# `arlen-drive-*` in the home of whoever ran this and kept it there - three of
+# them had been sitting in mine since 9 September. Removed on a PASS only: a run
+# that failed is the one whose files somebody wants to look at, and that is the
+# whole reason this was not just deleted at the top.
+[ "$fail" = 0 ] && rm -rf "$work"
+
 exit "$fail"

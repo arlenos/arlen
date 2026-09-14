@@ -220,4 +220,11 @@ say "picking File > New folder in the file manager makes the directory" \
   "$got (in $fwork: $(ls -A "$fwork" | tr '\n' ' '))"
 
 [ "$fail" = 0 ] && echo "a menu click crosses the bus into two different apps, and only into the app it names"
+# Cleared at the start and left behind at the end, which put a directory called
+# `arlen-drive-*` in the home of whoever ran this and kept it there - three of
+# them had been sitting in mine since 9 September. Removed on a PASS only: a run
+# that failed is the one whose files somebody wants to look at, and that is the
+# whole reason this was not just deleted at the top.
+[ "$fail" = 0 ] && rm -rf "$fwork"
+
 exit "$fail"
