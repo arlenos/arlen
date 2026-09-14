@@ -331,6 +331,15 @@ const DEV_ADMITTED: &[&str] = &[
     // grant held: the answer was `token unavailable` for a token that was right
     // there, and admitting this id returned it.
     "dev.arlen-accountsd",
+    // The config broker, whose escalating direction is fail-closed the same way
+    // (`server.rs`: an escalating AI master-switch change submits first and
+    // returns "escalating change refused: the audit ledger is unavailable" if the
+    // submit errs, while the off direction applies regardless). REASONED FROM THE
+    // CODE, not driven like the five above it: the write is gated to Settings and
+    // the AI daemon, and a probe cannot become either, so the escalation path is
+    // unreachable from outside. The id follows the same resolver rule those five
+    // were measured on.
+    "dev.arlen-config-broker",
 ];
 
 /// Whether a resolved peer app_id may submit audit events.
@@ -371,6 +380,49 @@ mod tests {
     use super::*;
     use crate::ledger::{AuditKind, StructuralRecord};
 
+    /// The mirror of the guard below, and the direction that actually bit.
+    ///
+    /// That one asks whether each ADMITTED id resolves from its deployed path.
+    /// This asks the reverse: whether each deployed producer can also audit when
+    /// it is run from a cargo target, which is how every developer runs it. Six
+    /// producers were found the hard way on 14 September - connections, capsuled,
+    /// bottled, transferd, accountsd and the config broker - each with a
+    /// fail-closed audit and no `dev.*` entry, so in a dev run the FEATURE
+    /// refused rather than the record being lost. The account daemon was the worst
+    /// of them: it answered `token unavailable` for a token sitting in its vault.
+    ///
+    /// The exceptions below are the producers whose audit is best-effort, where a
+    /// dev run without admission loses the line and not the act. Each is a stated
+    /// decision rather than an absence, so the next producer added here has to be
+    /// classified rather than default to silently-refusing-in-dev.
+    #[test]
+    fn every_deployed_producer_can_also_audit_from_a_cargo_target() {
+        /// Deployed binaries whose audit is best-effort, so a dev run without a
+        /// `dev.*` entry loses the record and not the act.
+        const BEST_EFFORT: &[&str] = &[
+            // Records a notification; the notification is shown either way.
+            "arlen-notifyd",
+            // Records an install; the transaction and its rollback stand alone.
+            "arlen-installd",
+            // Records the coarse print and screenshot lines; both acts proceed.
+            "xdg-desktop-portal-arlen",
+        ];
+        for &(path, _id) in deployed_producers() {
+            let binary = path.rsplit('/').next().expect("a path has a basename");
+            if BEST_EFFORT.contains(&binary) {
+                continue;
+            }
+            let dev = format!("dev.{binary}");
+            assert!(
+                DEV_ADMITTED.contains(&dev.as_str()),
+                "{binary} audits fail-closed, so a cargo-run build needs {dev} in \
+                 DEV_ADMITTED or the feature refuses in every dev run - add it, or \
+                 add the binary to BEST_EFFORT with the reason its act survives an \
+                 unrecordable audit",
+            );
+        }
+    }
+
     /// Guard the whole "works in dev via dev.*, DEAD in release" class: each
     /// admitted producer's canonical DEPLOYED binary path (its systemd-unit
     /// ExecStart) must resolve, via the release `path_to_app_id`, to the exact
@@ -380,11 +432,14 @@ mod tests {
     /// every one of their writes in a release image while passing in dev (where the
     /// `dev.<bin>` cargo id is admitted). A unit whose ExecStart moves off these
     /// paths, or a producer added to ADMITTED without a resolving path, breaks this.
-    #[test]
-    fn every_admitted_producer_resolves_from_its_deployed_path() {
-        use arlen_permissions::identity::path_to_app_id;
-        use std::path::Path;
-        let deployed: &[(&str, &str)] = &[
+    /// Each admitted producer's canonical DEPLOYED binary path (its systemd-unit
+    /// ExecStart) and the ADMITTED id it must resolve to.
+    ///
+    /// ONE table read by both guards below. Two copies would drift, and the pair
+    /// only means anything read together: the first says a producer can audit on
+    /// the image, the second that it can audit from a cargo target.
+    fn deployed_producers() -> &'static [(&'static str, &'static str)] {
+        &[
             ("/usr/lib/arlen/libexec/arlen-ai-daemon", "ai-daemon"),
             ("/usr/lib/arlen/libexec/arlen-ai-proxy", "ai-proxy"),
             ("/usr/lib/arlen/libexec/arlen-ai-engine-daemon", "ai-agent"),
@@ -411,8 +466,20 @@ mod tests {
                 "/usr/lib/arlen/apps/dev.arlen.desktop-shell/bin/arlen-desktop-shell",
                 "dev.arlen.desktop-shell",
             ),
-        ];
-        for &(path, id) in deployed {
+        ]
+    }
+
+    /// Guard the whole "works in dev via dev.*, DEAD in release" class: each
+    /// admitted producer's deployed path must resolve to the exact ADMITTED id.
+    /// Several producers audit FAIL-CLOSED, so an id that resolves to something
+    /// un-admitted silently refuses every one of their writes in a release image
+    /// while passing in dev. A unit whose ExecStart moves off these paths, or a
+    /// producer added to ADMITTED without a resolving path, breaks this.
+    #[test]
+    fn every_admitted_producer_resolves_from_its_deployed_path() {
+        use arlen_permissions::identity::path_to_app_id;
+        use std::path::Path;
+        for &(path, id) in deployed_producers() {
             assert_eq!(
                 path_to_app_id(Path::new(path)).unwrap().as_str(),
                 id,
@@ -427,7 +494,7 @@ mod tests {
         // new producer cannot be admitted without a path that resolves to it.
         for id in ADMITTED {
             assert!(
-                deployed.iter().any(|&(_, mapped)| mapped == *id),
+                deployed_producers().iter().any(|&(_, mapped)| mapped == *id),
                 "ADMITTED id {id} has no deployed-path mapping in this guard - add \
                  its systemd ExecStart path or its fail-closed audits die in release"
             );
