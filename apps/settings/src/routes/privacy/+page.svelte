@@ -287,6 +287,12 @@
 
     {#if $capsulesLoaded}
       <Section label={$t("s.priv.sharedContext")} class="span-full">
+        <!-- Invented shares read as data actually sent out and still readable:
+             said over the rows, and once per page, since the notice at the top
+             already covers a page whose host answered nothing. -->
+        {#if $capsulesMocked && !$grantsMocked}
+          <Notice tone="neutral" text={$t("s.priv.sampleShares")} />
+        {/if}
         {#if $capsules.length > 0}
           <div class="cap-list">
             {#each $capsules as c (c.id)}
@@ -318,10 +324,7 @@
           {#if $capsuleNotice}
             <Notice tone="error" text={$t($capsuleNotice)} />
           {/if}
-          {#if $capsulesMocked}
-            <!-- Invented shares read as data actually sent out and still readable. -->
-            <Notice tone="neutral" text={$t("s.priv.sampleShares")} />
-          {:else if $capsulesUnavailable}
+          {#if $capsulesUnavailable}
             <p class="note">{$t("s.priv.sharesUnavailable")}</p>
           {/if}
           <p class="note">
