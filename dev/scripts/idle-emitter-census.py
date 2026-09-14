@@ -19,7 +19,12 @@ WHAT IT MEASURES. One daemon at a time, each in its own throwaway runtime
 directory with a private event bus and no peers, watched for a fixed window while
 the machine is left alone. The number reported is events per window per topic.
 
-HOW TO READ IT. **A non-zero row is not automatically a defect.** A daemon whose
+HOW TO READ IT. **A non-zero row is not automatically a defect.** A daemon that
+publishes its current state once when it starts is right to, and a consumer that
+connects later needs it to - so expect a 1 from anything that has a state to
+announce. What the shape of the defect looks like is a number that keeps going:
+the power daemon read 1 here and would have read one every nine seconds the day
+before this was written. A daemon whose
 subject genuinely changes while you watch - a laptop crossing a battery
 threshold, a journal that is genuinely busy - is right to emit. What the number
 answers is "is this daemon's idea of a change the same as mine", and a steady
@@ -73,12 +78,55 @@ def roster() -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     return runnable, skipped
 
 
+def needs_only_a_bus(reason: str) -> bool:
+    """Whether the smoke's reason for skipping is one this census can lift.
+
+    Derived from the smoke's own text rather than a second hand-kept list: the
+    reasons already say what is missing, and a list that restates them is a list
+    that drifts from them. A reason mentioning root is never lifted - this runs
+    as the developer, and a root service measured as a user is not the thing.
+
+    NB `system-bus service, runs as root` is hyphenated and carries "root", so the
+    two privileged helpers fall out on both counts. `arlen-powerd` says "system
+    bus (UPower, logind)" and IS lifted: the system bus exists on a developer
+    machine, so what it was actually missing is a session to sit in.
+    """
+    if "root" in reason:
+        return False
+    return "session bus" in reason or "system bus" in reason
+
+
+def start_private_bus(rt: Path) -> tuple[subprocess.Popen | None, str | None]:
+    """A session bus of this run's own, so a daemon that takes a well-known name
+    takes it here and not on the developer's desktop."""
+    if shutil.which("dbus-daemon") is None:
+        return None, None
+    try:
+        proc = subprocess.Popen(
+            ["dbus-daemon", "--session", "--print-address", "--nofork"],
+            stdout=subprocess.PIPE,
+            stderr=(rt / "dbus.log").open("wb"),
+            stdin=subprocess.DEVNULL,
+            text=True,
+            start_new_session=True,
+        )
+    except OSError:
+        return None, None
+    assert proc.stdout is not None
+    address = proc.stdout.readline().strip()
+    if not address:
+        stop(proc)
+        return None, None
+    return proc, address
+
+
 def spawn(
     binary: Path,
     rt: Path,
     extra: str,
     log: Path,
     args: list[str] | None = None,
+    bus_address: str | None = None,
 ) -> subprocess.Popen | None:
     """Start `binary` with its state inside `rt`. `$rt` in `extra` is this run's dir."""
     env = dict(os.environ)
@@ -101,6 +149,8 @@ def spawn(
         if "=" in pair:
             k, v = pair.split("=", 1)
             env[k] = v
+    if bus_address:
+        env["DBUS_SESSION_BUS_ADDRESS"] = bus_address
     try:
         return subprocess.Popen(
             [str(binary), *(args or [])],
@@ -247,11 +297,6 @@ def main() -> int:
     if not runnable:
         print(f"NOTHING WAS READ: no daemon parsed out of {SMOKE}", file=sys.stderr)
         return 2
-    if args.only:
-        runnable = [r for r in runnable if r[0] == args.only]
-        if not runnable:
-            print(f"no runnable daemon named {args.only}", file=sys.stderr)
-            return 2
 
     if not counter_is_working(target, args.window):
         print(
@@ -265,7 +310,25 @@ def main() -> int:
     rows: list[tuple[str, int, str]] = []
     unbuilt: list[str] = []
 
-    for name, extra in runnable:
+    # The smoke skips a daemon that needs a session to sit in, because the smoke
+    # does not provide one. This does, on a bus of its own - so a daemon that
+    # takes `org.freedesktop.Notifications` takes it here and never on the
+    # developer's desktop. Without `dbus-daemon` they stay skipped and say so.
+    lifted = [(n, "", r) for n, r in skipped if needs_only_a_bus(r)]
+    have_dbus = shutil.which("dbus-daemon") is not None
+    if not have_dbus:
+        lifted = []
+
+    measured = [(n, e, "") for n, e in runnable] + lifted
+    if args.only:
+        # After the lift, so `--only` reaches a daemon the smoke skips and this
+        # census measures anyway - which is most of the interesting ones.
+        measured = [m for m in measured if m[0] == args.only]
+        if not measured:
+            print(f"no daemon named {args.only} in the roster", file=sys.stderr)
+            return 2
+
+    for name, extra, lift_reason in measured:
         if name == BUS:
             continue  # it is the bus, not a producer onto it
         binary = target / name
@@ -278,6 +341,14 @@ def main() -> int:
         for sub in ("arlen", "knowledge", "vault", "data", "state", "config"):
             (rt / sub).mkdir(parents=True, exist_ok=True)
 
+        session, bus_address = (None, None)
+        if lift_reason:
+            session, bus_address = start_private_bus(rt)
+            if bus_address is None:
+                print(f"  --   {name:26} no private session bus available")
+                shutil.rmtree(rt, ignore_errors=True)
+                continue
+
         bus = spawn(bus_bin, rt, "", rt / "bus.log")
         consumer = rt / "arlen/event-bus-consumer.sock"
         for _ in range(20):
@@ -285,7 +356,7 @@ def main() -> int:
                 break
             time.sleep(0.25)
 
-        proc = spawn(binary, rt, extra, rt / "log")
+        proc = spawn(binary, rt, extra, rt / "log", None, bus_address)
         # A moment to connect as a producer before the window opens, so a first
         # emit is not lost to a race and counted as silence.
         time.sleep(2.0)
@@ -294,17 +365,19 @@ def main() -> int:
 
         stop(proc)
         stop(bus)
+        stop(session)
         shutil.rmtree(rt, ignore_errors=True)
 
+        where = " (own session bus)" if lift_reason else ""
         total = sum(topics.values())
         if not alive:
             rows.append((name, -1, "did not stay up"))
-            print(f"  --   {name:26} did not stay up")
+            print(f"  --   {name:26} did not stay up{where}")
             continue
         detail = ", ".join(f"{t} x{c}" for t, c in sorted(topics.items())) or "silent"
         rows.append((name, total, detail))
         mark = "**" if total else "ok"
-        print(f"  {mark:4} {name:26} {total:4} event(s)  {detail}")
+        print(f"  {mark:4} {name:26} {total:4} event(s)  {detail}{where}")
 
     print()
     noisy = [(n, c, d) for n, c, d in rows if c > 0]
@@ -322,8 +395,11 @@ def main() -> int:
 
     if unbuilt:
         print(f"\nnot built, so not measured: {', '.join(sorted(unbuilt))}")
-    print(f"\n{len(skipped)} daemon(s) cannot run unattended (from the smoke's own list):")
-    for n, reason in sorted(skipped):
+    still_skipped = [(n, r) for n, r in skipped if not (have_dbus and needs_only_a_bus(r))]
+    if not have_dbus:
+        print("\nno `dbus-daemon` on PATH, so every session-bus daemon stayed skipped")
+    print(f"\n{len(still_skipped)} daemon(s) cannot run unattended even with a bus:")
+    for n, reason in sorted(still_skipped):
         print(f"  - {n}: {reason}")
     return 0
 
