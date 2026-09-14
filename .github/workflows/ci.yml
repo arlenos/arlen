@@ -416,6 +416,8 @@ jobs:
           node dev/scripts/test-check-emitters-declared.mjs
           python3 dev/scripts/check-integration-builds.py
           node dev/scripts/test-check-integration-builds.mjs
+          python3 dev/scripts/check-harness-hermetic.py
+          node dev/scripts/test-check-harness-hermetic.mjs
           python3 dev/scripts/check-bus-path-in-source.py
           node dev/scripts/test-check-bus-path-in-source.mjs
           python3 dev/scripts/check-user-units-started.py
