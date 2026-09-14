@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   import { agoText } from "$lib/duration";
   /// The unified recent-actions panel (CAH-4): every producer's reversible
@@ -46,7 +47,7 @@
   {/snippet}
 
   {#if $undoMocked}
-    <p class="undo-sample">{$t("sh.undo.mocked")}</p>
+    <div class="undo-note"><Notice tone="neutral" text={$t("sh.undo.mocked")} /></div>
   {/if}
 
   {#if $undoUnavailable}
@@ -116,10 +117,8 @@
 </ShellPopover>
 
 <style>
-  .undo-sample {
-    margin: 0;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+  .undo-note {
+    margin: 0 0 0.5rem;
   }
 
   .undo-empty {

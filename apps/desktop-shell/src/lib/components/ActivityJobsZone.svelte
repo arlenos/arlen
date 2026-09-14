@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   /// The Activity/Jobs zone (job-progress-surface.md): the top zone of the
   /// notifications popover, showing live long-running work with a per-job progress
@@ -63,7 +64,7 @@
     {#if $mocked}
       <!-- These carry titles, per-file names, an ETA and a Cancel button: without
            this they read as work actually in flight on this machine. -->
-      <p class="jobs-sample">{$t("sh.job.mocked")}</p>
+      <div class="jobs-note"><Notice tone="neutral" text={$t("sh.job.mocked")} /></div>
     {/if}
     {#if $lastError}
       <!-- A refused action already restored the feed; this says why, so a failed
@@ -168,6 +169,9 @@
     flex-direction: column;
     gap: 0.5rem;
     margin-bottom: 0.5rem;
+  }
+  .jobs-note {
+    margin: 0 0 0.4rem;
   }
   .jobs-sample {
     margin: 0 0 0.4rem;
