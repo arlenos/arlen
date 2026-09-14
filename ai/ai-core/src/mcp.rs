@@ -393,6 +393,22 @@ impl McpClient {
     /// presenting the available tools to the model. Best-effort: a server
     /// whose tool listing fails is skipped rather than blanking the catalogue,
     /// so one unreachable server does not hide the rest.
+    ///
+    /// **NOTHING CALLS THIS, AND THAT IS THE SHAPE OF THE MCP LAYER TODAY.** The
+    /// engine that runs hands the model a STATIC list - `DEFAULT_PROXY_TOOLS` in
+    /// `pi-plugins/src/proxy.ts`, five entries - and there is no dynamic discovery
+    /// path, so a tool an MCP server serves is reachable by the model only if it
+    /// also has an entry in that list. Counted on 14 September: the four servers
+    /// serve fifteen tools between them and exactly one, `run_command`, is in the
+    /// model's list. `get_recent_output` sits on the same shipped server, is
+    /// consent-gated and ready, and the model has no name to call it by.
+    ///
+    /// Kept rather than deleted because it is the built half of the discovery the
+    /// server layer's own design wants, and the decision about whether the model
+    /// reaches those servers at all is not this function's to make. What this note
+    /// is for is that an absent caller looks identical to an unfinished feature,
+    /// and the difference is worth one paragraph: the feature IS finished, on this
+    /// side.
     pub async fn tool_catalogue(&self) -> Vec<CatalogueTool> {
         let ids: Vec<ServerId> = self.servers.keys().cloned().collect();
         let mut per_server = Vec::with_capacity(ids.len());
