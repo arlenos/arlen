@@ -90,10 +90,10 @@
       <Notice tone="neutral" class="span-full" text={$t("s.snd.mocked")} />
     {/if}
     {#if $soundWriteFailed}
-      <p class="note span-full" role="alert">{$t("s.snd.writeFailed")}</p>
+      <Notice tone="error" class="span-full" text={$t("s.snd.writeFailed")} />
     {/if}
     {#if $sysWriteFailed}
-      <p class="note span-full" role="alert">{$t("s.sys.writeFailed")}</p>
+      <Notice tone="error" class="span-full" text={$t("s.sys.writeFailed")} />
     {/if}
 
     <Section label={$t("s.sys.sounds")} class="span-full">
@@ -208,12 +208,6 @@
 </Page>
 
 <style>
-  .note {
-    margin: 0;
-    padding: 0 0.25rem 0.5rem;
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-  }
   .empty {
     margin: 0;
     padding: var(--space-row, 0.75rem) 1rem;

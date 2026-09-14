@@ -18,6 +18,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Section } from "@arlen/ui-kit/components/ui/section";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   import { locale, relativeTime } from "@arlen/ui-kit/i18n";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
@@ -207,7 +208,7 @@
 
 <Section label={$t("s.profile.title")}>
   {#if writeFailed}
-    <div class="write-failed" role="alert">{$t("s.profile.writeFailed")}</div>
+    <Notice tone="error" text={$t("s.profile.writeFailed")} />
   {/if}
   {#if loadFailed}
     <div class="empty">{$t("s.profile.unavailable")}</div>
@@ -304,13 +305,6 @@
 />
 
 <style>
-  .write-failed {
-    margin: 0 0 0.5rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-error, #f87171);
-  }
-
   .empty {
     padding: 16px;
     font-size: 0.85rem;

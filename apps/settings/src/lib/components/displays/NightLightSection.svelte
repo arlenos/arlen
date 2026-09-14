@@ -22,6 +22,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { TimeInput } from "@arlen/ui-kit/components/ui/time-input";
@@ -207,7 +208,7 @@
   <!-- The controls below are back to what the daemon holds, because what was
        asked for never got there. -->
   {#if writeFailed}
-    <div class="write-failed" role="alert">{$t("s.night.writeFailed")}</div>
+    <Notice tone="error" text={$t("s.night.writeFailed")} />
   {/if}
   <Row
     label={$t("s.night.active")}
@@ -301,13 +302,6 @@
 </Section>
 
 <style>
-  .write-failed {
-    margin: 0 0 0.5rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-error, #f87171);
-  }
-
   /* Slider needs more horizontal room than other controls. Row
      gives the control area a hard right-aligned width; the wrapper
      here lets the slider fill 220px instead of collapsing. */

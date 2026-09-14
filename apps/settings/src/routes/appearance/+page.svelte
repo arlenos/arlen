@@ -30,6 +30,7 @@
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SwatchGrid, Swatch } from "@arlen/ui-kit/components/ui/swatch-grid";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import {
@@ -125,12 +126,12 @@
       <!-- No cards rather than five named themes we could not confirm are
            installed: the cards are clickable, so an invented one is a theme the
            user picks and does not get. -->
-      <p class="note span-full">{$t("s.appr.themesUnavailable")}</p>
+      <Notice tone="error" class="span-full" text={$t("s.appr.themesUnavailable")} />
     {/if}
     <!-- The tick is still on the theme that is in force, because the click was
          not written anywhere. -->
     {#if $themeChangeFailed}
-      <p class="note span-full" role="alert">{$t("s.appr.themeChangeFailed")}</p>
+      <Notice tone="error" class="span-full" text={$t("s.appr.themeChangeFailed")} />
     {/if}
     <!-- Saved, but the desktop around this window kept the old one. Not an
          alert: nothing went wrong with the choice, and it takes effect on its
@@ -215,6 +216,9 @@
     </div>
 
     <Section label={$t("s.appr.mine")} class="span-full">
+      {#if resetFailed}
+        <Notice tone="error" text={$t("s.appr.resetFailed")} />
+      {/if}
       {#if $summaryUnread}
         <!-- Not the empty line. An unreadable `theme.toml` fails every override
              read at once, and it is the same file whose unparseability takes the
@@ -237,9 +241,6 @@
             <RotateCcw size={13} strokeWidth={2} /> {$t("s.appr.resetAll")}
           </Button>
         </div>
-        {#if resetFailed}
-          <p class="note" role="alert">{$t("s.appr.resetFailed")}</p>
-        {/if}
       {/if}
     </Section>
   </SectionGrid>

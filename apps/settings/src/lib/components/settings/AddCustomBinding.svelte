@@ -7,6 +7,7 @@
 
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import KeyCapture from "./KeyCapture.svelte";
 
@@ -188,7 +189,7 @@
       </label>
 
       {#if error}
-        <p class="mb-3 text-xs text-destructive" role="alert">{error}</p>
+        <Notice tone="error" class="mb-3" text={error} />
       {/if}
 
       <div class="flex justify-end gap-2">

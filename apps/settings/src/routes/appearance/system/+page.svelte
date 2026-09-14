@@ -17,6 +17,7 @@
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { onMount } from "svelte";
   import {
     overrides,
@@ -72,7 +73,7 @@
 >
   <SectionGrid>
     {#if $sysWriteFailed}
-      <p class="note span-full" role="alert">{$t("s.sys.writeFailed")}</p>
+      <Notice tone="error" class="span-full" text={$t("s.sys.writeFailed")} />
     {/if}
     <div class="editor span-full">
     <div class="controls">

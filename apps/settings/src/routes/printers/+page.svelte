@@ -141,7 +141,7 @@
          design-system.md §6.7. The message names the non-event; the screen
          shows the state. -->
     {#if $printers.actionFailed}
-      <p class="note" role="alert">{$t("s.pr.actionFailed")}</p>
+      <Notice tone="error" class="span-full" text={$t("s.pr.actionFailed")} />
     {/if}
 
     <!-- Each pane says what IT cannot show, not why - the reason is stated once
@@ -263,15 +263,6 @@
 {/snippet}
 
 <style>
-  .note {
-    margin: 0;
-    padding: 8px 12px;
-    font-size: var(--text-xs);
-    color: var(--color-fg-secondary);
-    background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-card);
-  }
   .empty {
     margin: 0;
     padding: var(--space-row, 0.75rem) 1rem;

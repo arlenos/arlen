@@ -93,8 +93,8 @@
   title={$t("s.focus.title")}
   description={$t("s.focus.desc")}
 >
-  <ConfigWriteFailed failed={$shell.writeFailed} />
   <SectionGrid>
+    <ConfigWriteFailed failed={$shell.writeFailed} />
     {#if $shell.error}
       <Notice tone="error" class="span-full" text={$t("s.config.unavailable")} />
     {/if}

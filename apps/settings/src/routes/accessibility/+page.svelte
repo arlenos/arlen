@@ -117,8 +117,8 @@
        first version of this line named only the compositor store, so a filter
        read that failed left the inverted and colour-filter rows showing defaults
        with nothing said. -->
-  <ConfigWriteFailed failed={$compositor.writeFailed || $screenFilter.writeFailed} />
   <SectionGrid>
+    <ConfigWriteFailed failed={$compositor.writeFailed || $screenFilter.writeFailed} />
     {#if $compositor.error ?? $screenFilter.error}
       <Notice tone="error" class="span-full" text={$t("s.config.unavailable")} />
     {/if}
@@ -242,7 +242,7 @@
     {:else if failing($contrastReport).length === 0}
       <p class="contrast-note">{$t("s.a11y.contrastAllPass")}</p>
     {:else}
-      <p class="contrast-note" role="alert">{$t("s.a11y.contrastSomeFail")}</p>
+      <Notice tone="error" text={$t("s.a11y.contrastSomeFail")} />
       {#each failing($contrastReport) as r (r.pair)}
         <Row label={r.pair} description={missText(r)} />
       {/each}

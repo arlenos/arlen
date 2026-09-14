@@ -316,7 +316,7 @@
                silently, which on this surface reads as a share the person just
                tried to stop and which is still live for no stated reason. -->
           {#if $capsuleNotice}
-            <p class="note" role="alert">{$t($capsuleNotice)}</p>
+            <Notice tone="error" text={$t($capsuleNotice)} />
           {/if}
           {#if $capsulesMocked}
             <!-- Invented shares read as data actually sent out and still readable. -->

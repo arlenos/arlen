@@ -20,6 +20,7 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { ExternalLink, Folder } from "lucide-svelte";
   import type { SettingsItem, SettingOption } from "$lib/appSettings";
   import { writeKey, resetKey, writeRaw, resolveOptions } from "$lib/stores/appSettings";
@@ -312,10 +313,10 @@
               spellcheck={false}
               aria-label={item.label}
             />
+            {#if rawError}
+              <Notice tone="error" text={rawError} />
+            {/if}
             <div class="raw-foot">
-              {#if rawError}
-                <span class="err" role="alert">{rawError}</span>
-              {/if}
               <Button variant="outline" size="sm" disabled={!rawDirty} onclick={applyRaw}>
                 {$t("s.apps.rawApply")}
               </Button>
@@ -323,16 +324,16 @@
           </div>
         {/if}
         {#if error}
-          <p class="err" role="alert">{error}</p>
+          <Notice tone="error" text={error} />
         {/if}
         {#if enumBlocked}
           <p class="note">{unavailableReason ?? $t("s.apps.optionsFail")}</p>
         {/if}
         {#if handoffFailed}
-          <p class="note" role="alert">{$t("s.apps.handoffFail")}</p>
+          <Notice tone="error" text={$t("s.apps.handoffFail")} />
         {/if}
         {#if pickFailed}
-          <p class="note" role="alert">{$t("s.apps.pickFail")}</p>
+          <Notice tone="error" text={$t("s.apps.pickFail")} />
         {/if}
         {#if item.deprecated_message}
           <p class="note">{item.deprecated_message}</p>
@@ -465,11 +466,6 @@
     gap: 0.625rem;
   }
 
-  .err {
-    margin: 0;
-    font-size: var(--text-xs);
-    color: var(--color-error, #dc2626);
-  }
   .note {
     margin: 0;
     font-size: var(--text-xs);

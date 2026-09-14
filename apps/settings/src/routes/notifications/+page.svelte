@@ -38,6 +38,7 @@
   } from "$lib/stores/notifications";
   import { shell, type ToastPosition, type ToastAnimation } from "$lib/stores/shell";
   import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
 
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
@@ -298,8 +299,8 @@
   title={$t("s.notif.title")}
   description={$t("s.notif.desc")}
 >
-  <ConfigWriteFailed failed={$notifications.writeFailed || $shell.writeFailed} />
   <SectionGrid>
+    <ConfigWriteFailed failed={$notifications.writeFailed || $shell.writeFailed} />
   <div class="span-full notif-column">
 
   {#if $notifications.loading && !$notifications.data}
@@ -317,11 +318,12 @@
          'window.__TAURI_INTERNALS__.invoke')" under the heading, which is the
          same sentence ui-kit's FileBrowser and the viewers app each had to stop
          printing. -->
-    <div class="error">
-      {readsAsInternal($notifications.error ?? "")
+    <Notice
+      tone="error"
+      text={readsAsInternal($notifications.error ?? "")
         ? $t("s.notif.loadFailedPlain")
         : $t("s.notif.loadFailed", { error: $notifications.error })}
-    </div>
+    />
   {:else}
     <div class="groups">
       <!-- ── DO NOT DISTURB ────────────────────────────────── -->
@@ -609,6 +611,9 @@
 
       <!-- ── HISTORY ────────────────────────────────── -->
       <Section label={$t("s.notif.history")}>
+        {#if clearFailed}
+          <Notice tone="error" text={$t("s.notif.clearFailed")} />
+        {/if}
         <Row label={$t("s.notif.keepHistory")} id="history-enabled">
           {#snippet control()}
             <Switch
@@ -644,9 +649,6 @@
             />
           {/snippet}
         </Row>
-        {#if clearFailed}
-          <p class="write-failed" role="alert">{$t("s.notif.clearFailed")}</p>
-        {/if}
         <Row label={$t("s.notif.clearHistory")}>
           {#snippet control()}
             <Button variant="destructive" size="sm" onclick={clearHistory}>
@@ -695,13 +697,6 @@
 </Page>
 
 <style>
-  .write-failed {
-    margin: 0 0 0.5rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-error, #f87171);
-  }
-
   .notif-column {
     display: flex;
     flex-direction: column;
@@ -718,15 +713,6 @@
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
-  .error {
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-input);
-    border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
-    background: color-mix(in srgb, var(--color-error) 10%, transparent);
-    color: var(--color-error);
-    font-size: var(--text-sm);
-  }
-
   /* ── DND ────────────────────────────────── */
   .dnd-section {
     padding: 0.75rem 0.75rem 0.5rem;

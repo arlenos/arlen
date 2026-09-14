@@ -20,6 +20,7 @@
     type Position,
   } from "$lib/stores/displays";
   import MonitorMap from "$lib/components/displays/MonitorMap.svelte";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import MonitorSidePanel from "$lib/components/displays/MonitorSidePanel.svelte";
   import NightLightSection from "$lib/components/displays/NightLightSection.svelte";
   import BrightnessSection from "$lib/components/displays/BrightnessSection.svelte";
@@ -156,6 +157,9 @@
 
     {#if selectedMonitor}
       <Section label={selectedMonitor.connector}>
+        {#if applyError}
+          <Notice tone="error" text={$t("s.display.applyError")} />
+        {/if}
         <MonitorSidePanel
           monitor={selectedMonitor}
           draft={drafts[selectedMonitor.connector] ?? monitorToConfig(selectedMonitor)}
@@ -163,9 +167,6 @@
           onChange={(d) => updateDraft(selectedMonitor.connector, d)}
         />
         <div class="action-row">
-          {#if applyError}
-            <p class="apply-error" role="alert">{$t("s.display.applyError")}</p>
-          {/if}
           <Button variant="outline" onclick={onApply} disabled={!dirty}>
             {$t("s.display.apply")}
           </Button>
@@ -217,9 +218,4 @@
     padding: 12px 16px;
   }
 
-  .apply-error {
-    margin: 0;
-    color: var(--destructive);
-    font-size: 0.85rem;
-  }
 </style>
