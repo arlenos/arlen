@@ -20,6 +20,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-emitters-declared.py");
 const PROFILES = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000";
 const IDENTITY = "sdk/permissions/src/identity.rs";
+const SIBLING = join(ROOT, "dev/scripts/check-subscribe-scope.py");
 
 let failures = 0;
 function check(name, ok) {
@@ -79,12 +80,56 @@ function run(files, mutate = (s) => s) {
   }
   const gate = join(dir, "check.py");
   writeFileSync(gate, mutate(readFileSync(GATE, "utf8")));
+  // THE GATE READS ITS SIBLING, so the fixture tree has to carry it. Since
+  // 14 September the emit detection lives in `check-subscribe-scope.py` and is
+  // imported rather than restated, and this helper copies the gate out of the
+  // tree to mutate it - so a `__file__`-relative import lands in the fixture
+  // directory and finds nothing. Staged under its real name, which is what the
+  // import asks for.
+  writeFileSync(
+    join(dir, "check-subscribe-scope.py"),
+    readFileSync(SIBLING, "utf8"),
+  );
   const r = spawnSync("python3", [gate, dir], { encoding: "utf8" });
   cleanup(dir);
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
 console.log("emitters declared:");
+
+{
+  // A topic returned from a FUNCTION the emit names - the shape that hid the
+  // power daemon's sleep transitions and the dogfood injector's three topics
+  // until 14 September. It arrives here through the sibling's detector, so this
+  // also proves the import is live: mutate it away and this case goes quiet.
+  const r = run({
+    [IDENTITY]: ARMS,
+    "daemons/power-daemon/src/sleep.rs":
+      'fn sleep_event_type(s: bool) -> &str { if s { "power.suspend" } else { "power.resume" } }\n',
+    "daemons/power-daemon/src/main.rs":
+      "async fn go(e: &E, s: bool) { e.emit(sleep_event_type(s), bytes).await }\n",
+    [`${PROFILES}/somethingelse.toml`]: '[info]\napp_id = "somethingelse"\n',
+  });
+  check(
+    "a topic returned from a function is seen",
+    r.code === 1 && r.out.includes("power.suspend") && r.out.includes("power.resume"),
+  );
+}
+
+{
+  // And `dev/` is walked, which it was not until the dogfood injector shipped
+  // with no profile and nothing asked for one.
+  const r = run({
+    [IDENTITY]: '\n"/usr/bin/arlen-thing" => {\n    return Ok("thing".to_string());\n}\n',
+    "dev/thing/src/main.rs": EMITS,
+    [`${PROFILES}/somethingelse.toml`]: '[info]\napp_id = "somethingelse"\n',
+  });
+  check(
+    "a tool under dev/ is held to the same rule",
+    r.code === 1 && r.out.includes("dev/thing"),
+  );
+}
+
 
 {
   // A topic held in a constant is still a topic. This is the shape that slipped

@@ -27,6 +27,21 @@ it never connects as a producer and every enforce boot looks clean, while on a
 laptop it would be denied and the battery indicator would stop updating. Works in
 the VM, breaks on metal, silent on both.
 
+IT LOOKS UNDER `dev/` SINCE 14 SEPTEMBER, and did not before. Two dogfood tools
+ship from there (`arlen-event-emit`, `arlen-dogfood`, build phase 09-dogfood,
+both resolvable as ids), and one of them had no profile at all - so under
+enforcement the injector whose whole job is to prove an event was delivered would
+have gone on printing its confirmation while the bus dropped everything it sent.
+Nothing asked for that profile because this scan walked `daemons/` and `apps/`
+only.
+
+AND IT NO LONGER READS THE EMITS ITSELF. `check-subscribe-scope.py` asks the
+other half of the same question and grew two shapes this file did not have on the
+same day - a constant resolved across the crate rather than within one file, and
+a topic returned from a function the emit names. One detector, imported; two
+copies would leave one of them a shape behind, which is how the sentinel's
+constant survived here until September.
+
 IT DELIBERATELY DOES NOT READ THE BUILD STEPS, which is worth knowing before
 extending it. The obvious design asks "is this component installed?" so an
 unshipped daemon is not a false alarm - and I wrote that four times, each version
@@ -44,6 +59,7 @@ table in the tree would let this be derived properly, and is the right fix if th
 list ever grows.
 """
 
+import importlib.util
 import re
 import sys
 from pathlib import Path
@@ -106,42 +122,56 @@ DIR_TO_ID = {
 
 # Emitters that are not in the image, with the reason.
 NOT_SHIPPED: dict[str, str] = {
-    # Empty since 15 Aug, when `modulesd` shipped. Kept because the next
-    # component to be built-but-unstaged needs somewhere to say so, and an
-    # emitter with no entry and no profile is a failure rather than a note.
+    # Empty from 15 Aug, when `modulesd` shipped, until this scan learned to look
+    # under `dev/` on 14 September. The two dogfood tools there DO ship and now
+    # carry profiles; the integration harness does not and cannot - it is a cargo
+    # test target, it emits its synthetic events from inside the test process, and
+    # the id it would be filed under is the hash-suffixed `dev.<test>` a test
+    # binary resolves to, which is not a name a profile can be written for.
+    "dev/integration": "the IT-1 harness is a cargo test target, never staged, and "
+    "resolves to a hash-suffixed test id no profile can name",
 }
 
 SKIP = ("/target/", "node_modules", "/.git/")
 
 
+def sibling_publishes(directory: Path) -> set[str]:
+    """Every topic `directory` emits, read by `check-subscribe-scope.py`.
+
+    That file owns the three shapes a topic can reach an emit by - a literal, a
+    constant, a function the call names - and keeping a second reading here is
+    how one of them ends up a shape behind. Loading it is safe: its module level
+    reads `sys.argv` only to resolve a repo root, which is the same argument
+    this gate takes.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "subscribe_scope", Path(__file__).resolve().parent / "check-subscribe-scope.py"
+    )
+    if spec is None or spec.loader is None:
+        print("NOTHING WAS READ: cannot load check-subscribe-scope.py", file=sys.stderr)
+        raise SystemExit(2)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.publishes_of(directory)
+
+
 def emitters(repo: Path) -> dict[str, set[str]]:
     """Component directory -> the bus topics its source emits."""
     out: dict[str, set[str]] = {}
-    for root in ("daemons", "apps"):
+    for root in ("daemons", "apps", "dev"):
         for d in sorted((repo / root).glob("*")):
             if not d.is_dir():
                 continue
-            topics = set()
-            for f in d.rglob("*.rs"):
-                if any(s in str(f) for s in SKIP):
-                    continue
-                text = f.read_text(encoding="utf-8", errors="replace")
-                for m in PUBLISH_CALL.finditer(text):
-                    t = m.group("topic")
-                    # A dotted bus topic, not a Tauri window event or a log line
-                    # behind a method that happens to be called `emit`.
-                    if "." in t and "://" not in t and " " not in t:
-                        topics.add(t)
-                # And the same call with the topic behind a constant. The constant
-                # has to be declared in this file: following one across a module
-                # would mean resolving Rust paths, and a producer that names its
-                # own topics is the shape this is for.
-                named = {m.group("name"): m.group("topic") for m in CONST_TOPIC.finditer(text)}
-                if named:
-                    for m in PUBLISH_VIA_CONST.finditer(text):
-                        topic = named.get(m.group("name"))
-                        if topic and "://" not in topic:
-                            topics.add(topic)
+            # ONE DETECTOR, TWO GATES. `check-subscribe-scope.py` asks the other
+            # half of this question - whether a declared topic has a producer
+            # behind it - so it needs the same reading of what a component emits,
+            # and it grew two shapes on 14 September this file did not have: a
+            # topic behind a CONSTANT resolved across the crate rather than only
+            # within one file, and a topic returned from a FUNCTION the emit
+            # names. Two copies of that would drift on one side, which is the
+            # rule `check-profile-principals` already follows by importing from
+            # `check-admitted-ids-exist`. Imported, not restated.
+            topics = sibling_publishes(d)
             if topics:
                 out[str(d.relative_to(repo))] = topics
     return out
