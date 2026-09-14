@@ -1618,6 +1618,107 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
     );
 }
 
+/// IT-1 settings broker: it says exactly what it changed, and a refused batch
+/// changes nothing.
+///
+/// Driven with no test affordance at all, which is the nice part: the broker
+/// admits a caller writing its OWN settings, so the test seeds a schema under its
+/// own resolved app id and is a legitimate caller by construction. Nothing is
+/// widened to make this possible.
+///
+/// Four claims the protocol makes in its own doc, none of them previously
+/// covered: `changed` is exactly the keys whose value is now different; it is
+/// empty for a no-op rather than absent or a failure; a refusal NAMES the
+/// offending key rather than being anonymous; and "the whole batch is validated
+/// before any of it is applied, so a request either lands entirely or not at
+/// all".
+#[tokio::test]
+#[ignore = "needs arlen-settings-broker built (debug, for the dev. caller id)"]
+async fn the_settings_broker_reports_what_it_changed_and_nothing_else() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    if !arlen_integration::binary_built("daemons/settings-broker", "arlen-settings-broker") {
+        eprintln!("SKIP the_settings_broker_reports_what_it_changed_and_nothing_else: arlen-settings-broker not built (run `just integration-nightly`)");
+        return;
+    }
+    let Some(app_id) = arlen_integration::own_app_id() else {
+        eprintln!("SKIP the_settings_broker_reports_what_it_changed_and_nothing_else: this test binary has no resolvable app id");
+        return;
+    };
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+
+    // The schema is what makes a key writable at all: the caller names the app
+    // and the keys, and the broker resolves the rest from here.
+    let schemas = stack.data_home().join("arlen/settings-schemas");
+    std::fs::create_dir_all(&schemas).expect("schema dir");
+    std::fs::write(
+        schemas.join(format!("{app_id}.toml")),
+        "version = 1\n[[sections]]\nlabel = \"General\"\n[[sections.items]]\n\
+         key = \"theme\"\ntype = \"string\"\nlabel = \"Theme\"\n",
+    )
+    .expect("seed the schema");
+
+    stack
+        .spawn("daemons/settings-broker", "arlen-settings-broker", &[])
+        .expect("spawn settings broker");
+    stack
+        .wait_ready("arlen/settings-broker.sock")
+        .expect("the broker binds");
+
+    let sock = stack.socket_path("arlen/settings-broker.sock");
+    async fn call(sock: &std::path::Path, body: String) -> String {
+        let mut s = tokio::net::UnixStream::connect(sock).await.expect("connect");
+        s.write_all(&(body.len() as u32).to_be_bytes()).await.expect("len");
+        s.write_all(body.as_bytes()).await.expect("body");
+        let mut head = [0u8; 4];
+        s.read_exact(&mut head).await.expect("reply len");
+        let mut buf = vec![0u8; u32::from_be_bytes(head) as usize];
+        s.read_exact(&mut buf).await.expect("reply body");
+        String::from_utf8(buf).expect("utf-8 reply")
+    }
+    let write = |keys: &str| {
+        format!(r#"{{"op":"write","app_id":"{app_id}","writes":[{keys}]}}"#)
+    };
+
+    let first = call(&sock, write(r#"{"key":"theme","value":"dark"}"#)).await;
+    assert!(
+        first.contains(r#""changed":["theme"]"#),
+        "a write that changes a value names exactly that key: {first}"
+    );
+
+    let again = call(&sock, write(r#"{"key":"theme","value":"dark"}"#)).await;
+    assert!(
+        again.contains(r#""changed":[]"#),
+        "writing the same value again changed nothing, and says so rather than \
+         claiming a change or failing: {again}"
+    );
+
+    let undeclared = call(&sock, write(r#"{"key":"sneaky","value":"x"}"#)).await;
+    assert!(
+        undeclared.contains(r#""key":"sneaky""#),
+        "a refusal names the offending key rather than being anonymous: {undeclared}"
+    );
+
+    // The all-or-nothing claim: a valid change beside an invalid one lands
+    // nothing. This is the one worth a scenario, because a broker that applied
+    // the good half would look right in every single-key test. Checked by putting
+    // the opposite assertion in and watching it fail.
+    let config = stack.config_home().join(format!("arlen/{app_id}.toml"));
+    let before = std::fs::read_to_string(&config).expect("the config exists after the first write");
+    let batch = call(
+        &sock,
+        write(r#"{"key":"theme","value":"light"},{"key":"sneaky","value":"x"}"#),
+    )
+    .await;
+    assert!(batch.contains(r#""result":"refused""#), "the batch is refused: {batch}");
+    assert_eq!(
+        std::fs::read_to_string(&config).expect("config still readable"),
+        before,
+        "a refused batch leaves the file exactly as it was, including the half \
+         of it that was valid"
+    );
+}
+
 /// IT-1 clock: an alarm reaches a person who asked for alarms only.
 ///
 /// The defect this guards, measured on a live bus before it was fixed: the
