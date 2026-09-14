@@ -9,7 +9,7 @@
 // another one - and a leak there is a page whose colours are decided by whichever
 // stale `<style>` sorts last.
 import { describe, it, expect, beforeEach } from "vitest";
-import { injectThemeVariables, applyTokens, PANDA_TOKENS } from "./theme.js";
+import { injectThemeVariables, applyTokens, DARK_TOKENS } from "./theme.js";
 
 const STYLE_ID = "arlen-theme-vars";
 
@@ -72,10 +72,10 @@ describe("injectThemeVariables", () => {
 
 describe("applyTokens", () => {
   it("puts the ten surface tokens on the root element", () => {
-    applyTokens(PANDA_TOKENS);
+    applyTokens(DARK_TOKENS);
     const root = document.documentElement;
-    expect(root.style.getPropertyValue("--color-bg-shell")).toBe(PANDA_TOKENS.bgShell);
-    expect(root.style.getPropertyValue("--color-accent")).toBe(PANDA_TOKENS.accent);
-    expect(root.style.getPropertyValue("--radius")).toBe(PANDA_TOKENS.radius);
+    expect(root.style.getPropertyValue("--color-bg-shell")).toBe(DARK_TOKENS.bgShell);
+    expect(root.style.getPropertyValue("--color-accent")).toBe(DARK_TOKENS.accent);
+    expect(root.style.getPropertyValue("--radius")).toBe(DARK_TOKENS.radius);
   });
 });

@@ -128,18 +128,28 @@ export function applyTokens(tokens: SurfaceTokens): void {
 }
 
 /**
- * Built-in Panda theme tokens used as fallback in non-Tauri contexts
- * (e.g. Storybook, tests).
+ * The shipped dark defaults, for contexts with no Tauri backend to ask: this
+ * package's own dev routes, and tests.
+ *
+ * It was the PANDA theme until 15 September - a white app surface, a near-black
+ * accent, a dark-on-light foreground - and the layout applied it before first
+ * render, so every fixture in this package was drawn and contrast-checked on a
+ * palette that has not shipped for months. Flipping it to the real one made the
+ * a11y page report a serious contrast failure immediately, which is the point:
+ * a fixture that lies about the surface cannot find anything.
+ *
+ * These mirror `sdk/theme/themes/dark.toml`. The `accent` is the foreground
+ * because the house theme ships monochrome.
  */
-export const PANDA_TOKENS: SurfaceTokens = {
-  bgShell:   "#1a1a2e",
-  bgApp:     "#ffffff",
-  bgCard:    "#f5f5f7",
+export const DARK_TOKENS: SurfaceTokens = {
+  bgShell:   "#0a0a0a",
+  bgApp:     "#0f0f0f",
+  bgCard:    "#171717",
   bgOverlay: "#00000080",
-  bgInput:   "#f0f0f0",
-  fgShell:   "#e8e8f0",
-  fgApp:     "#1a1a2e",
-  accent:    "#0f0f0f",
-  border:    "#e2e2e8",
+  bgInput:   "#1a1a1a",
+  fgShell:   "#fafafa",
+  fgApp:     "#fafafa",
+  accent:    "#fafafa",
+  border:    "#27272a",
   radius:    "0.5rem",
 };
