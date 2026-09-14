@@ -36,6 +36,7 @@
     renderer,
     search,
     type SearchOutcome,
+    pdfMocked,
   } from "$lib/stores/pdf";
   import PdfSidebar from "$lib/components/PdfSidebar.svelte";
   import PageCanvas from "$lib/components/PageCanvas.svelte";
@@ -397,6 +398,11 @@
       </header>
 
       <div class="content">
+        {#if $pdfMocked}
+          <!-- On the document surface the sample fills, not in the rail
+               beside it (design-system.md 6.11, thread one). -->
+          <div class="note"><Notice tone="neutral" text={$t("pdf.sample")} /></div>
+        {/if}
         {#if !tauriAvailable && !$doc}
           <p class="center-note">{$t("pdf.hostAbsent")}</p>
         {:else if $launchFailure}

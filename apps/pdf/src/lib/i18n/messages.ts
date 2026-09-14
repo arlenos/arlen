@@ -45,7 +45,7 @@ const messages: Catalogs = {
     "pdf.menu.go": "Go",
     "pdf.minimize": "Minimize",
     "pdf.close": "Close",
-    "pdf.sample": "Example document - nothing on this machine has this name.",
+    "pdf.sample": "Example document, nothing on this machine has this name.",
     "pdf.readingView": "Reading view",
     "pdf.documentOnly": "Document only",
     "pdf.zoomIn": "Zoom in",

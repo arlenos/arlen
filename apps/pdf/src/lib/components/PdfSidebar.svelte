@@ -84,11 +84,6 @@
          of contents. Named, because an unnamed landmark is one a reader cannot
          choose between. -->
     <nav aria-label={$t("pdf.nav.aria")}>
-    {#if $pdfMocked}
-      <SidebarGroup>
-        <Notice tone="neutral" text={$t("pdf.sample")} />
-      </SidebarGroup>
-    {/if}
 
     {#if failed}
       <SidebarGroup class="pt-0">
