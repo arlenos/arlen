@@ -243,7 +243,13 @@ export async function loadResolvedSounds(): Promise<void> {
       const field = SOUND_FIELD_OF[b.event];
       if (field && b.sound) out[field] = b.sound;
     }
-    resolvedDefaults.set(out);
+    // MERGED, like its sibling above, and for a reason that only shows up when
+    // you walk the pages. `resolvedDefaults` is one module-level store shared by
+    // the whole app: this used to `set`, so opening Appearance > Sound threw away
+    // the eighteen terminal values the system page had just read and left the
+    // hardcoded floor in their place. Going back re-read them, which is why it
+    // never looked broken from one page.
+    resolvedDefaults.update((r) => ({ ...r, ...out }));
   } catch (e) {
     console.warn("[settings] resolved sounds unavailable:", e);
   }
