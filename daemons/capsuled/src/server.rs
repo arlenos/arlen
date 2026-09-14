@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use arlen_forage_store::Store;
-use arlen_permissions::ConnectionAuth;
+use arlen_permissions::PeerPidfd;
 use audit_proto::{AuditKind, AuditSink, IngestRequest, StructuralRecord};
 use ed25519_dalek::VerifyingKey;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -188,7 +188,7 @@ pub(crate) fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
 
 /// Serve the capsule socket at `path` until the accept loop errors. Each accepted
 /// connection is admitted by SO_PEERCRED (same-uid only; cross-uid is rejected by
-/// [`ConnectionAuth::extract_from`]) with a PID-reuse re-check, then served. There
+/// [`PeerPidfd::from_socket`]) with a PID-reuse re-check, then served. There
 /// is no app-id allowlist: any same-uid process may read a capsule for which it
 /// presents a valid, unrevoked, unexpired, in-budget signed grant — the grant and
 /// the ledger are the authorization, the socket only attests "same user, same
@@ -208,32 +208,33 @@ pub async fn run(path: &Path, ctx: ServeContext) -> std::io::Result<()> {
 /// Admit and serve one accepted connection. A cross-uid peer or a recycled pid is
 /// rejected before any request is read; framing/serve errors close the connection.
 async fn handle(stream: UnixStream, caller_uid: u32, ctx: ServeContext) {
-    let auth = match ConnectionAuth::extract_from(&stream, caller_uid) {
-        Ok(a) => a,
+    // SO_PEERPIDFD plus SO_PEERCRED, and no identity resolution: this daemon
+    // never reads a peer's app id, only whether it is the same user and still
+    // alive. Resolving one anyway used to refuse every caller, because doing so
+    // reads `/proc/<peer-pid>/exe` and the write-fence this daemon installs on
+    // itself denies that for a process outside its own domain. The fence stays;
+    // the identity it blinded was never consulted.
+    let peer = match PeerPidfd::from_socket(&stream, caller_uid) {
+        Ok(p) => p,
         Err(e) => {
             // WARN, not debug, and the reason with it. A refused caller gets a
             // reset socket and nothing else, so at the default level this daemon
-            // served nobody and said nothing about it - measured: the whole serve
-            // path refuses every caller under the write-fence this daemon
-            // installs on itself, because resolving a peer's identity reads
-            // `/proc/<pid>/exe` and landlock denies that for a peer outside the
-            // domain. The knowledge daemon carries the same finding as the reason
-            // it is deliberately unfenced. Which way capsuled should go is in
-            // `coder-reports.md`; that it should SAY SO is not a design question.
+            // served nobody and said nothing about it.
             tracing::warn!(
                 uid = caller_uid,
                 error = %e,
-                "capsule peer refused: its identity could not be resolved, so nothing was served"
+                "capsule peer refused: it is not this user, so nothing was served"
             );
             return;
         }
     };
-    if let Err(e) = auth.verify_alive() {
-        // The pid-reuse guard. Also silent until now, and it is a different
-        // sentence: the caller was named and then went away.
+    if !peer.is_alive() {
+        // The pid-reuse guard, and a different sentence: the caller connected and
+        // then went away. The pinned pidfd makes this exact rather than a second
+        // look at a pid another process may already have taken.
         tracing::warn!(
             uid = caller_uid,
-            error = %e,
+            pid = peer.pid(),
             "capsule peer refused: it did not outlive its own connection"
         );
         return;
