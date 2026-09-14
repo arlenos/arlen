@@ -6,6 +6,7 @@
   /// once in the shell layout beside the other request dialogs. Fixture-backed.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
   import {
     current,
@@ -45,7 +46,7 @@
           {#if $sourcesMocked}
             <!-- Picking one of these is a privacy decision; they must not pass
                  as this machine's real screens and windows. -->
-            <p class="sp-sample">{$t("sh.share.mocked")}</p>
+            <div class="sp-note"><Notice tone="neutral" text={$t("sh.share.mocked")} /></div>
           {/if}
           {#if $shareFailed}
             <!-- The picker is still open because nothing is being shared. -->
@@ -141,6 +142,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+  }
+  .sp-note {
+    margin: 0 0 0.6rem;
   }
   .sp-sample {
     margin: 0 0 0.6rem;

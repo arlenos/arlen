@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   /// The clipboard-history panel (clipboard-api.md): the last thirty texts,
   /// searchable, one click to copy back. Selection copies and closes; delete
@@ -128,7 +129,7 @@
     <p class="clip-said">{$t("sh.clip.empty")}</p>
   {:else if $clipEntries}
     {#if $clipMocked}
-      <p class="clip-sample">{$t("sh.clip.mocked")}</p>
+      <div class="clip-note"><Notice tone="neutral" text={$t("sh.clip.mocked")} /></div>
     {/if}
     {#if $clipCopyFailed}
       <p class="clip-sample" role="alert">{$t("sh.clip.copyFailed")}</p>
@@ -182,6 +183,9 @@
     padding: 14px 12px;
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
+  }
+  .clip-note {
+    padding: 8px 12px 0;
   }
   .clip-sample {
     margin: 0;

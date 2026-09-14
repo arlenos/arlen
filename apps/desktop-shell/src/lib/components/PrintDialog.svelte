@@ -7,6 +7,7 @@
   /// submit path + the real page raster are coder seams.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
@@ -104,6 +105,11 @@
           </div>
         </header>
 
+        {#if $printersMocked}
+          <!-- The sample line at the top of the dialog, over the preview and the
+               picker it describes, in the one shape. -->
+          <div class="pd-sample"><Notice tone="neutral" text={$t("sh.print.mocked")} /></div>
+        {/if}
         <div class="pd-body">
           <div class="pd-preview">
             <!-- A sheet of paper is white in every theme, so the sheet + its grey
@@ -127,9 +133,7 @@
           </div>
 
           <div class="pd-controls">
-            {#if $printersMocked}
-              <p class="pd-note">{$t("sh.print.mocked")}</p>
-            {:else if $printersUnavailable}
+            {#if $printersUnavailable}
               <p class="pd-note">{$t("sh.print.unavailable")}</p>
             {/if}
             <!-- The dialog is still here because nothing was sent. -->
@@ -303,6 +307,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
+  }
+  .pd-sample {
+    margin: 0 var(--space-card, 1rem) 0.75rem;
   }
   .pd-note {
     margin: 0;
