@@ -152,11 +152,33 @@ async fn handle_control_conn(stream: UnixStream, caller_uid: u32, ctx: ControlCo
     let auth = match ConnectionAuth::extract_from(&stream, caller_uid) {
         Ok(a) => a,
         Err(e) => {
-            tracing::debug!(error = %e, "capsule control peer rejected at admission");
+            // WARN and the reason, because of what is on the other end of this
+            // socket: the harness's `Share context` and the settings capsule page
+            // both mint through here, so a refusal at admission is a button doing
+            // nothing. It was `debug`, which is off by default, so the daemon
+            // refused every caller and the journal agreed with the button.
+            //
+            // Under this daemon's own write-fence that is EVERY caller: minting
+            // is gated on the peer's app id and resolving one reads
+            // `/proc/<peer-pid>/exe`, which landlock denies outside the domain.
+            // Which way that goes is a design question in `coder-reports.md`;
+            // saying so out loud is not.
+            tracing::warn!(
+                uid = caller_uid,
+                error = %e,
+                "capsule control peer refused: its identity could not be resolved, so nothing was minted"
+            );
             return;
         }
     };
     if auth.verify_alive().is_err() {
+        // Silent until now, and a different sentence from the one above: this
+        // caller WAS named, and then went away before it could be served.
+        tracing::warn!(
+            uid = caller_uid,
+            app_id = %auth.app_id(),
+            "capsule control peer refused: it did not outlive its own connection"
+        );
         return;
     }
     // Mint is gated to human-UI callers (mint-requires-human): only a mint-admitted
