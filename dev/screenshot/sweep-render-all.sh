@@ -80,6 +80,14 @@ SURFACES=(
   # the fixture declares before the probes read the page; an English one renders
   # the state and cannot check it.
   "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event|/@@calendar-refuses-recolour"
+  # `#chrome-add` REPORTS ONE UNMEASURED CONTROL AT EVERY WIDTH, every run, and it
+  # is not a finding: the kit time field takes focus from a script without matching
+  # `:focus-visible`, so the probe says it could not look rather than that there is
+  # no ring. Its ring is correct - established once, at the cost of a morning, and
+  # `no-focus-ring.js` names that detour in its own header. Written here because
+  # this is where the row is read: a reader meeting the line in a sweep should not
+  # have to find the probe's comment to learn the answer, and re-deriving it was
+  # exactly what happened on 14 September.
   "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world|/@@clock-refuses-alarm"
   # The two panels open from the bar and this row carried no click, so the two
   # surfaces a person opens most often on this window had never been through a
