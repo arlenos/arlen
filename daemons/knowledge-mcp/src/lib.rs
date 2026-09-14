@@ -128,7 +128,13 @@ impl KnowledgeMcp {
         Tool::new_with_raw(
             QUERY_TOOL.to_owned(),
             Some(Cow::Borrowed(
-                "Run a read-only Cypher query against the Knowledge Graph and return the matching rows as JSON.",
+                "Run a read-only Cypher query against the Knowledge Graph and return the matching \
+                 rows as JSON. BOUNDED BY THIS CALLER'S READ SCOPE: a query naming a label the \
+                 caller was not granted is refused with `read denied: label outside the caller's \
+                 read scope`, and so is any query touching an authority label. Writes are refused \
+                 outright. Measured on 14 September: with no read grant at all, every label in \
+                 the schema below is refused, so a refusal here means the grant is missing rather \
+                 than the query being wrong.",
             )),
             Arc::new(schema),
         )
@@ -144,7 +150,11 @@ impl KnowledgeMcp {
         Tool::new_with_raw(
             SCHEMA_TOOL.to_owned(),
             Some(Cow::Borrowed(
-                "Describe the Knowledge Graph schema: the queryable node labels with their fields and the edge types with their endpoints. Use this to write valid Cypher.",
+                "Describe the Knowledge Graph schema: the node labels with their fields and the \
+                 edge types with their endpoints. This is the DAEMON'S FULL TABLE SET, not what \
+                 this caller may read - it is the vocabulary, never the permission. A label listed \
+                 here is still refused by `query` unless the caller holds a read grant for it, so \
+                 treat a refusal as a missing grant rather than a wrong label.",
             )),
             Arc::new(schema),
         )
@@ -161,7 +171,12 @@ impl KnowledgeMcp {
         Tool::new_with_raw(
             CODE_ANALYSIS_TOOL.to_owned(),
             Some(Cow::Borrowed(
-                "Analyse the code graph: the god-symbols (the most-coupled functions/types by call degree) and surprises (the lone calls bridging two modules). Token-free graph metrics, returned as JSON {god_symbols, surprises} for explaining the codebase's structure.",
+                "Analyse the code graph: the god-symbols (the most-coupled functions/types by call \
+                 degree) and surprises (the lone calls bridging two modules). Token-free graph \
+                 metrics, returned as JSON {god_symbols, surprises} for explaining the codebase's \
+                 structure. SYSTEM-ANCHORED CALLERS ONLY: it reads across the entire code index, \
+                 so the daemon refuses it for anyone else with a uniform `not permitted for this \
+                 caller`, which says nothing about whether an index exists.",
             )),
             Arc::new(schema),
         )
@@ -187,7 +202,12 @@ impl KnowledgeMcp {
         Tool::new_with_raw(
             CODE_SYMBOL_TOOL.to_owned(),
             Some(Cow::Borrowed(
-                "Resolve a code symbol's activity context: its defining file, the project that file belongs to (optionally as of a past time), and the apps that have accessed it. Returns JSON {symbol_id, file_path, project, accessed_by}.",
+                "Resolve a code symbol's activity context: its defining file, the project that \
+                 file belongs to (optionally as of a past time), and the apps that have accessed \
+                 it. Returns JSON {symbol_id, file_path, project, accessed_by}. SYSTEM-ANCHORED \
+                 CALLERS ONLY, like the analysis beside it, and refused with the same uniform \
+                 sentence - which is deliberately the same whether the symbol is absent or the \
+                 caller is not allowed to ask.",
             )),
             Arc::new(schema),
         )
