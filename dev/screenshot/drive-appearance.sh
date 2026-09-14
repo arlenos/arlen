@@ -195,15 +195,49 @@ echo ">> derived siblings: $(sed -n 's/.*\("hover":"[^"]*"\).*/\1/p' "$work/run2
 # second launch already made, and handed to the pixel check as an argument.
 ansi2=$(sed -n 's/.*"ansi2Resolved":"\([^"]*\)".*/\1/p' "$work/run2.log" | head -1)
 [ -n "$ansi2" ] || { echo "!! the page did not say what the untouched slot resolves to" >&2; exit 1; }
-python3 - "$out/appearance-system-persisted.png" "$ansi2" <<'PY'
+python3 - "$out/appearance-system-persisted.png" "$ansi2" <<'PIXELS'
 import sys
+from itertools import groupby
 from PIL import Image
+
+# FOUND, not pinned. This read two hardcoded pixels, was re-tuned once when the
+# sound section moved to its own page (24 Aug), and had drifted again by 31 rows
+# - so it reported the override as unrendered while the page was drawing it
+# perfectly, which is the worst thing a check like this can say. The strip is a
+# row of wide, solid, rounded pills, and the override's own colour is the anchor:
+# if no pill is that colour the page did not draw it, wherever the strip sits.
+MIN_PILL = 20
+
+
+def wide_runs(px, y, width):
+    """The solid horizontal blocks on one row. The sample text above the strip is
+    drawn in these same colours, so width is what separates a pill from a glyph."""
+    runs, x = [], 0
+    for colour, run in groupby(px[i, y] for i in range(width)):
+        n = sum(1 for _ in run)
+        if n >= MIN_PILL:
+            runs.append((colour, x, n))
+        x += n
+    return runs
+
+
+def pill_and_neighbour(im, colour):
+    px = im.load()
+    width, height = im.size
+    for y in range(height):
+        runs = wide_runs(px, y, width)
+        for i, (c, x, n) in enumerate(runs):
+            if c == colour and i + 1 < len(runs):
+                return (c, x, n), runs[i + 1]
+    return None, None
+
+
 im = Image.open(sys.argv[1]).convert("RGB")
-# Coordinates track the ANSI strip's position; the sound section moving to its
-# own page (24 Aug) lifted the preview column, so the row sits higher now.
-red, green = im.getpixel((322, 280)), im.getpixel((360, 280))
-if red != (255, 0, 85):
-    raise SystemExit(f"!! the preview's red swatch is {red}, not the overridden #ff0055")
+red, green = pill_and_neighbour(im, (255, 0, 85))
+if red is None:
+    raise SystemExit(
+        "!! no pill in the preview is the overridden #ff0055, "
+        "so the page stored the override and drew something else")
 # The neighbour is compared against what the app itself resolved a moment ago,
 # passed in as an argument, rather than a colour written here. A literal was a
 # third copy of the palette and the first to go stale: this pinned `#16a34a`,
@@ -212,12 +246,12 @@ if red != (255, 0, 85):
 # answer. What the case means is that overriding one slot moves no other, and
 # that is what it asks now.
 want = tuple(int(sys.argv[2][i:i + 2], 16) for i in (1, 3, 5))
-if green != want:
+if green[0] != want:
     raise SystemExit(
-        f"!! the neighbouring green is {green}, not the resolved {sys.argv[2]}; "
+        f"!! the pill beside the override is {green[0]}, not the resolved {sys.argv[2]}; "
         "an override must be slot-exact")
-print(f">> preview: red {red} is the override, green {green} is untouched")
-PY
+print(f">> preview: red {red[0]} is the override, green {green[0]} is untouched")
+PIXELS
 
 echo ">> launch 3: write one metric of each type and resolve the file again"
 SHOOT_INJECT="$work/metrics.js" SHOOT_INJECT_SETTLE=3 \
