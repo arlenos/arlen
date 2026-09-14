@@ -306,5 +306,36 @@ console.log("subscribe scope:");
   );
 }
 
+{
+  // `let types = vec![...]; subscribe(types)` - the vec is bound before the call.
+  // The clock daemon's shape, which read as subscribing to nothing while it
+  // listened for both sleep transitions.
+  const r = run({
+    [`${PROFILES}/demo-bound.toml`]:
+      '[info]\napp_id = "demo-bound"\n\n[event_bus]\nsubscribe = []\n',
+    "daemons/demo-bound/src/main.rs":
+      'async fn go(c: &C) { let types = vec!["power.suspend".to_string()]; c.subscribe(types).await; }\n',
+  });
+  check(
+    "a vec bound before the subscribe is a subscription",
+    r.code === 1 && r.out.includes("power.suspend"),
+  );
+}
+
+{
+  // The hand-rolled registration: the three protocol lines written straight onto
+  // the socket. `code-indexer` does this and calls `subscribe` nowhere.
+  const r = run({
+    [`${PROFILES}/demo-wire.toml`]:
+      '[info]\napp_id = "demo-wire"\n\n[event_bus]\nsubscribe = []\n',
+    "daemons/demo-wire/src/main.rs":
+      'async fn go(s: &mut S) { s.write_all(b"file.opened\\n").await?; }\n',
+  });
+  check(
+    "the hand-rolled registration is a subscription",
+    r.code === 1 && r.out.includes("file.opened"),
+  );
+}
+
 console.log(failures ? `\n${failures} failure(s)` : "\nboth directions hold");
 process.exit(failures ? 1 : 0);
