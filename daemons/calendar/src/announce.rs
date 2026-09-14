@@ -18,6 +18,19 @@
 //! the clock registrations use and survives the same things: a series keeps its
 //! occurrences apart, and a moved one is a different key rather than a silent
 //! duplicate.
+//!
+//! WHAT IT DOES NOT SURVIVE IS A RESTART, and the asymmetry with the clock is
+//! worth knowing before relying on either. The clock registrations are
+//! reconciled against the clock's own durable set every pass, so re-arming after
+//! a restart is a no-op; this set lives only in memory, so a daemon that comes
+//! back inside the lead window announces the same occurrence a second time.
+//!
+//! Measured rather than reasoned: one announcement across three passes, then a
+//! restart, then the same meeting announced again. Whether that is right is a
+//! real question with two answers - a consumer that connected after the first
+//! one heard nothing, and a person does not want telling twice - so it is
+//! recorded here and put to the planner rather than settled by whoever noticed
+//! it.
 
 use std::collections::BTreeSet;
 
