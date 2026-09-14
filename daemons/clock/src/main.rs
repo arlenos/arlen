@@ -148,8 +148,15 @@ impl Clock {
                 // across a process boundary is the coupling `wake_capable`
                 // documents itself against.
                 if at_ms.is_some() {
-                    let capable = wake_capable().await;
-                    self.state.lock().await.wake_capable = capable;
+                    // The proxy already in hand, not `wake_capable()`: that one
+                    // opens its own session connection, and this path has a
+                    // working one by definition - the call above just succeeded
+                    // on it. A property read that fails here leaves the flag
+                    // alone rather than guessing: the arm succeeded, so false
+                    // would be the wrong lesson to draw from a failed read.
+                    if let Ok(capable) = power.get_property::<bool>("WakesMachine").await {
+                        self.state.lock().await.wake_capable = capable;
+                    }
                 }
             }
             Err(e) => {
