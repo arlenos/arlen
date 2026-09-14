@@ -7,11 +7,40 @@
 //! process were ever compromised through a parser bug, an unfenced process
 //! could rewrite any file the service uid can reach. [`fence_writes`]
 //! installs a Landlock ruleset that permits **read** everywhere (shared
-//! libs, `/proc` for caller-pid resolution, the D-Bus/socket paths a daemon
-//! connects to) and **write** only under an explicit allowlist of dirs -
-//! the daemon's own legitimate filesystem footprint. A compromised daemon
-//! can then still serve a corrupted reply over its own channel, but it
-//! cannot persist anything outside the dirs it owns.
+//! libs, the D-Bus/socket paths a daemon connects to) and **write** only
+//! under an explicit allowlist of dirs - the daemon's own legitimate
+//! filesystem footprint. A compromised daemon can then still serve a
+//! corrupted reply over its own channel, but it cannot persist anything
+//! outside the dirs it owns.
+//!
+//! ## A FENCED DAEMON CANNOT IDENTIFY ITS CALLERS
+//!
+//! This paragraph used to name "`/proc` for caller-pid resolution" among the
+//! reads the fence leaves working. **It does not, and the difference is not
+//! subtle.** Resolving a peer means reading `/proc/<peer-pid>/exe`, which is not
+//! an ordinary file read: it goes through `PTRACE_MODE_READ_FSCREDS`, and
+//! `restrict_self` puts this process in a domain that denies that access for any
+//! process outside it. No read grant lifts it, because the check is not about
+//! the path.
+//!
+//! Measured on 14 September against `arlen-capsuled`, the same nameable caller
+//! both ways:
+//!
+//! ```text
+//! fenced    identity resolution: cannot read exe path for pid N:
+//!           Permission denied [failed at readlinkat(exe)]
+//! unfenced  admitted
+//! ```
+//!
+//! So it refused every caller it had, silently, and its whole serve path was
+//! dead in the configuration it shipped. `daemons/knowledge` records the same
+//! finding from a real image boot as the reason it is deliberately unfenced.
+//!
+//! **A daemon that authenticates its peers therefore cannot use this**, unless it
+//! needs only what SO_PEERCRED and a pidfd already give it - the peer's uid and
+//! whether it is still alive - neither of which touches `/proc/<pid>/exe`. Decide
+//! which of the two a daemon needs BEFORE fencing it, because the failure is a
+//! refusal that looks like a policy decision.
 //!
 //! ## Thread model (load-bearing)
 //!
