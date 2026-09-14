@@ -777,6 +777,13 @@ fn scan_script(src: &str) -> Vec<Finding> {
             || c == '='
             || c == '!'
         {
+            // `querySelectorAll<SVGElement>(".glyph > *")`: the `<` and `>` are
+            // not prefix characters, so by the time the `(` arrives the call's
+            // name has been cleared and no entry in VALUE_ONLY_CALLS can match
+            // it. Read it back off the source at the one place it matters.
+            if c == '(' && prefix.is_empty() {
+                prefix.push_str(&call_head_before(&chars, i));
+            }
             prefix.push(c);
             if prefix.len() > 64 {
                 prefix.drain(..prefix.len() - 64);
@@ -802,10 +809,12 @@ fn scan_script(src: &str) -> Vec<Finding> {
 }
 
 /// Calls whose argument is a value the machine reads, never a sentence a person
-/// does. One entry, and it stays one: the moment this becomes "anything that
-/// looks technical" it starts excusing real copy, which is how a lint gets
-/// switched off.
-const VALUE_ONLY_CALLS: &[&str] = &["matchMedia"];
+/// does. The bar for an entry is that the call accepts NOTHING ELSE: a media
+/// query, a CSS selector. It is not "anything that looks technical" - the moment
+/// it becomes that it starts excusing real copy, which is how a lint gets
+/// switched off. A call that takes a selector OR a label does not belong here.
+const VALUE_ONLY_CALLS: &[&str] =
+    &["matchMedia", "querySelector", "querySelectorAll", "closest", "matches"];
 
 /// Whether the literal about to be read is a VALUE rather than copy.
 ///
@@ -886,6 +895,50 @@ fn position_is_user_facing(prefix: &str) -> bool {
 }
 
 /// The identifier at the end of a prefix, which is the prop or variable name.
+/// The name of the call whose `(` sits at `open`, looking past a TypeScript type
+/// argument if one is in the way.
+///
+/// Only consulted when the ordinary prefix is empty, which for a `(` means
+/// something non-prefix cleared it. A balanced `<...>` is skipped; anything else
+/// yields nothing, so a bare grouping paren stays a bare grouping paren.
+fn call_head_before(chars: &[char], open: usize) -> String {
+    let mut i = open;
+    while i > 0 && chars[i - 1].is_whitespace() {
+        i -= 1;
+    }
+    if i > 0 && chars[i - 1] == '>' {
+        let mut depth = 0usize;
+        while i > 0 {
+            i -= 1;
+            match chars[i] {
+                '>' => depth += 1,
+                '<' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                // A type argument holds names, commas and nesting, nothing that
+                // ends a statement. Meeting one of those means this `>` was a
+                // comparison, so read nothing rather than guess.
+                ';' | '{' | '}' | '(' | ')' => return String::new(),
+                _ => {}
+            }
+        }
+        if depth != 0 {
+            return String::new();
+        }
+        while i > 0 && chars[i - 1].is_whitespace() {
+            i -= 1;
+        }
+    }
+    let end = i;
+    while i > 0 && (chars[i - 1].is_alphanumeric() || chars[i - 1] == '_' || chars[i - 1] == '$') {
+        i -= 1;
+    }
+    chars[i..end].iter().collect()
+}
+
 fn trailing_name(head: &str) -> &str {
     let cut = head.rfind(|c: char| !(c.is_alphanumeric() || c == '_')).map_or(0, |i| i + 1);
     &head[cut..]
@@ -1452,6 +1505,30 @@ mod tests {
         assert!(script_texts(r#"return el.tagName === "INPUT";"#).is_empty());
         assert!(script_texts(r#"return kind !== "builtin";"#).is_empty());
         assert!(script_texts(r#"return matchMedia("(prefers-reduced-motion: reduce)").matches;"#).is_empty());
+    }
+
+    #[test]
+    fn a_selector_is_a_value_even_behind_a_type_argument() {
+        // The shape that found this: the type argument clears the prefix, so the
+        // call name is gone by the time the selector is read and the lint called
+        // a CSS selector user-facing copy.
+        assert!(script_texts(
+            r#"return Array.from(svg?.querySelectorAll<SVGElement>(".glyph > *") ?? []);"#
+        )
+        .is_empty());
+        assert!(script_texts(r#"return el.querySelector(".glyph > *");"#).is_empty());
+        assert!(script_texts(r#"return el.closest("[data-panel]");"#).is_empty());
+    }
+
+    #[test]
+    fn widening_the_value_calls_did_not_excuse_copy() {
+        // The control the widened list has to survive: the same positions still
+        // report a real sentence, and a grouping paren is not a call head.
+        assert!(!script_texts(r#"return label("Open the file");"#).is_empty());
+        assert!(!script_texts(r#"return ("Open the file");"#).is_empty());
+        // `a > b` before a parenthesised sentence is a comparison, not a type
+        // argument, and must not be read as one.
+        assert!(!script_texts(r#"return n > m ? ("Too many files") : x;"#).is_empty());
     }
 
     #[test]
