@@ -323,6 +323,14 @@ const DEV_ADMITTED: &[&str] = &[
     "dev.arlen-capsuled",
     "dev.arlen-bottled",
     "dev.arlen-transferd",
+    // The account daemon, for the same reason and with a sharper edge: its token
+    // handout records the release BEFORE returning and fails closed, and the
+    // failure collapses into the same generic `token unavailable` every vault
+    // outcome gets (deliberately - a distinct error would tell a caller a token
+    // exists). Measured on 14 September with a token sealed in the vault and a
+    // grant held: the answer was `token unavailable` for a token that was right
+    // there, and admitting this id returned it.
+    "dev.arlen-accountsd",
 ];
 
 /// Whether a resolved peer app_id may submit audit events.

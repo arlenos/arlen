@@ -233,6 +233,18 @@ impl AccountsDaemon {
             .await
             .is_err()
         {
+            // The caller still gets the generic error, because naming this one
+            // would tell it a token exists. The OPERATOR gets the reason: without
+            // this line the daemon answers "token unavailable" for a token that is
+            // sitting in the vault, and nothing anywhere says the ledger is why.
+            // Measured on 14 September against a running ledger that had not
+            // admitted this daemon - a granted app with a provisioned token was
+            // refused, silently.
+            tracing::warn!(
+                caller = %caller,
+                service = service_key,
+                "refusing a handout the ledger would not record",
+            );
             return Err(unavailable());
         }
         Ok((token, scope))
