@@ -35,7 +35,12 @@ SPDX-License-Identifier: AGPL-3.0-only
   });
 </script>
 
-<div class="page" style={reduce ? "--duration-normal: 0ms" : ""}>
+<!-- A `main`, not a bare `div`: a page whose whole content sits in no
+     landmark is what axe reports as `region`, and one with no `main` at
+     all as `landmark-one-main`. A dev fixture is still a page, and one
+     that reports two findings of its own drowns the ones it exists to
+     surface. -->
+<main class="page" style={reduce ? "--duration-normal: 0ms" : ""}>
   <h1>Companion &mdash; {current}{talking ? ", talking" : ""}{reduce ? ", reduced motion" : ""}</h1>
 
   <div class="bar">
@@ -53,7 +58,7 @@ SPDX-License-Identifier: AGPL-3.0-only
     <div class="cell"><Companion state={current} {talking} size={40} bust {radius} /><small>bust 40</small></div>
     <div class="cell"><Companion state={current} {talking} size={40} bust radius="50%" /><small>bust 40, circle</small></div>
   </div>
-</div>
+</main>
 
 <style>
   .page {

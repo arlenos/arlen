@@ -58,7 +58,12 @@ SPDX-License-Identifier: AGPL-3.0-only
   }
 </script>
 
-<div class="page" class:dark style={reduce ? "--duration-normal: 0ms" : ""}>
+<!-- A `main`, not a bare `div`: a page whose whole content sits in no
+     landmark is what axe reports as `region`, and one with no `main` at
+     all as `landmark-one-main`. A dev fixture is still a page, and one
+     that reports two findings of its own drowns the ones it exists to
+     surface. -->
+<main class="page" class:dark style={reduce ? "--duration-normal: 0ms" : ""}>
   <h1>App icons{forced ? `, all ${forced}` : ""}{dark ? ", dark" : ""}{reduce ? ", reduced motion" : ""}</h1>
 
   <div class="bar">
@@ -73,9 +78,13 @@ SPDX-License-Identifier: AGPL-3.0-only
     <div class="row">
       <small class="size">{size}</small>
       {#each APP_IDS as app (app)}
+        <!-- The name is stated, because below 64px the cell has no text in it
+             at all: forty-eight buttons that a screen reader reads as
+             "button", which axe rates critical and is right to. -->
         <button
           type="button"
           class="cell"
+          aria-label={`${app} ${size}`}
           onpointerenter={() => set(app, size, "hover")}
           onpointerleave={() => set(app, size, "rest")}
           onclick={() => set(app, size, "open")}
@@ -86,7 +95,7 @@ SPDX-License-Identifier: AGPL-3.0-only
       {/each}
     </div>
   {/each}
-</div>
+</main>
 
 <style>
   .page {

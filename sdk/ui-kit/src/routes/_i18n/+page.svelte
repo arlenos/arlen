@@ -44,7 +44,12 @@ SPDX-License-Identifier: AGPL-3.0-only
   });
 </script>
 
-<div class="page">
+<!-- A `main`, not a bare `div`: a page whose whole content sits in no
+     landmark is what axe reports as `region`, and one with no `main` at
+     all as `landmark-one-main`. A dev fixture is still a page, and one
+     that reports two findings of its own drowns the ones it exists to
+     surface. -->
+<main class="page">
   <h1>Kit chrome &mdash; locale {active}</h1>
 
   <section>
@@ -85,7 +90,7 @@ SPDX-License-Identifier: AGPL-3.0-only
       description="Browse and organise your files."
     />
   </section>
-</div>
+</main>
 
 <style>
   .page {
