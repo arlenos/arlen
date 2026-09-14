@@ -94,6 +94,13 @@ impl EphemeralStack {
         std::fs::create_dir_all(runtime.path().join("knowledge"))?;
         std::fs::create_dir_all(runtime.path().join("timeline"))?;
         std::fs::create_dir_all(runtime.path().join("permissions"))?;
+        // A home of its own. `base_env` points `HOME` here so a daemon that
+        // resolves a path through it - or through an XDG variable nobody set -
+        // writes inside the temp root. Created rather than left to the daemon:
+        // a fallback path is usually built with `join`, not `create_dir_all`.
+        std::fs::create_dir_all(runtime.path().join("home"))?;
+        std::fs::create_dir_all(runtime.path().join("cache"))?;
+        std::fs::create_dir_all(runtime.path().join("state"))?;
         // A private config home (`XDG_CONFIG_HOME`) so a spawned daemon reads no
         // real user config. Without it the knowledge daemon's project watcher
         // falls back to `default_watch_dirs` (`~/Repositories`, `~/Projects`, ...)
@@ -238,6 +245,21 @@ impl EphemeralStack {
             // fail-closed defaults (AI off), so this is hermetic either way.
             ("ARLEN_AI_CONFIG".to_string(), p("config/arlen/ai.toml")),
             ("XDG_RUNTIME_DIR".to_string(), root),
+            // The cache home, because `modulesd` compiles WASM into
+            // `$XDG_CACHE_HOME/wasmtime/` and falls back to `~/.cache`.
+            ("XDG_CACHE_HOME".to_string(), p("cache")),
+            // AND `HOME` ITSELF, which is the floor under all of them. Every
+            // XDG variable above has a `$HOME/.local/...` fallback, and the
+            // daemons read `HOME` thirty times: capsuled resolves its signing
+            // key through it, the anomaly detector its state, the AI engine its
+            // consent root. Naming the XDG variables one at a time closes them
+            // one at a time - this is the one that means a variable nobody
+            // thought of lands in the temp root rather than in somebody's home.
+            //
+            // Found after the state home leaked a signing key into the real
+            // `~/.local/state`: that was the fourth of these, and four is enough
+            // to stop naming them individually.
+            ("HOME".to_string(), p("home")),
         ]);
         // The audit daemon's ingest allowlist admits only the named AI-layer
         // producers (and their exact cargo-run dev ids); a test that submits
@@ -722,6 +744,10 @@ mod tests {
         // The one that was missing: a daemon persisting under the state home
         // wrote into the developer's real `~/.local/state` until this was set.
         assert!(env["XDG_STATE_HOME"].starts_with(&root));
+        assert!(env["XDG_CACHE_HOME"].starts_with(&root));
+        // The floor under all of them: with `HOME` inside the root, a daemon
+        // resolving a path through a variable nobody set still lands here.
+        assert!(env["HOME"].starts_with(&root));
         // The audit sockets resolve under the runtime root's arlen/ subdir.
         assert!(stack.audit_read_socket().starts_with(&root));
         assert!(stack.audit_ingest_socket().ends_with("arlen/audit-ingest.sock"));
