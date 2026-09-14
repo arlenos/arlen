@@ -54,6 +54,9 @@ arlen-config-broker = { path = "../../daemons/config-broker" }
 # The cross-profile transfer scenario builds the daemon's own `DualLedger` over
 # two real per-profile ingest sockets, rather than restating its wire shape here.
 transfer-daemon = { path = "../../daemons/transfer-daemon" }
+# The credential scenario seeds the store through the daemon's own vault types,
+# so the seed is sealed the way the daemon will read it.
+connections = { path = "../../daemons/connections" }
 
 [build-dependencies]
 prost-build = "0.13"

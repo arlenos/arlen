@@ -309,6 +309,20 @@ const DEV_ADMITTED: &[&str] = &[
     "dev.arlen-graph-daemon",
     "dev.arlen-consent-broker",
     "dev.arlen-desktop-shell",
+    // The four daemons whose audit is fail-closed BEFORE the act, so a dev run
+    // without an entry here does not merely go unlogged - the feature refuses.
+    // Measured on 14 September: a debug `arlen-connectionsd` resolves to
+    // `dev.arlen-connectionsd`, was in neither list, and answered
+    // `org.freedesktop.DBus.Error.Failed: audit unavailable` to a request it had
+    // a valid grant and a stored credential for. The other three fail the same
+    // way by the same code path: capsuled refuses every capsule read, bottled
+    // every forget, transferd every transfer. Release is unaffected (each
+    // resolves to its own ADMITTED id from its libexec path); this is the dev
+    // stack, which could not exercise any of the four.
+    "dev.arlen-connectionsd",
+    "dev.arlen-capsuled",
+    "dev.arlen-bottled",
+    "dev.arlen-transferd",
 ];
 
 /// Whether a resolved peer app_id may submit audit events.
