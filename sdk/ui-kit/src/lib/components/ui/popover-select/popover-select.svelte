@@ -80,12 +80,24 @@
   /// corners, which was cutting the dropdown off).
   let menuPos = $state({ top: 0, left: 0, width: 0 });
 
-  /// `undefined` means either `options` is empty or no entry matches
-  /// `value`. Callers that provide a non-empty catalogue will always
-  /// get a defined value, but async-populated options (e.g. device
-  /// lists) have a transient empty phase — the template guards for it.
+  /// What the trigger shows.
+  ///
+  /// A match wins. A value that matches NOTHING shows itself, and that
+  /// is the part that was wrong: it used to fall back to `options[0]`
+  /// whatever the value was, so a row whose stored setting is absent
+  /// from the catalogue displayed the first entry as though it were
+  /// the current one. The monospace row did exactly that - the theme
+  /// resolves a font STACK, the catalogue holds families, nothing
+  /// matched, and the row confidently named whichever family
+  /// fontconfig happened to list first.
+  ///
+  /// The `options[0]` fallback is kept for the case it was written
+  /// for and no other: an EMPTY value, which is the transient phase of
+  /// an async-populated list. `undefined` still means there is nothing
+  /// to show at all, and the template renders the placeholder.
   const current = $derived<PopoverSelectOption | undefined>(
-    options.find((o) => o.value === value) ?? options[0]
+    options.find((o) => o.value === value) ??
+      (value ? { value, label: value } : options[0])
   );
 
   function toggle(): void {
