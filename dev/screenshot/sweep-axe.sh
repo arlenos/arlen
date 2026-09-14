@@ -75,9 +75,16 @@ PORT=5310
 # "Zulassen?". The check was right and the spec was wrong, which is the good way
 # round.
 SURFACES=(
-  # The kit's own keyboard/a11y fixture, rendered for real. Its jsdom gate cannot
-  # measure contrast and cannot see a component in a box; this can.
-  "ui-kit /_a11y"
+  # The kit's own fixtures, rendered for real. Its jsdom gate cannot measure
+  # contrast and cannot see a component in a box; this can.
+  #
+  # ALL FOUR, not just the a11y one. The other three were invisible to every
+  # sweep until 15 September, and the first run of them found forty-eight
+  # unnamed buttons on the icon sheet, a console exit code under the contrast
+  # floor, and two of the three sitting in no landmark at all. A fixture is
+  # where a primitive is looked at, so a fixture nobody measures is a blind spot
+  # in the place the looking happens.
+  "ui-kit /_a11y|/_icons|/_i18n|/_companion"
   "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/_thumbtest?view=grid|/_thumbtest?view=miller|/?locale=de@@files-refuses-op"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/?locale=de@@terminal-quick-connect|/?locale=de::#terminal-history-open@@terminal-history-refused"
   # THE OTHER NINETEEN SETTINGS PAGES, and they were missing for the reason
