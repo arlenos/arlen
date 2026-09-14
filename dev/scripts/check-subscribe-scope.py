@@ -4,6 +4,18 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """A bus subscription or publish the profile does not grant is dropped, not refused.
 
+SEVENTEEN OF ITS OWN NOTES WERE NOISE UNTIL 14 SEPTEMBER, which is worth reading
+before trusting the note list. Every app that grants `app.presence.set` and
+friends publishes them from its FRONTEND through a shell plugin command, so the
+emit lives in `sdk/tauri-plugin-shell` and is invisible in the app's own Rust by
+construction - and this file reported each one as "grants publish X and emits
+nothing". A list where seventeen lines are all noise teaches a reader to skip it,
+and the list is where a real over-grant would show. Those topics are credited now,
+from `check-publish-grants.py`'s own map (imported, never re-listed), because that
+sibling asks the question this file cannot: whether an app GRANTED the plugin
+command also holds the publish scope. Three notes remain and each names the shape
+behind it.
+
 `permitted_subscriptions` (event-bus `socket.rs`) FILTERS the patterns a caller's
 `[event_bus].subscribe` scope does not cover, and the connection then succeeds
 with the rest. So an app that subscribes to a topic its profile forgot does not
@@ -83,6 +95,7 @@ the check refuses to be silently vacuous, which is the failure mode it exists to
 prevent in the first place.
 """
 
+import importlib.util
 import re
 import sys
 import tomllib
@@ -309,6 +322,34 @@ def sdk_helpers(repo: Path) -> dict[str, set[str]]:
     return helpers
 
 
+def shell_surface_topics() -> set[str]:
+    """The topics a shell plugin command emits on an app's behalf.
+
+    IMPORTED, never re-listed. `check-publish-grants.py` already owns the map
+    from a Tauri plugin permission to the bus topic its command produces, and it
+    asks the question this file cannot: whether an app GRANTED that command also
+    holds the publish scope. Keeping a second copy here would be one more list to
+    go stale on one side, which is the rule `check-profile-principals` follows
+    for the same reason.
+
+    Why it is needed at all: seventeen components were reported as "grants
+    publish X and emits nothing" on 14 September, and every one of them was
+    publishing through a plugin command from its FRONTEND - `presence.set` and
+    friends, emitted inside `sdk/tauri-plugin-shell`, invisible in the app's own
+    Rust by construction. Seventeen lines that are all noise teach a reader to
+    skip the list, and the list is where a real over-grant would appear.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "publish_grants", Path(__file__).resolve().parent / "check-publish-grants.py"
+    )
+    if spec is None or spec.loader is None:
+        print("NOTHING WAS READ: cannot load check-publish-grants.py", file=sys.stderr)
+        raise SystemExit(2)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return set(module.TOPIC.values())
+
+
 def publishes_of(directory: Path) -> set[str]:
     """Every topic this app emits onto the bus."""
     found: set[str] = set()
@@ -444,14 +485,33 @@ def main() -> int:
         # The publish half. Same silence, other direction: the event is dropped
         # and the producer, speaking a fire-and-forget protocol, is never told.
         emitted = publishes_of(directory)
-        if publish and not emitted:  # non-empty only, same reason as above
+        # A grant whose topic is sent through a shell plugin command is not
+        # unused just because this app's Rust never names it - the emit lives in
+        # the plugin, and which commands the app may call is decided by its Tauri
+        # capability. That pairing is `check-publish-grants.py`'s question, so
+        # those topics are its to judge and are dropped here rather than counted
+        # as unexercised twice.
+        shell_topics = shell_surface_topics()
+        unexplained = [
+            t
+            for t in (publish or [])
+            # `granted` is the bus's own pattern match, so a wildcard grant like
+            # `app.menu.*` is credited by the topics it covers rather than needing
+            # to appear in the map verbatim.
+            if not any(granted([t], topic) for topic in shell_topics)
+        ]
+        if unexplained and not emitted:  # non-empty only, same reason as above
             # The mirror of the unused-subscribe note. Reporting one and not the
             # other would make the gate quietly one-eyed, and an unused publish
             # grant is the likelier paste: publish and subscribe lists travel
             # together when a profile is copied between components.
             notes.append(
-                f"{path.name}: grants publish {publish} and emits nothing from "
-                f"{directory.relative_to(REPO)}."
+                f"{path.name}: grants publish {unexplained} and emits nothing from "
+                f"{directory.relative_to(REPO)}. Either the grant outlived its "
+                f"producer, or the topic is not written inline at the emit - a "
+                f"constant or a helper that returns one reads as no emit here "
+                f"(`check-emitters-declared.py` follows the constant; a topic "
+                f"returned from a function is nobody's yet)."
             )
         for topic in sorted(emitted):
             if not granted(publish or [], topic):
