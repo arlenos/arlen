@@ -130,7 +130,13 @@
   --muted-foreground: #6b7280;
   --accent:           var(--color-accent);
   --accent-foreground: #ffffff;
-  --destructive:      #ef4444;
+  /* The theme's error colour, like every other token here. This was the one
+     literal left in the block: every one of the seventeen app copies already
+     reads `var(--color-error)`, so the kit's own dev pages were the only
+     surface where a user theme's error did not reach a destructive control.
+     The fallback keeps the standalone dev server, which injects no theme,
+     looking exactly as it did. */
+  --destructive:      var(--color-error, #ef4444);
   --border:           var(--color-border);
   --input:            var(--color-bg-input);
   --ring:             var(--color-accent);
