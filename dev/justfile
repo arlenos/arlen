@@ -725,7 +725,7 @@ integration-nightly:
              daemons/consent-broker daemons/config-broker daemons/ai-engine-daemon \
              daemons/anomaly-detector daemons/undo-service daemons/clock \
              daemons/notification-daemon daemons/settings-broker daemons/connections \
-             store-backend ai; do
+             daemons/capsuled store-backend ai; do
         echo "== build $c ==" | tee -a "$report"
         cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml" 2>&1 | tee -a "$report"
     done
