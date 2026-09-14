@@ -7,7 +7,7 @@
 /// was not using. This pins the read-back.
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
+import DARK_TOML from "../../../../../sdk/theme/themes/dark.toml?raw";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
@@ -76,16 +76,12 @@ describe("load", () => {
 /// somebody to open the page with no backend - the same shape as the terminal
 /// swatch grid one store over, and the sound row before that.
 describe("TYPO_DEFAULTS", () => {
-  const THEME = new URL(
-    "../../../../../sdk/theme/themes/dark.toml",
-    import.meta.url,
-  ).pathname;
-
-  /// The `[typography]` table, key to its raw value, with quotes stripped.
+  /// The shipped theme file itself, pulled in as text rather than read through
+  /// `node:fs`: this app's tsconfig carries no node types, and a test that has
+  /// to widen the type surface to check one table is a bad trade.
   function themeTypography(): Record<string, string> {
-    const text = readFileSync(THEME, "utf8");
-    const block = text.match(/\[typography\]\n([\s\S]*?)(?=\n\[|$)/);
-    if (!block) throw new Error("no [typography] table in " + THEME);
+    const block = DARK_TOML.match(/\[typography\]\n([\s\S]*?)(?=\n\[|$)/);
+    if (!block) throw new Error("no [typography] table in the bundled dark theme");
     const out: Record<string, string> = {};
     for (const line of block[1].split("\n")) {
       const m = line.match(/^(\w+)\s*=\s*(.+?)\s*$/);
