@@ -71,7 +71,13 @@
           </button>
         {/snippet}
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="end" class="w-52">
+      <!-- NO PINNED WIDTH. `w-52` was 208px and the two rows measure 224 with
+           their shortcut hints, so the menu clipped its own text and, because
+           the kit's content scrolls, became a scroll region a keyboard cannot
+           reach. The kit sizes to content (`w-max`) under a sane cap, which is
+           the right answer in every language rather than in the one the number
+           was picked for. -->
+      <DropdownMenu.Content align="end">
         <DropdownMenu.Item onclick={() => newSession()}>
           {$t("term.sidebar.newSession")}
           <DropdownMenu.Shortcut>{$t("term.sidebar.newHint")}</DropdownMenu.Shortcut>
