@@ -325,6 +325,8 @@ const messages: Catalogs = {
 
     // Tabs
     "f.tab.close": "Close tab",
+    "f.tab.strip": "Open tabs",
+    "f.tab.closeNamed": "Close {$tab}",
 
     // Duplicates
     "f.dup.scanning": "Scanning {$scope}",
@@ -679,6 +681,8 @@ const messages: Catalogs = {
     "f.sidebar.foldersUnsaved": "Nicht gespeichert. Nach einem Neustart sind sie weg.",
 
     "f.tab.close": "Tab schließen",
+    "f.tab.strip": "Offene Tabs",
+    "f.tab.closeNamed": "{$tab} schließen",
 
     "f.dup.scanning": "{$scope} wird gescannt",
     "f.dup.scanningHint": "Die Dateien werden gehasht, um exakte Duplikate zu finden.",
