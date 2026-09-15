@@ -14,15 +14,11 @@
 				// The label sits on a TINT of its own colour, and that is what the
 				// mix is for: `#ef4444` on `bg-destructive/20` measures 3.82:1, under
 				// the 4.5 a 14px label needs (axe, extensions pages, 15 September).
-				// Mixing toward `--foreground` rather than a fixed white or black is
-				// what makes ONE value right in both themes: the foreground is always
-				// the high-contrast pole of the surface, so this lightens the red on
-				// dark and darkens it on light, and follows a shell-surface context
-				// that redefines either. Written inline rather than as a token
-				// because the token block is forked into seventeen app.css files,
-				// two of which are another lane's - a new token there would be a
-				// button with no colour in whichever app had not caught up.
-				destructive: "bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/20 text-[color-mix(in_srgb,var(--destructive)_72%,var(--foreground))] focus-visible:border-destructive/40 dark:hover:bg-destructive/30",
+				// `--destructive-on-tint` is the shared recipe, defined in
+				// `lib/motion.css` beside the other control-chrome tokens - the one
+				// file every app imports - and used by every kit control that paints
+				// this label on a wash of its own colour.
+				destructive: "bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/20 text-[var(--destructive-on-tint)] focus-visible:border-destructive/40 dark:hover:bg-destructive/30",
 				link: "text-primary underline-offset-4 hover:underline",
 			},
 			size: {
