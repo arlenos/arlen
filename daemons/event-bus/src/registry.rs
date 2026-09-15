@@ -112,6 +112,10 @@ impl ConsumerEntry {
 /// is being opened now. A state topic is a snapshot of how things ARE, and the
 /// only reason a subscriber misses it is that nothing has changed since they
 /// connected - which is exactly when they most need to be told.
+// Not a filename: a topic is a bus name, lowercase by protocol, and the
+// case-insensitive comparison the lint wants would accept `file.STATE` as a
+// state topic when the bus would never route one.
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 pub fn is_state_topic(topic: &str) -> bool {
     topic.ends_with(".state")
 }

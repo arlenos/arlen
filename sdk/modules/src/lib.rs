@@ -702,7 +702,7 @@ pub fn validate_manifest(manifest: &ModuleManifest) -> Vec<ValidationWarning> {
                 .can_register_global_bindings()
         {
             warnings.push(ValidationWarning {
-                field: format!("{prefix}"),
+                field: prefix.to_string(),
                 message: "global keybinding declared without \
                      permissions.input = [\"register_global_bindings\"]"
                     .into(),

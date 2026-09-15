@@ -210,9 +210,12 @@ pub fn parse_gguf_metadata(bytes: &[u8]) -> Result<GgufMetadata, String> {
 mod tests {
     use super::*;
 
+    /// Appends one value's type tag and bytes to the blob being built.
+    type KvWriter = Box<dyn Fn(&mut Vec<u8>)>;
+
     /// Build a minimal GGUF metadata blob with the given kv pairs. Each kv is
     /// `(key, writer)` where writer appends the type tag + value bytes.
-    fn gguf(kvs: &[(&str, Box<dyn Fn(&mut Vec<u8>)>)]) -> Vec<u8> {
+    fn gguf(kvs: &[(&str, KvWriter)]) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(b"GGUF");
         out.extend_from_slice(&3u32.to_le_bytes()); // version
@@ -226,7 +229,7 @@ mod tests {
         out
     }
 
-    fn str_val(s: &'static str) -> Box<dyn Fn(&mut Vec<u8>)> {
+    fn str_val(s: &'static str) -> KvWriter {
         Box::new(move |out: &mut Vec<u8>| {
             out.extend_from_slice(&8u32.to_le_bytes()); // STRING
             out.extend_from_slice(&(s.len() as u64).to_le_bytes());
@@ -234,14 +237,14 @@ mod tests {
         })
     }
 
-    fn u32_val(v: u32) -> Box<dyn Fn(&mut Vec<u8>)> {
+    fn u32_val(v: u32) -> KvWriter {
         Box::new(move |out: &mut Vec<u8>| {
             out.extend_from_slice(&4u32.to_le_bytes()); // UINT32
             out.extend_from_slice(&v.to_le_bytes());
         })
     }
 
-    fn u64_val(v: u64) -> Box<dyn Fn(&mut Vec<u8>)> {
+    fn u64_val(v: u64) -> KvWriter {
         Box::new(move |out: &mut Vec<u8>| {
             out.extend_from_slice(&10u32.to_le_bytes()); // UINT64
             out.extend_from_slice(&v.to_le_bytes());

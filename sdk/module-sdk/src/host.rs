@@ -135,7 +135,7 @@ pub mod native_mock {
             RefCell::new(HashMap::new());
         static NETWORK_RESPONSES: RefCell<HashMap<String, Result<Vec<u8>, HostError>>> =
             RefCell::new(HashMap::new());
-        static LOG_LINES: RefCell<Vec<String>> = RefCell::new(Vec::new());
+        static LOG_LINES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     }
 
     pub fn set_graph_response(query: &str, response: Result<String, HostError>) {

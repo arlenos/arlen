@@ -267,14 +267,16 @@ impl Dispatch<wl_output::WlOutput, ()> for CaptureState {
         };
         match event {
             wl_output::Event::Name { name } => b.name = Some(name),
-            wl_output::Event::Mode { flags, width, height, .. } => {
-                // Record only the current mode (the one being displayed).
-                if let wayland_client::WEnum::Value(m) = flags {
-                    if m.contains(wl_output::Mode::Current) {
-                        b.width = width;
-                        b.height = height;
-                    }
-                }
+            // Record only the current mode (the one being displayed); any other
+            // mode the compositor advertises falls through to the catch-all.
+            wl_output::Event::Mode {
+                flags: wayland_client::WEnum::Value(m),
+                width,
+                height,
+                ..
+            } if m.contains(wl_output::Mode::Current) => {
+                b.width = width;
+                b.height = height;
             }
             _ => {}
         }

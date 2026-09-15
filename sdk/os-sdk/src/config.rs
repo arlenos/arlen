@@ -40,7 +40,7 @@ impl Config {
     pub fn load_path(path: &Path) -> Result<Self, ConfigError> {
         let root = if path.exists() {
             let contents = std::fs::read_to_string(path)
-                .map_err(|e| ConfigError::Io(e))?;
+                .map_err(ConfigError::Io)?;
             contents.parse::<Value>()
                 .map_err(|e| ConfigError::Parse(e.to_string()))?
         } else {

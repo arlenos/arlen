@@ -36,18 +36,23 @@ pub mod proto {
 pub(crate) mod proto_clipboard {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
+    // Generated code: the `.proto` names the variants, prost writes them, and
+    // there is no source file here to rename anything in.
+    #![allow(clippy::enum_variant_names)]
     include!(concat!(env!("OUT_DIR"), "/arlen.clipboard.rs"));
 }
 
 pub(crate) mod proto_search {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
+    #![allow(clippy::enum_variant_names)]
     include!(concat!(env!("OUT_DIR"), "/arlen.search.rs"));
 }
 
 pub(crate) mod proto_intents {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
+    #![allow(clippy::enum_variant_names)]
     include!(concat!(env!("OUT_DIR"), "/arlen.intents.rs"));
 }
 

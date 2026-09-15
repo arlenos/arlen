@@ -21,6 +21,9 @@ use tokio::task::JoinHandle;
 mod proto {
     #![allow(dead_code)]
     #![allow(clippy::doc_markdown)]
+    // Generated code: the `.proto` names the variants and there is no source
+    // file here to rename anything in.
+    #![allow(clippy::enum_variant_names)]
     include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 

@@ -8,18 +8,15 @@ use serde::{Deserialize, Serialize};
 /// Sensitivity classification for a clipboard entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ClipboardLabel {
     /// Standard entry, eligible for history.
+    #[default]
     Normal,
     /// Sensitive entry, broadcast once but never persisted.
     Sensitive,
 }
 
-impl Default for ClipboardLabel {
-    fn default() -> Self {
-        ClipboardLabel::Normal
-    }
-}
 
 impl From<os_sdk::ClipboardLabel> for ClipboardLabel {
     fn from(value: os_sdk::ClipboardLabel) -> Self {

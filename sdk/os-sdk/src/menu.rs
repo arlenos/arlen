@@ -13,7 +13,6 @@
 //! command: an app and the shell are separate processes, so a Tauri
 //! `invoke` could never reach the shell's menu store.
 
-use std::future::Future;
 
 use serde::{Deserialize, Serialize};
 
@@ -187,32 +186,28 @@ impl<E: EventEmitter> Menu<E> {
     /// [`EmitError::SerializationFailed`] if `groups.len() > MAX_MENU_GROUPS`
     /// or the payload cannot be serialized; otherwise the underlying
     /// emitter's error if the bus is unreachable.
-    pub fn register(
+    pub async fn register(
         &self,
         groups: Vec<MenuGroup>,
-    ) -> impl Future<Output = Result<(), EmitError>> + Send + '_ {
-        async move {
-            if groups.len() > MAX_MENU_GROUPS {
-                return Err(EmitError::SerializationFailed(format!(
-                    "shell.menu.register: max {MAX_MENU_GROUPS} groups, got {}",
-                    groups.len()
-                )));
-            }
-            let payload = serde_json::json!({ "app_id": self.app_id, "items": groups });
-            let buf = serde_json::to_vec(&payload)
-                .map_err(|e| EmitError::SerializationFailed(e.to_string()))?;
-            self.emitter.emit("app.menu.registered", buf).await
+    ) -> Result<(), EmitError> {
+        if groups.len() > MAX_MENU_GROUPS {
+            return Err(EmitError::SerializationFailed(format!(
+                "shell.menu.register: max {MAX_MENU_GROUPS} groups, got {}",
+                groups.len()
+            )));
         }
+        let payload = serde_json::json!({ "app_id": self.app_id, "items": groups });
+        let buf = serde_json::to_vec(&payload)
+            .map_err(|e| EmitError::SerializationFailed(e.to_string()))?;
+        self.emitter.emit("app.menu.registered", buf).await
     }
 
     /// Remove this app's menu from the topbar.
-    pub fn unregister(&self) -> impl Future<Output = Result<(), EmitError>> + Send + '_ {
-        async move {
-            let payload = serde_json::json!({ "app_id": self.app_id });
-            let buf = serde_json::to_vec(&payload)
-                .map_err(|e| EmitError::SerializationFailed(e.to_string()))?;
-            self.emitter.emit("app.menu.unregistered", buf).await
-        }
+    pub async fn unregister(&self) -> Result<(), EmitError> {
+        let payload = serde_json::json!({ "app_id": self.app_id });
+        let buf = serde_json::to_vec(&payload)
+            .map_err(|e| EmitError::SerializationFailed(e.to_string()))?;
+        self.emitter.emit("app.menu.unregistered", buf).await
     }
 }
 

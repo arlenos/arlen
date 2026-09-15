@@ -21,7 +21,6 @@
 //! for an Event Bus emit (likely `app.spatial.hint`) and add the
 //! matching protobuf payload type. No app-facing API change.
 
-use std::future::Future;
 
 use serde::{Deserialize, Serialize};
 
@@ -99,9 +98,7 @@ impl<E: EventEmitter> Spatial<E> {
     /// # Errors
     /// Currently never fails. Reserved for future use when the call
     /// routes through the Event Bus.
-    pub fn hint(&self, _hint: SpatialHint) -> impl Future<Output = Result<(), EmitError>> + Send + '_ {
-        async move { Ok(()) }
-    }
+    pub async fn hint(&self, _hint: SpatialHint) -> Result<(), EmitError> { Ok(()) }
 }
 
 #[cfg(test)]
