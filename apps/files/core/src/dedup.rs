@@ -147,14 +147,11 @@ pub fn find_duplicates(dir: &Dir) -> DupReport {
                 report.hash_budget_exhausted = true;
                 break;
             }
-            match hash_file(dir, &file.rel_path) {
-                Some(hash) => {
-                    hashed_total = hashed_total.saturating_add(file.size);
-                    by_hash.entry(hash).or_default().push(file);
-                }
-                // An unreadable file (vanished, permission denied) is skipped, like
-                // list_dir skips an unreadable entry. It costs no budget.
-                None => {}
+            // An unreadable file (vanished, permission denied) is skipped, like
+            // list_dir skips an unreadable entry. It costs no budget.
+            if let Some(hash) = hash_file(dir, &file.rel_path) {
+                hashed_total = hashed_total.saturating_add(file.size);
+                by_hash.entry(hash).or_default().push(file);
             }
         }
         if report.hash_budget_exhausted {

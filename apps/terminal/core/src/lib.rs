@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn search_blocks_matches_the_command_and_applies_block_local_filters() {
-        use super::{search_blocks, BlockBodyKind};
+        use super::search_blocks;
         let blocks = vec![
             blk("1", "git status", "/work/arlen", Origin::You, Some(0)),
             blk("2", "git push --force", "/work/arlen", Origin::You, Some(1)),

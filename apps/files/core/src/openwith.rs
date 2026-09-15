@@ -74,11 +74,10 @@ pub fn parse_desktop_app(id: &str, contents: &str) -> Option<DesktopApp> {
         };
         let (key, value) = (key.trim(), value.trim());
         match key {
-            "Name" => {
-                if name.is_none() {
+            "Name"
+                if name.is_none() => {
                     name = Some(value.to_string());
                 }
-            }
             "Exec" => exec = Some(value.to_string()),
             "MimeType" => {
                 mime = value
@@ -150,7 +149,7 @@ pub fn default_app_for(mimeapps_text: &str, mime: &str) -> Option<String> {
 /// via the MIME system; this is the declared-match the picker filters on.
 pub fn app_handles_mime(app: &DesktopApp, mime: &str) -> bool {
     let mime = mime.to_lowercase();
-    app.mime_types.iter().any(|m| *m == mime)
+    app.mime_types.contains(&mime)
 }
 
 /// The apps from `apps` that handle `mime`, de-duplicated by `Exec` (the same

@@ -108,6 +108,11 @@ pub struct Served {
 ///
 /// The lookups are injected for the same reason they are in [`resolve`]: the
 /// decision is testable without a filesystem, and the host keeps the I/O.
+//
+// Eight arguments, and five of them are the injected lookups that make this
+// testable at all. Bundling them into a struct would move the same list one file
+// away and buy nothing: there is one caller, and it names each one at the call.
+#[allow(clippy::too_many_arguments)]
 pub fn serve(
     request: &LaunchRequest,
     caller: &Caller,
