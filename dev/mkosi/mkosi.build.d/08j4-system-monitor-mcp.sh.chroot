@@ -1,0 +1,44 @@
+#!/bin/sh
+# Phase 8j4 (CHROOT): the system-monitor MCP server (arlen-system-monitor-mcp), the process that serves read-only
+# process-list and resource-usage tools on an MCP socket the AI engine connects
+# to. It reads /proc directly and depends on nothing else.
+#
+# It completes the set phase 8j started. Until 15 September the image carried one
+# MCP server, terminal-run - the one that RUNS COMMANDS - and none of the three
+# that only read. This is the other of the two that finish the read side; the graph
+# bridge is phase 8j2.
+#
+# NO PROFILE, same reasoning as its sibling: it reads no graph, so a `[graph]`
+# grant would have nothing to say. `/proc` is what it reads, and the unit's
+# `ProtectProc` setting is the thing that bounds that - not a file in the
+# permissions directory.
+#
+# Its own standalone cargo workspace (daemons/system-monitor-mcp) -> its own target dir in
+# the persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-system-monitor-mcp"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the system-monitor MCP server - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/system-monitor-mcp/Cargo.toml
+
+# Install at /usr/bin/arlen-system-monitor-mcp, NOT libexec: arlen-permissions maps
+# /usr/bin/arlen-<name> to the app id <name>, so this path is what gives the server
+# the stable identity `system-monitor-mcp` the AI daemon peer-authenticates. Its unit says
+# the same thing, and that a different path would make the daemon refuse the
+# socket as an imposter.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-system-monitor-mcp" \
+    "$DESTDIR/usr/bin/arlen-system-monitor-mcp"
+echo ">> staged arlen-system-monitor-mcp into the image (/usr/bin, the identity path)"

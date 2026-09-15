@@ -1,0 +1,46 @@
+#!/bin/sh
+# Phase 8j3 (CHROOT): the file-manager MCP server (arlen-file-manager-mcp), the process that serves read-only
+# directory listings and file metadata, within a configured scope, on an MCP
+# socket the AI engine connects to. It reads the filesystem directly and depends
+# on nothing else.
+#
+# It completes the set phase 8j started. Until 15 September the image carried one
+# MCP server, terminal-run - the one that RUNS COMMANDS - and none of the three
+# that only read. This is one of the two that finish the read side; the graph
+# bridge is phase 8j2.
+#
+# NO PROFILE, and that is a statement rather than an omission: this server touches
+# no graph, so it has nothing for a `[graph]` grant to say. What bounds it is the
+# scope its own configuration names, which is where a reader should look - and
+# where a future confinement (this is a plain user service today, not an
+# arlen-run launch) would have to be expressed too.
+#
+# Its own standalone cargo workspace (daemons/file-manager-mcp) -> its own target dir in
+# the persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-file-manager-mcp"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the file-manager MCP server - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/file-manager-mcp/Cargo.toml
+
+# Install at /usr/bin/arlen-file-manager-mcp, NOT libexec: arlen-permissions maps
+# /usr/bin/arlen-<name> to the app id <name>, so this path is what gives the server
+# the stable identity `file-manager-mcp` the AI daemon peer-authenticates. Its unit says
+# the same thing, and that a different path would make the daemon refuse the
+# socket as an imposter.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-file-manager-mcp" \
+    "$DESTDIR/usr/bin/arlen-file-manager-mcp"
+echo ">> staged arlen-file-manager-mcp into the image (/usr/bin, the identity path)"

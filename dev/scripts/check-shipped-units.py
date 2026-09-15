@@ -71,14 +71,6 @@ NOT_YET_DEPLOYED: dict[str, str] = {
     "arlen-connectionsd.service": "connections daemon is not part of the image scope yet (15 Aug, no shipped caller)",
     "arlen-transferd.service": "transfer daemon is not part of the image scope yet (15 Aug, no shipped caller)",
     "arlen-trash-cleanup.service": "trash retention timer, unreviewed for deployment (15 Aug)",
-    # NOT "MCP servers are not staged yet", which is what these three said until
-    # 14 September and stopped being true when `terminal-run-mcp` got build phase
-    # 08j and a staged unit. Three of the four wait; the fourth ships. Read as a
-    # blanket statement the old wording said the AI has no MCP surface on the
-    # image, when what it has is the one that RUNS COMMANDS and none of the three
-    # that only read - which is the opposite of the order anyone would choose.
-    "arlen-file-manager-mcp.service": "the three read-only MCP servers wait while terminal-run ships; staging them needs a build phase, a unit and a read profile each (14 Sep)",
-    "arlen-system-monitor-mcp.service": "the three read-only MCP servers wait while terminal-run ships; staging them needs a build phase, a unit and a read profile each (14 Sep)",
 }
 
 
