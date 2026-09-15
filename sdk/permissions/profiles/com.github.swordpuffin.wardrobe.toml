@@ -1,5 +1,18 @@
-# Starting permission profile for Wardrobe (a theme manager).
-# It manages desktop themes through its own configuration grant. It needs no network and no user files. No Knowledge Graph access.
+# Starting permission profile for Wardrobe (a GNOME theme and extension browser).
+# Fetches themes over the network, which is its function; what it installs lands
+# in its own data dir. No user files and no Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the com.* id had no network, which
+# leaves a browser of an online gallery with nothing to browse.
 [info]
 app_id = "com.github.swordpuffin.wardrobe"
 tier = "third-party"
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true

@@ -1,5 +1,11 @@
-# Starting permission profile for GNUSolfege (an ear-training tool). Generates tones locally: no filesystem, network, or graph.
+# Starting permission profile for GNU Solfege (an ear-training tutor). Keeps its
+# lesson files and progress in Documents; no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id granted nothing,
+# so a saved lesson had nowhere to go.
 [info]
 app_id = "org.gnome.Solfege"
 tier = "third-party"
 
+[filesystem]
+documents = true

@@ -1,11 +1,23 @@
-# Starting permission profile for Vorta (a BorgBackup GUI). Backs up files under
-# home to local or remote repositories over the network; no Knowledge Graph.
+# Starting permission profile for Vorta (a desktop front end for Borg backup).
+# Backing up the user's files IS its function, so it holds the directories a
+# backup covers, and it sends them to a repository over the network.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted the whole Home
+# and the other five named directories. The named set is what a person picks in
+# the source list, and it stops short of the dotfiles and app data a Home grant
+# hands over - a backup tool is exactly the app where "everything" is tempting
+# and where the user should be choosing. A source outside the five is added
+# through a grant refinement.
 [info]
 app_id = "vorta"
 tier = "third-party"
 
 [filesystem]
-home = true
+documents = true
+downloads = true
+pictures = true
+music = true
+videos = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

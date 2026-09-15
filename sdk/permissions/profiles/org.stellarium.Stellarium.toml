@@ -1,5 +1,22 @@
-# Starting permission profile for Stellarium (a planetarium).
-# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+# Starting permission profile for Stellarium (a desktop planetarium). Keeps
+# observation lists and scripts in Documents and downloads star catalogues over
+# the network. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id granted nothing
+# at all. Network for the same reason as the KStars group beside it: the extra
+# catalogues are a fetch, and there is no way to ask for one later yet.
 [info]
 app_id = "org.stellarium.Stellarium"
 tier = "third-party"
+
+[filesystem]
+documents = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true
