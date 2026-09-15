@@ -1,5 +1,10 @@
-# Starting permission profile for a chat/IM/IRC/Matrix/XMPP client. Needs network
-# to message; saves attachments to Downloads. No Knowledge Graph access.
+# Starting permission profile for FluffyChat (a Matrix client). Talks to a
+# homeserver over the network, which is its function, and saves an attachment you
+# choose to Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id had no file
+# grant, which leaves "save attachment" with nowhere to put it. Downloads rather
+# than more, because sending a file the other way goes through the file portal.
 [info]
 app_id = "fluffychat"
 tier = "third-party"

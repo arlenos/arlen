@@ -1,8 +1,15 @@
-# Starting permission profile for Feeds (an RSS/Atom reader).
-# Fetches feeds over the network by function. No Knowledge Graph access.
+# Starting permission profile for GFeeds (an RSS reader). Fetches feeds over the
+# network, which is its function, and saves an article or enclosure you choose to
+# Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id had no file
+# grant, which leaves a reader unable to keep anything it fetched.
 [info]
 app_id = "org.gabmus.gfeeds"
 tier = "third-party"
+
+[filesystem]
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

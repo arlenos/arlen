@@ -1,6 +1,9 @@
-# Starting permission profile for FreeTube (a YouTube client).
-# Streams and downloads video over the network by function; saves to Downloads.
-# No Knowledge Graph access.
+# Starting permission profile for FreeTube (a privacy-minded YouTube client).
+# Fetches over the network, which is its function, and saves a video you download
+# to Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no file grant, and
+# downloading a video is a button the app ships.
 [info]
 app_id = "io.freetubeapp.FreeTube"
 tier = "third-party"
