@@ -12,8 +12,9 @@
 
 use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 
-use arlen_net_guard::{EgressAllowlist, EgressProxy};
+use arlen_net_guard::{EgressAllowlist, EgressDecision, EgressObserver, EgressProxy};
 use tokio_util::sync::CancellationToken;
 
 /// A handle whose `Drop` tears down an installed egress restriction. The real
@@ -104,7 +105,7 @@ impl Error for EgressError {}
 pub struct ProxyEgressEnforcer;
 
 impl EgressEnforcer for ProxyEgressEnforcer {
-    fn install(&self, hosts: &[String]) -> Result<EgressGuard, EgressError> {
+    fn install(&self, app_id: &str, hosts: &[String]) -> Result<EgressGuard, EgressError> {
         if hosts.is_empty() {
             return Ok(EgressGuard::noop());
         }
@@ -121,9 +122,33 @@ impl EgressEnforcer for ProxyEgressEnforcer {
         // Bind on host loopback (a dynamic port); the netns maps its gateway to
         // this loopback, so the app reaches it there.
         let bind = crate::netns::proxy_bind_addr(0);
+        // SAY WHAT WAS REFUSED, and name the app that asked. The proxy has carried
+        // an observer seam since it was written, its doc names the Connections
+        // daemon as the consumer, and nothing has ever attached one - so an app
+        // reaching a host outside its allowlist met a bare 403 and the refusal
+        // existed nowhere else. Every network profile in the catalogue carries a
+        // NETWORK-SCOPE-PENDING note saying the reason they all grant the whole
+        // network is that a narrowed one "has nowhere to send its refusal"; this
+        // is the first half of that, and it is also the raw material for
+        // narrowing them, because until now nobody could see which hosts an app
+        // actually wants.
+        //
+        // The launcher's own stderr, because that is where every other refusal
+        // in this binary goes and it is the journal of the launch. A ledger-
+        // backed observer is the Connections daemon's job when it exists.
+        let observed_app = app_id.to_string();
+        let observer: EgressObserver = Arc::new(move |host, port, decision| {
+            if matches!(decision, EgressDecision::NotAllowlisted) {
+                eprintln!(
+                    "arlen-run: {observed_app}: egress refused {host}:{port}, \
+                     not in the app's declared hosts"
+                );
+            }
+        });
         let proxy = runtime
             .block_on(EgressProxy::bind(bind, allowlist))
-            .map_err(|e| EgressError::Setup(e.to_string()))?;
+            .map_err(|e| EgressError::Setup(e.to_string()))?
+            .with_observer(observer);
         let port = proxy
             .listen_addr()
             .map_err(|e| EgressError::Setup(e.to_string()))?
@@ -142,9 +167,11 @@ impl EgressEnforcer for ProxyEgressEnforcer {
 /// at the single construction site in `main`; this trait keeps the launcher
 /// decoupled from that on-kernel machinery.
 pub trait EgressEnforcer {
-    /// Restrict the launch's egress to `hosts` (each `host:port`). Returns a
+    /// Restrict the launch's egress to `hosts` (each `host:port`). `app_id` names
+    /// the launch in the refusal the proxy reports, so a 403 has somebody's name
+    /// on it. Returns a
     /// guard whose `Drop` removes the restriction.
-    fn install(&self, hosts: &[String]) -> Result<EgressGuard, EgressError>;
+    fn install(&self, app_id: &str, hosts: &[String]) -> Result<EgressGuard, EgressError>;
 }
 
 /// The hosts a policy hands the enforcer, or `None` where no filter is installed.
@@ -174,7 +201,7 @@ mod tests {
         // it must return promptly (cancel stops serve, the runtime shuts down) -
         // if teardown hung, this test would never finish.
         let guard = ProxyEgressEnforcer
-            .install(&["example.org:443".to_string()])
+            .install("dev.probe", &["example.org:443".to_string()])
             .expect("bind the proxy for a valid allowlist");
         let port = guard.proxy_port().expect("a real guard exposes its proxy port");
         assert_ne!(port, 0, "the proxy bound a real dynamic port");
@@ -183,13 +210,49 @@ mod tests {
 
     #[test]
     fn proxy_enforcer_empty_hosts_restricts_nothing() {
-        let guard = ProxyEgressEnforcer.install(&[]).unwrap();
+        let guard = ProxyEgressEnforcer.install("dev.probe", &[]).unwrap();
         assert!(guard.proxy_port().is_none(), "an empty host set is a noop guard");
+    }
+
+    /// A refused host says so, with the name of the app that asked for it.
+    ///
+    /// The proxy has carried an observer seam since it was written and nothing
+    /// had ever attached one - it could not: `EgressDecision` and
+    /// `EgressObserver` were `pub` inside a private module, so `with_observer`
+    /// had no possible caller outside `net-guard` itself. Until this, an app
+    /// reaching a host outside its allowlist met a bare 403 and the refusal
+    /// existed nowhere else in the system.
+    #[test]
+    fn the_enforcer_names_the_app_and_the_host_it_refused() {
+        use arlen_net_guard::{EgressDecision, EgressObserver};
+        use std::sync::{Arc, Mutex};
+
+        // The observer contract itself, exercised the way the enforcer wires it:
+        // only a NotAllowlisted decision is reported, and the line carries both
+        // the app and the destination.
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        let app = "dev.probe".to_string();
+        let observer: EgressObserver = Arc::new(move |host: &str, port: u16, d: EgressDecision| {
+            if matches!(d, EgressDecision::NotAllowlisted) {
+                sink.lock().unwrap().push(format!("{app}: {host}:{port}"));
+            }
+        });
+
+        observer("allowed.invalid", 443, EgressDecision::Allowed);
+        observer("elsewhere.invalid", 443, EgressDecision::NotAllowlisted);
+
+        let lines = seen.lock().unwrap().clone();
+        assert_eq!(
+            lines,
+            vec!["dev.probe: elsewhere.invalid:443".to_string()],
+            "an allowed host is not a refusal, and a refusal names the app"
+        );
     }
 
     #[test]
     fn proxy_enforcer_refuses_a_malformed_allowlist_fail_closed() {
-        match ProxyEgressEnforcer.install(&["noport".to_string()]) {
+        match ProxyEgressEnforcer.install("dev.probe", &["noport".to_string()]) {
             Err(EgressError::Allowlist(_)) => {}
             other => panic!("expected a fail-closed Allowlist error, got {other:?}"),
         }

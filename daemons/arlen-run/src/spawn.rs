@@ -887,6 +887,12 @@ mod tests {
         );
     }
 
+    /// NB this had no `#[test]` and therefore had never run, in a module where
+    /// every neighbour carries one. Found on 15 September by a clippy
+    /// "function is never used" on a test function, which is the only way a
+    /// missing attribute announces itself: `cargo test` reports what it ran and
+    /// says nothing about what it did not.
+    #[test]
     fn bwrap_argv_appends_the_program_after_a_separator() {
         let conf = build_confinement(
             Path::new("/usr"),
@@ -1076,7 +1082,7 @@ mod tests {
         // The real forwarding proxy, allowlisting a host the probe will NOT ask
         // for. Held for the whole launch (its Drop stops the proxy).
         let guard = ProxyEgressEnforcer
-            .install(&["allowed.invalid:443".to_string()])
+            .install("dev.probe", &["allowed.invalid:443".to_string()])
             .expect("bind the egress proxy");
         let port = guard
             .proxy_port()
@@ -1139,7 +1145,7 @@ mod tests {
         // A live proxy for the launch (the netns needs its gateway peer); the
         // allowlist is irrelevant here - the probe never dials the proxy.
         let guard = ProxyEgressEnforcer
-            .install(&["allowed.invalid:443".to_string()])
+            .install("dev.probe", &["allowed.invalid:443".to_string()])
             .expect("bind the egress proxy");
         let _port = guard
             .proxy_port()

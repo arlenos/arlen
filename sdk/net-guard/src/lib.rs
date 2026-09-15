@@ -15,8 +15,16 @@ use std::net::{IpAddr, SocketAddr};
 use thiserror::Error;
 
 mod egress;
+// `EgressDecision` and `EgressObserver` are re-exported because without them the
+// observer seam cannot be attached from outside this crate at ALL: both types are
+// `pub` in the module, `EgressProxy::with_observer` takes one, and the module is
+// private - so `with_observer` had no possible caller but the crate's own tests.
+// Its doc names the Connections daemon as the consumer; the daemon could not have
+// attached one if it tried. Found on 15 September while wiring the launcher, which
+// is the only thing in the tree that binds this proxy.
 pub use egress::{
-    decide_egress, AllowedHost, AllowlistError, EgressAllowlist, EgressProxy, EgressVerdict,
+    decide_egress, AllowedHost, AllowlistError, EgressAllowlist, EgressDecision, EgressObserver,
+    EgressProxy, EgressVerdict,
 };
 
 mod rate;
