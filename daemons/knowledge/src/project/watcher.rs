@@ -332,23 +332,17 @@ impl ProjectWatcher {
                         }
                     }
                 }
-                EventKind::Modify(_) => {
-                    if filename == ".project" {
-                        if let Some(dir) = path.parent() {
-                            let root = dir.to_string_lossy().to_string();
-                            if let Some(project) =
-                                self.store.get_by_root_path(&root).await?
-                            {
-                                self.update_from_config(project, dir).await?;
-                            }
+                EventKind::Modify(_) if filename == ".project" => {
+                    if let Some(dir) = path.parent() {
+                        let root = dir.to_string_lossy().to_string();
+                        if let Some(project) = self.store.get_by_root_path(&root).await? {
+                            self.update_from_config(project, dir).await?;
                         }
                     }
                 }
-                EventKind::Remove(_) => {
-                    if filename == ".project" {
-                        if let Some(dir) = path.parent() {
-                            self.handle_project_file_deleted(dir).await?;
-                        }
+                EventKind::Remove(_) if filename == ".project" => {
+                    if let Some(dir) = path.parent() {
+                        self.handle_project_file_deleted(dir).await?;
                     }
                 }
                 _ => {}

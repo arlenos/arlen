@@ -81,11 +81,10 @@ impl SchemaValidator {
         }
 
         // Shared namespace restricted to first-party apps.
-        if ns == "shared" && !self.first_party_apps.contains(ns) {
-            if !self.first_party_apps.iter().any(|a| a == ns) {
+        if ns == "shared" && !self.first_party_apps.contains(ns)
+            && !self.first_party_apps.iter().any(|a| a == ns) {
                 return Err(ValidationError::SharedSchemaRestricted(ns.clone()));
             }
-        }
 
         for (entity_name, entity_def) in &schema.entities {
             // Check reserved entity names.

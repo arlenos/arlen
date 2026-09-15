@@ -1309,9 +1309,9 @@ pub fn empty_trash(trash_dir: &Dir) -> OpResult<usize> {
 /// `trashed_name` is untrusted: it is validated as a single path component
 /// ([`validate_name`]) so it cannot address anything outside `files/` + `info/`
 /// (cap-std also refuses traversal at the syscall; this is the explicit
-/// fail-closed guard + a clear error). An already-absent payload is not an error
-/// - the matching `info/` record is still cleared so an orphan info cannot
-/// linger, and a repeated delete is a harmless no-op.
+/// fail-closed guard + a clear error). An already-absent payload is not an
+/// error - the matching `info/` record is still cleared so an orphan info
+/// cannot linger, and a repeated delete is a harmless no-op.
 pub fn delete_trashed_item(trash_dir: &Dir, trashed_name: &str) -> OpResult<()> {
     validate_name(trashed_name)?;
     let files_rel = Path::new("files").join(trashed_name);

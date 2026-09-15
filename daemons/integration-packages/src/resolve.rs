@@ -72,8 +72,9 @@ pub fn confined_root(raw_source_path: &str, home: &Path) -> Result<(Dir, String)
 
 /// Narrow an allowlist root to the deepest glob-free leading prefix of `relative`,
 /// returning the narrowed root and the glob relative to it. `~/.mozilla` +
-/// `firefox/*/prefs.js` narrows to `~/.mozilla/firefox` + `*/prefs.js`; `~/.config`
-/// + `app/settings.ini` narrows to `~/.config/app` + `settings.ini`. A leading
+/// `firefox/*/prefs.js` narrows to `~/.mozilla/firefox` + `*/prefs.js`;
+/// `~/.config` + `app/settings.ini` narrows to `~/.config/app` +
+/// `settings.ini`. A leading
 /// glob (`*/x`) or a file directly at the allowlist root cannot be narrowed and
 /// returns the root unchanged.
 fn narrow_to_fixed_prefix(allow_root: &Path, relative: &str) -> (PathBuf, String) {

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 /// Root configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct Config {
     pub general: GeneralConfig,
     pub dnd: DndConfig,
@@ -25,18 +26,6 @@ pub struct Config {
     pub apps: HashMap<String, AppOverride>,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            dnd: DndConfig::default(),
-            history: HistoryConfig::default(),
-            grouping: GroupingConfig::default(),
-            sound: SoundConfig::default(),
-            apps: HashMap::new(),
-        }
-    }
-}
 
 /// System-sound configuration (`sound-system-plan.md`). The daemon plays every cue
 /// centrally, so the global mute, the master volume and the active sound theme live
@@ -142,8 +131,10 @@ impl Default for DndConfig {
 /// `"on"` value is accepted as an alias for `Priority`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum DndMode {
     /// DND off. All notifications pass.
+    #[default]
     Off,
     /// Only critical-urgency notifications pass through (plus always_allow).
     #[serde(alias = "on")]
@@ -157,11 +148,6 @@ pub enum DndMode {
     Scheduled,
 }
 
-impl Default for DndMode {
-    fn default() -> Self {
-        Self::Off
-    }
-}
 
 /// Time schedule for DND.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,17 +175,14 @@ fn default_schedule_mode() -> ScheduleMode {
 /// scheduled window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ScheduleMode {
+    #[default]
     Priority,
     Alarms,
     Total,
 }
 
-impl Default for ScheduleMode {
-    fn default() -> Self {
-        Self::Priority
-    }
-}
 
 impl Default for DndSchedule {
     fn default() -> Self {

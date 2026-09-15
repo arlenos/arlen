@@ -16,6 +16,12 @@ pub struct MigrationRunner {
     batch_size: usize,
 }
 
+impl Default for MigrationRunner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MigrationRunner {
     pub fn new() -> Self {
         Self { batch_size: 1000 }

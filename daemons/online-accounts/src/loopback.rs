@@ -232,7 +232,6 @@ fn write_response<W: Write>(writer: &mut W, body: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
     use std::net::TcpStream;
 
     #[test]

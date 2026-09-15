@@ -985,8 +985,9 @@ mod tests {
     ///
     /// The engine id is no longer written into `autonomous_apps`, so under the
     /// executor-live lift an ordinary action resolves to whatever the person
-    /// picked - a proposal under Suggest, a preview they confirm under Supervised
-    /// - and never to a silent Proceed. That was the ruling: a daemon appending
+    /// picked - a proposal under Suggest, a preview they confirm under
+    /// Supervised - and never to a silent Proceed. That was the ruling: a daemon
+    /// appending
     /// its own id to the user's autonomy list is the system overruling a decision
     /// already made.
     #[test]

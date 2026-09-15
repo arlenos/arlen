@@ -225,7 +225,7 @@ immutable = true
 
     #[test]
     fn test_update_all_scope_skips_owner_check() {
-        let (reg, _, existing_other) = setup();
+        let (reg, _, _existing_other) = setup();
         let token = CapabilityToken::new(
             "com.test".into(),
             1234,

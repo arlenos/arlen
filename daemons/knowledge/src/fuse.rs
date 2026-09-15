@@ -60,7 +60,7 @@ pub(crate) fn longest_common_dir(paths: &[&str]) -> String {
 /// Return the last N path components joined by '/'.
 fn last_n_components(path: &str, n: usize) -> String {
     let components: Vec<&str> = path.trim_end_matches('/').rsplit('/').take(n).collect();
-    let mut result: Vec<&str> = components.into_iter().rev().collect();
+    let result: Vec<&str> = components.into_iter().rev().collect();
     result.join("/")
 }
 
@@ -647,7 +647,7 @@ impl Filesystem for TimelineFs {
         };
 
         for (i, (entry_ino, kind, name)) in entries.iter().enumerate().skip(offset as usize) {
-            if reply.add(*entry_ino, (i + 1) as u64, *kind, &name) {
+            if reply.add(*entry_ino, (i + 1) as u64, *kind, name) {
                 break;
             }
         }
