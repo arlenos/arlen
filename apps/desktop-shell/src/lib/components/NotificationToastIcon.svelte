@@ -8,18 +8,28 @@
   /// caller in `notifications.ts::fireToast` wraps this component in a
   /// closure that bakes `iconUrl` and `appName` in as pre-bound props.
 
+  import { AppIcon, type AppId } from "@arlen/ui-kit/components/ui/app-icon";
+
   let {
     iconUrl = "",
     appName = "",
+    appId = null,
   }: {
     iconUrl?: string;
     appName?: string;
+    /// One of OUR apps, when the notification came from one. It draws the kit's
+    /// icon in its `notify` state - the one-off rock the component owns - instead
+    /// of the raster the daemon resolved. Null for every other app, and the
+    /// `<img>` and letter fallbacks below carry those exactly as before.
+    appId?: AppId | null;
   } = $props();
 
   const letter = $derived(appName ? appName.charAt(0).toUpperCase() : "?");
 </script>
 
-{#if iconUrl}
+{#if appId}
+  <AppIcon app={appId} state="notify" size={26} />
+{:else if iconUrl}
   <img src={iconUrl} alt="" class="toast-icon-img" />
 {:else}
   <span class="toast-icon-letter" aria-hidden="true">{letter}</span>

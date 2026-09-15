@@ -7,9 +7,12 @@
   /// row anatomy all thirteen groups used to hand-roll.
   import type { Snippet } from "svelte";
   import { AppWindow, Skull } from "lucide-svelte";
+  import { AppIcon, type AppId, type AppIconState } from "@arlen/ui-kit/components/ui/app-icon";
 
   let {
     icon,
+    appId = null,
+    appState = "rest",
     iconUrl = null,
     fallbackIcon,
     badge,
@@ -21,6 +24,17 @@
   }: {
     /// Plain lucide leading icon (16px register).
     icon?: typeof AppWindow;
+    /// One of OUR apps, by the id its desktop entry names it with. Set, the row
+    /// draws the kit's app icon - the same plate and glyph the launcher tile and
+    /// the taskbar use - instead of the raster the freedesktop lookup found. Null
+    /// for everything else, and `iconUrl` then carries the row as before: this is
+    /// an addition for our own apps, not a replacement for the icon theme.
+    appId?: AppId | null;
+    /// The state the icon draws in, which the HOST decides because only it knows
+    /// which row the selection is on. A palette moves a selection with the arrow
+    /// keys rather than a pointer, so "hover" here means highlighted, whatever
+    /// moved the highlight.
+    appState?: AppIconState;
     /// App icon image (20px register). Rows that may carry one pass
     /// `fallbackIcon` for the muted stand-in when the url is null.
     iconUrl?: string | null;
@@ -44,6 +58,23 @@
 
 {#if glyph != null}
   <span class="wp-unicode-char">{glyph}</span>
+{:else if appId}
+  <!-- Before the badge branch on purpose: a window row for one of our apps still
+       wants the marker over the plate, so the wrap is shared. -->
+  {#if badge}
+    <span class="wp-win-icon-wrap">
+      <AppIcon app={appId} state={appState} size={20} />
+      <span class="wp-win-badge" class:wp-kill-badge={badge === "kill"}>
+        {#if badge === "kill"}
+          <Skull size={8} strokeWidth={2} />
+        {:else}
+          <AppWindow size={8} strokeWidth={2} />
+        {/if}
+      </span>
+    </span>
+  {:else}
+    <AppIcon app={appId} state={appState} size={20} />
+  {/if}
 {:else if iconUrl}
   {#if badge}
     <span class="wp-win-icon-wrap">
