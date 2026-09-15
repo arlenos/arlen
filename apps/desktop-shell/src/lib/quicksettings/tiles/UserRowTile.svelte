@@ -235,8 +235,13 @@
   .user-power button.danger {
     color: var(--color-error);
   }
+  /* Hovered, the label is on a wash of its own colour and the plain red stops
+     clearing the floor - so the hover state takes the kit's shared recipe for
+     that case (`--destructive-on-tint`, lib/motion.css) rather than keeping a
+     colour that only works off the tint. */
   .user-power button.danger:hover {
     background: color-mix(in srgb, var(--color-error) 15%, transparent);
+    color: var(--destructive-on-tint);
   }
   .user-sep {
     height: 1px;
