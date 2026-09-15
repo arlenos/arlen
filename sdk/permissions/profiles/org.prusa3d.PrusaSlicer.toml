@@ -1,8 +1,9 @@
-# Starting permission profile for PrusaSlicer (a 3D-printing slicer).
-# Its function is local: read 3D models (STL/3MF/OBJ) and write G-code, so it
-# gets Documents and Downloads (where models are commonly saved) and no network.
-# Printer upload (OctoPrint/PrusaConnect) and update checks are opt-in, refined
-# by observe-mode rather than a blanket grant here. No Knowledge Graph access.
+# Starting permission profile for PrusaSlicer (a 3D-print slicer). Models and
+# G-code live in Documents, and a model arrives as a download at least as often;
+# no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the com.* id had Documents alone,
+# and an STL you just downloaded is the ordinary way a print starts.
 [info]
 app_id = "org.prusa3d.PrusaSlicer"
 tier = "third-party"

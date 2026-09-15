@@ -1,5 +1,10 @@
-# Starting permission profile for an HTTP/API client. Makes network requests;
-# stores collections in Documents. No Knowledge Graph access.
+# Starting permission profile for Postman (an HTTP/API client). Making requests
+# is its function, and it keeps collections and exports in Documents. No
+# Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id had no file
+# grant, so a collection could be neither imported nor exported. Same repair as
+# the Insomnia group.
 [info]
 app_id = "postman"
 tier = "third-party"

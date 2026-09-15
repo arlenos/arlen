@@ -1,5 +1,9 @@
-# Starting permission profile for a chat client. Needs network to message; saves
-# file transfers to Downloads. No Knowledge Graph access.
+# Starting permission profile for Pidgin (a multi-protocol chat client). Talks to
+# chat servers over the network, which is its function, and saves a transferred
+# file to Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id had no file
+# grant, so a file somebody sent had nowhere to land.
 [info]
 app_id = "pidgin"
 tier = "third-party"

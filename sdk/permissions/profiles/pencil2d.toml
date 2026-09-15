@@ -1,8 +1,13 @@
-# Starting permission profile for a photo-management, painting or animation app.
-# Works with Pictures; no network and no Knowledge Graph.
+# Starting permission profile for Pencil2D (a 2D animation tool). Projects live
+# in Documents and it imports and exports frames through Pictures; no network and
+# no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had Pictures alone, so
+# a project file had nowhere to be saved.
 [info]
 app_id = "pencil2d"
 tier = "third-party"
 
 [filesystem]
+documents = true
 pictures = true

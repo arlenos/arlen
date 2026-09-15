@@ -3,11 +3,6 @@
 # decide what the app should get, make every id say it, drop the row.
 #
 # app	the ids that disagree
-pencil2d	org.pencil2d.Pencil2D pencil2d
-pidgin	im.pidgin.Pidgin pidgin
-podcasts	gnome-podcasts org.gnome.Podcasts
-postman	com.getpostman.Postman postman
-prusaslicer	com.prusa3d.PrusaSlicer org.prusa3d.PrusaSlicer
 pycharm-community	com.jetbrains.PyCharm-Community pycharm-community
 rider	com.jetbrains.Rider rider
 rpcs3	net.rpcs3.RPCS3 rpcs3

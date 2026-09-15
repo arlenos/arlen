@@ -1,11 +1,16 @@
-# Starting permission profile for a download/podcast manager. Needs network to
-# fetch; saves to Downloads. No Knowledge Graph access.
+# Starting permission profile for GNOME Podcasts (a podcast player). Fetches
+# feeds and episodes over the network, which is its function, and keeps a
+# downloaded episode in Music. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep), and each had a different idea of
+# where an episode goes. Music, because a downloaded episode is audio the user
+# keeps and plays, not a file they fetched once.
 [info]
 app_id = "gnome-podcasts"
 tier = "third-party"
 
 [filesystem]
-downloads = true
+music = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
