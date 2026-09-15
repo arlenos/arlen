@@ -1,7 +1,15 @@
-# Starting permission profile for KStars (a planetarium). Downloads star catalogs and imagery over the network (its function).
+# Starting permission profile for KStars (a desktop planetarium). Downloads star
+# catalogues and imagery over the network, which is how it fills its sky, and
+# keeps observation lists in Documents. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing at all,
+# so it could neither fetch a catalogue nor save an observing list.
 [info]
 app_id = "org.kde.kstars"
 tier = "third-party"
+
+[filesystem]
+documents = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

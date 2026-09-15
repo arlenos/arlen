@@ -1,5 +1,9 @@
-# Starting permission profile for a music-creation app (DAW or notation). Works
-# with Music (audio) and Documents (projects); no network and no Knowledge Graph.
+# Starting permission profile for LMMS (a music production studio). Projects and
+# exports live in Music, samples and imports in Documents; no network and no
+# Knowledge Graph.
+#
+# ONE ANSWER FOR ALL THREE PACKAGING IDS (15 Sep): one had Music alone, which
+# leaves a sample or an imported project outside the studio's reach.
 [info]
 app_id = "lmms"
 tier = "third-party"
