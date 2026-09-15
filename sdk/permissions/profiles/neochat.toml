@@ -1,9 +1,15 @@
-# Starting permission profile for NeoChat (a Matrix chat client). Talks to Matrix
-# homeservers over the network; no local file access and no Knowledge Graph by
-# default.
+# Starting permission profile for NeoChat (a Matrix client). Talks to a
+# homeserver over the network, which is its function, and saves an attachment you
+# choose to Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no file grant, the
+# same gap the FluffyChat group had - "save attachment" with nowhere to put it.
 [info]
 app_id = "neochat"
 tier = "third-party"
+
+[filesystem]
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

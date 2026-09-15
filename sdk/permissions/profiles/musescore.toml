@@ -1,9 +1,12 @@
-# Starting permission profile for a music-creation app (DAW or notation). Works
-# with Music (audio) and Documents (projects); no network and no Knowledge Graph.
+# Starting permission profile for MuseScore (a score writer). Scores live in
+# Documents and it exports audio to Music; no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id had Documents
+# alone, so an exported MP3 had nowhere to go.
 [info]
 app_id = "musescore"
 tier = "third-party"
 
 [filesystem]
-music = true
 documents = true
+music = true
