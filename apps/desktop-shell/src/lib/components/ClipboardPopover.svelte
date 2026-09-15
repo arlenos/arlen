@@ -35,6 +35,13 @@
 
   let query = $state("");
   let confirmClear = $state(false);
+  // The value bits-ui reports for the row under the selection. Deleting one entry
+  // used to be a button INSIDE the row, which a listbox forbids (an `option` may
+  // not contain a control) and which the keyboard could never reach: focus stays
+  // in the search field and the arrow keys move the selection, so Tab never landed
+  // on it. The action now sits in the footer beside Clear all, where Tab reaches it
+  // and where the thing it acts on is named.
+  let highlighted = $state("");
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
 
   const open = $derived($activePopover === "clipboard");
@@ -112,6 +119,15 @@
   function extraLines(s: string): number {
     return s.split("\n").length - 1;
   }
+
+  // The row's own id is its value, so the selection names an ENTRY rather than a
+  // piece of text: two copies of the same string are two rows, and a value that was
+  // the text could not tell them apart - neither for deleting nor, before this, for
+  // highlighting at all. The searchable text moves to `keywords`, which the
+  // filter scores the same way.
+  const highlightedEntry = $derived<ClipboardPanelEntry | null>(
+    $clipEntries?.find((e) => `clip-${e.id}` === highlighted) ?? null,
+  );
 </script>
 
 <ShellPopover id="clipboard" label={$t("sh.clip.title")} width={400} right={16} bodyPadding="0px" bodyGap="0px">
@@ -134,12 +150,16 @@
     {#if $clipCopyFailed}
       <p class="clip-sample" role="alert">{$t("sh.clip.copyFailed")}</p>
     {/if}
-    <Command>
+    <Command bind:value={highlighted}>
       <CommandInput placeholder={$t("sh.clip.search")} autofocus bind:value={query} />
       <CommandList class="clip-list">
         <CommandEmpty>{$t("sh.clip.noMatches")}</CommandEmpty>
         {#each $clipEntries as e (e.id)}
-          <CommandItem value={`${e.content} ${appOf(e)}`} onSelect={() => void pick(e)}>
+          <CommandItem
+            value={`clip-${e.id}`}
+            keywords={[e.content, appOf(e)]}
+            onSelect={() => void pick(e)}
+          >
             <span class="clip-row">
               <span class="clip-text">
                 <span class="clip-snippet">{firstLine(e.content)}</span>
@@ -153,23 +173,24 @@
                   <span>{ago(e.timestampMs)}</span>
                 </span>
               </span>
-              <button
-                type="button"
-                class="clip-delete"
-                aria-label={$t("sh.clip.deleteAria")}
-                onclick={(ev) => {
-                  ev.stopPropagation();
-                  void deletePanelEntry(e.id);
-                }}
-              >
-                <X size={13} strokeWidth={2} />
-              </button>
             </span>
           </CommandItem>
         {/each}
       </CommandList>
     </Command>
     <div class="clip-foot">
+      {#if highlightedEntry}
+        <button
+          type="button"
+          class="clip-delete"
+          aria-label={$t("sh.clip.deleteAria")}
+          onmousedown={(ev) => ev.preventDefault()}
+          onclick={() => void deletePanelEntry(highlightedEntry.id)}
+        >
+          <X size={12} strokeWidth={2} />
+          <span>{$t("sh.clip.deleteSelected")}</span>
+        </button>
+      {/if}
       <button type="button" class="clip-clear" class:arm={confirmClear} onclick={onClear}>
         {confirmClear ? $t("sh.clip.clearConfirm") : $t("sh.clip.clearAll")}
       </button>
@@ -228,23 +249,27 @@
     display: flex;
     gap: 8px;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-shell) 42%, transparent);
+    /* 55, and the number is the SELECTED row's, not the card's. The meta sits on
+       two grounds - the card at #171717 and the highlighted row at #2e2e2e - and
+       the brighter one is the harder floor: 42% read #848484 there for 3.62, and
+       even 50% only reaches 4.48. 55% clears both (5.90 on the card, 5.08 under
+       the selection) and still sits well behind the snippet at full foreground. */
+    color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
   }
+  /* It sits at the START of the footer, before Clear all, so the destructive pair
+     reads narrowest-first: this one removes the row named by the selection, the
+     other removes everything. */
   .clip-delete {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-    border: none;
-    border-radius: var(--radius-chip, 4px);
-    background: transparent;
-    color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
-  }
-  :global([data-selected]) .clip-delete,
-  .clip-row:hover .clip-delete {
     display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-inline-end: auto;
+    border: none;
+    background: transparent;
+    padding: 3px 8px;
+    border-radius: var(--radius-chip, 4px);
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
   }
   .clip-delete:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
@@ -253,6 +278,7 @@
 
   .clip-foot {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     padding: 6px 8px;
     border-top: 1px solid color-mix(in srgb, var(--color-fg-shell) 10%, transparent);

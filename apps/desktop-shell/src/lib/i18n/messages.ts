@@ -521,6 +521,7 @@ const messages: Catalogs = {
     "sh.wp.errRun": "That could not be run.",
     "sh.wp.searchRefused": "The search did not answer. There may be matches it could not reach.",
     "sh.wp.removeFromHistory": "Remove from history",
+    "sh.wp.clipEnter": "Enter copies it back",
     "sh.wp.clearClipboard": "Clear clipboard history",
     "sh.wp.clearClipboardDesc": "Removes the entire history",
     "sh.wp.killEnter": "Enter quits the app",
@@ -594,6 +595,7 @@ const messages: Catalogs = {
     "sh.clip.noMatches": "No entries match",
     "sh.clip.moreLines": "{$n} more lines",
     "sh.clip.deleteAria": "Delete this entry",
+    "sh.clip.deleteSelected": "Delete entry",
     "sh.clip.clearAll": "Clear all",
     "sh.clip.clearConfirm": "Click again to clear",
 
@@ -1232,6 +1234,7 @@ const messages: Catalogs = {
     "sh.wp.errRun": "Das ließ sich nicht ausführen.",
     "sh.wp.searchRefused": "Die Suche hat nicht geantwortet. Es kann Treffer geben, die sie nicht erreicht hat.",
     "sh.wp.removeFromHistory": "Aus dem Verlauf entfernen",
+    "sh.wp.clipEnter": "Enter kopiert ihn zurück",
     "sh.wp.clearClipboard": "Zwischenablageverlauf leeren",
     "sh.wp.clearClipboardDesc": "Entfernt den gesamten Verlauf",
     "sh.wp.killEnter": "Enter beendet die App",
@@ -1297,6 +1300,7 @@ const messages: Catalogs = {
     "sh.clip.noMatches": "Keine passenden Einträge",
     "sh.clip.moreLines": "{$n} weitere Zeilen",
     "sh.clip.deleteAria": "Diesen Eintrag löschen",
+    "sh.clip.deleteSelected": "Eintrag löschen",
     "sh.clip.clearAll": "Alle löschen",
     "sh.clip.clearConfirm": "Zum Löschen erneut klicken",
 
