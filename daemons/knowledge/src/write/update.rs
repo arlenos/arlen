@@ -42,7 +42,7 @@ pub struct UpdateResult {
 }
 
 /// Execute an update operation: validates, checks scopes/ownership/version,
-/// injects _version and _modified_at.
+/// injects _version and _`modified_at`.
 pub fn update_entity(
     registry: &SchemaRegistry,
     entity_type: &str,

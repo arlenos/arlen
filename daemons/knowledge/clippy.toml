@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Tim Kicker
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Words `clippy::doc_markdown` must NOT ask for backticks around.
+#
+# The lint flags any CamelCase word in a doc comment, and it cannot tell a
+# product from a symbol. Without this list its own `--fix` rewrites this crate's
+# prose into things like "Integrity checks for `SQLite` and graph data" - and code
+# font says "this is a symbol you could type", which SQLite is not. Measured on
+# 16 September: 181 findings, of which 133 were product names.
+#
+# With the list, every remaining finding is a real identifier - `app_id`,
+# `FILE_PART_OF`, `root_path`, `RowSet`, `write_batch` - and those belong in code
+# font. That is what made the lint worth turning on.
+#
+# ADD A WORD HERE when it is a name from outside this codebase that a reader
+# cannot type into it.
+doc-valid-idents = [
+    "ALTERed",
+    "AppStream",
+    "GiB",
+    "KiB",
+    "MiB",
+    "TiB",
+    "BlueZ",
+    "Btrfs",
+    "D-Bus",
+    "DBus",
+    "DoS",
+    "Flatpak",
+    "GitHub",
+    "JavaScript",
+    "Kuzu",
+    "LadybugDB",
+    "Ladybug",
+    "MetaInfo",
+    "NetworkManager",
+    "OAuth",
+    "PageRank",
+    "PipeWire",
+    "SQLite",
+    "SO_PEERCRED",
+    "SO_PEERPIDFD",
+    "Snapper",
+    "SvelteKit",
+    "TypeScript",
+    "WebKit",
+]

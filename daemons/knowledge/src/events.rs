@@ -73,7 +73,7 @@ pub async fn recv_event(stream: &mut UnixStream) -> Option<GraphEvent> {
     parse_event(&event)
 }
 
-/// Map a raw Event Bus event to a GraphEvent.
+/// Map a raw Event Bus event to a `GraphEvent`.
 fn parse_event(event: &Event) -> Option<GraphEvent> {
     let event_type = event.r#type.as_str();
 
@@ -104,9 +104,9 @@ fn parse_event(event: &Event) -> Option<GraphEvent> {
     None
 }
 
-/// Try to extract an app_id from an event payload.
-/// The payload may be a protobuf PermissionChangedPayload or
-/// SchemaRegisteredPayload, both of which have app_id as field 1.
+/// Try to extract an `app_id` from an event payload.
+/// The payload may be a protobuf `PermissionChangedPayload` or
+/// `SchemaRegisteredPayload`, both of which have `app_id` as field 1.
 fn extract_app_id_from_payload(payload: &[u8]) -> Option<String> {
     // Both PermissionChangedPayload and SchemaRegisteredPayload have
     // app_id as field 1 (string). We can try a lightweight decode:

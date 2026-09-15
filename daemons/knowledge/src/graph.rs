@@ -27,7 +27,7 @@ use std::thread;
 use tokio::sync::mpsc;
 use tracing::{debug, info};
 
-/// A cell value extracted from a Ladybug QueryResult, safe to send
+/// A cell value extracted from a Ladybug `QueryResult`, safe to send
 /// across threads.
 #[derive(Debug, Clone)]
 pub enum CellValue {
@@ -596,7 +596,7 @@ fn run_transaction(conn: &Connection, statements: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Convert a Ladybug Value to a thread-safe CellValue.
+/// Convert a Ladybug Value to a thread-safe `CellValue`.
 fn value_to_cell(v: Value) -> CellValue {
     match v {
         Value::String(s) => CellValue::String(s),
@@ -1792,7 +1792,7 @@ mod tests {
     /// the append-a-reopen in `persist_retract` cannot be the clean single
     /// statement that closes the retracted edge AND, only-if-it-superseded-one,
     /// conditionally appends a fresh reopen edge (the parser rejects `FOREACH`
-    /// after an `OPTIONAL MATCH` with "expected oC_MultiPartQuery"). This pins
+    /// after an `OPTIONAL MATCH` with "expected `oC_MultiPartQuery`"). This pins
     /// that constraint: it forces the GD-R4 design onto a transaction / a
     /// restructured statement rather than a conditional `FOREACH ... CREATE`, and
     /// canaries a future Kuzu that gains `FOREACH` (then the clean atomic form,

@@ -13,7 +13,7 @@ use crate::token::{EntityScope, InstanceScope, RelationScope};
 // Scope entry parsing
 // ---------------------------------------------------------------------------
 
-/// Parse a list of scope strings into EntityScope structs.
+/// Parse a list of scope strings into `EntityScope` structs.
 ///
 /// An entry with 3 segments (`"system.File.path"`) is a field-level grant.
 /// An entry with 2 segments (`"system.Session"`) grants all fields.
@@ -614,7 +614,7 @@ mod ceiling_determinism {
     /// field-level one for the SAME type. `parse_scope_entries` removes the
     /// field-level entry when a full grant covers it, so only one scope carries
     /// that type - which is what keeps `sort_by(entity_type)` a total order
-    /// rather than one with ties resolved by whatever the HashMap yielded.
+    /// rather than one with ties resolved by whatever the `HashMap` yielded.
     #[test]
     fn a_full_grant_and_a_field_grant_for_one_type_collapse_to_one_scope() {
         let s = ceiling_of(&["system.File.path", "system.File", "system.Project"]);

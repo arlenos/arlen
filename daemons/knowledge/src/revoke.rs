@@ -100,7 +100,7 @@ pub struct ScopeSummary {
     pub notifications_on: bool,
     /// The enabled `[input]` capabilities (focused/global keybinding registration).
     pub input_caps: BTreeSet<String>,
-    /// The enabled `[search]` capabilities (open/register_handler/intercept_all).
+    /// The enabled `[search]` capabilities (`open/register_handler/intercept_all`).
     pub search_caps: BTreeSet<String>,
     /// The enabled `[intents]` capabilities (dispatch/register/preferences).
     pub intents_caps: BTreeSet<String>,
@@ -113,7 +113,7 @@ pub struct ScopeSummary {
     /// The `[event_bus].publish` patterns.
     pub event_bus_publish: BTreeSet<String>,
     /// The enabled `[system]` capabilities (autostart/background + the nested
-    /// `[system.power]` suspend/set_profile), flattened into one set.
+    /// `[system.power]` `suspend/set_profile`), flattened into one set.
     pub system_caps: BTreeSet<String>,
 }
 

@@ -37,7 +37,7 @@ pub enum CreateError {
     #[error("a relation endpoint id is empty")]
     EmptyEndpointId,
     /// A retract was requested without an operation id. A retract is only ever a
-    /// precise, op-id-keyed undo of the caller's own write; an empty op_id would
+    /// precise, op-id-keyed undo of the caller's own write; an empty `op_id` would
     /// degenerate into deleting a bare edge, which is never authorised.
     #[error("a relation retract has an empty op_id")]
     EmptyOpId,
@@ -51,7 +51,7 @@ pub enum CreateError {
         to: String,
         relation_type: String,
     },
-    /// The (from, to, relation_type) triple is not a declared relation, so a
+    /// The (from, to, `relation_type`) triple is not a declared relation, so a
     /// scope (even a matching one) must not create an undeclared edge.
     #[error("undeclared relation {from}-[{relation_type}]->{to}")]
     UndeclaredRelation {
@@ -198,9 +198,9 @@ pub fn create_relation(
 /// with one added, load-bearing constraint: a retract is **always keyed by a
 /// non-empty `op_id`**. The persistence layer MUST delete only an edge whose
 /// `op_id` property equals this value, so a caller can compensate only the
-/// precise edge *it* wrote (its own op_id is on that edge) and never a bare
+/// precise edge *it* wrote (its own `op_id` is on that edge) and never a bare
 /// edge it did not create, another component's edge, or an untracked edge from
-/// the promotion pipeline (which carries no op_id). That scoping is what makes
+/// the promotion pipeline (which carries no `op_id`). That scoping is what makes
 /// the create grant sufficient to authorise the matching undo without widening
 /// it into a general delete capability.
 ///
@@ -343,7 +343,7 @@ mod tests {
     use crate::schema::SchemaRegistry;
     use crate::token::{CapabilityToken, EntityScope, InstanceScope, RelationScope};
 
-    /// A token that grants exactly the File -> Project FILE_PART_OF relation.
+    /// A token that grants exactly the File -> Project `FILE_PART_OF` relation.
     fn relation_token() -> CapabilityToken {
         CapabilityToken::new(
             "org.arlen.agent".into(),

@@ -22,13 +22,16 @@ use std::time::Duration;
 // Include generated protobuf types.
 // We build the proto in knowledge's build.rs so we can use them here too.
 mod proto {
-    // Generated: the whole envelope is here, this test emits one message of it.
+    // Generated: the whole envelope is here, this test emits one message of it,
+    // and the doc comments are the `.proto`'s own prose rather than anything a
+    // Rust file could be edited to fix.
     #![allow(dead_code)]
+    #![allow(clippy::doc_markdown)]
     include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
 /// Locate a binary in the Cargo target directory.
-/// Cargo sets CARGO_MANIFEST_DIR to the knowledge crate root.
+/// Cargo sets `CARGO_MANIFEST_DIR` to the knowledge crate root.
 /// The event-bus binary is in the sibling repo's target dir.
 /// A sibling daemon binary, resolved beside this test binary.
 ///

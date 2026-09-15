@@ -63,7 +63,7 @@ impl ProjectWatcher {
 
     /// Recursively scan a directory up to `max_depth`.
     ///
-    /// Belt-and-braces error handling: every failure mode (read_dir
+    /// Belt-and-braces error handling: every failure mode (`read_dir`
     /// EACCES, detection I/O, per-project registration, recursion
     /// into an unreadable subdir) is caught and logged. A single
     /// broken subdir cannot terminate the scan of its siblings —

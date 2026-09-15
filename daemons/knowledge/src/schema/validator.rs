@@ -174,7 +174,7 @@ impl SchemaValidator {
     }
 }
 
-/// Check if a name follows PascalCase (starts uppercase, no underscores).
+/// Check if a name follows `PascalCase` (starts uppercase, no underscores).
 fn is_pascal_case(s: &str) -> bool {
     !s.is_empty()
         && s.chars().next().unwrap().is_uppercase()
@@ -182,7 +182,7 @@ fn is_pascal_case(s: &str) -> bool {
         && s.chars().all(|c| c.is_alphanumeric())
 }
 
-/// Check if a name follows snake_case (all lowercase, underscores allowed).
+/// Check if a name follows `snake_case` (all lowercase, underscores allowed).
 fn is_snake_case(s: &str) -> bool {
     !s.is_empty()
         && s.chars()

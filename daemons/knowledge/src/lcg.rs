@@ -157,7 +157,7 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
 /// recipient + class + scope), so re-consenting the same scope strengthens the
 /// existing node rather than duplicating. Born live, `source = "consent"`,
 /// carrying the class + concrete scope; the token-shaped fields (pid / expiry /
-/// declared_ceiling) are null/0, `issued_at` is the consent time. A `USED_BY`
+/// `declared_ceiling`) are null/0, `issued_at` is the consent time. A `USED_BY`
 /// edge ties it to its App so the read joins it like any grant. Unlike a
 /// capability mint there is NO superseding (a user may hold several distinct
 /// consent grants for one app at different scopes), and a re-consent RE-ACTIVATES
@@ -327,7 +327,7 @@ pub async fn emit_declared_network_grant(
 /// App-access page shows + revokes the app's full reach across the capability
 /// families (living-capability-graph.md §11b, generalized from network-first). Graph
 /// is projected separately by [`emit_grant_node`] (the token-based capability grant);
-/// this covers the profile-declared dimensions (network, event_bus, filesystem,
+/// this covers the profile-declared dimensions (network, `event_bus`, filesystem,
 /// notifications, clipboard, system, input, search, intents, mcp). Each dimension
 /// whose [`reach_summary`] is `Some` becomes a grant keyed `<dim>:<app>`, revoke-
 /// preserving on re-emit. Returns the first transaction error.

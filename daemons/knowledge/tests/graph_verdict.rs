@@ -5,7 +5,7 @@
 //! Controls for `arlen-graph-verdict`.
 //!
 //! The case that earns this check is the second one: a File node present and no
-//! FILE_PART_OF edge. That is precisely the boot the current assertion cannot
+//! `FILE_PART_OF` edge. That is precisely the boot the current assertion cannot
 //! tell from a good one, because the dogfood prints `DOGFOOD WRITE ok` on the
 //! AGENT's word that it wrote and `ai_verdict` greps for that line. Here the
 //! store is asked instead, and it disagrees.

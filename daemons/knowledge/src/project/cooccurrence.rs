@@ -228,7 +228,7 @@ pub struct MaterializeStats {
     pub created: usize,
     /// Clusters skipped (no usable root, or a project already exists there).
     pub skipped: usize,
-    /// FILE_PART_OF edges created (idempotent, so a re-run adds none).
+    /// `FILE_PART_OF` edges created (idempotent, so a re-run adds none).
     pub linked: usize,
 }
 
@@ -270,7 +270,7 @@ fn is_under_home(root: &str, home: &str) -> bool {
 /// If a project already exists at that root - a signal-detected one the watcher
 /// minted, or one a prior pass created - the cluster is skipped, so this never
 /// clobbers an existing project and a re-run is idempotent. Otherwise it mints a
-/// low-confidence inferred project and links each cluster file via FILE_PART_OF
+/// low-confidence inferred project and links each cluster file via `FILE_PART_OF`
 /// (an idempotent MERGE, so a file already in the project is not re-linked). A
 /// file may co-belong to other projects; the dedup is on the project root, never
 /// the file.
@@ -608,7 +608,7 @@ mod tests {
         assert!(clusters.is_empty());
     }
 
-    /// The graph bridge: ACCESSED_IN edges drive the clustering end to end. Three
+    /// The graph bridge: `ACCESSED_IN` edges drive the clustering end to end. Three
     /// files linked to two shared sessions cluster; an unrelated file does not.
     #[tokio::test]
     async fn infer_clusters_reads_accessed_in_from_the_graph() {

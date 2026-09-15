@@ -99,17 +99,17 @@ impl QuotaConfig {
     /// The canonical identity resolver yields bare ids for system
     /// binaries (`ai-daemon`, `ai-agent`) rather than `org.arlen.*`,
     /// so they must be named here to receive the AI layer's higher
-    /// (FirstParty, 1000 qps) limit — foundation §8.4: "the AI daemon
+    /// (`FirstParty`, 1000 qps) limit — foundation §8.4: "the AI daemon
     /// has a higher sustained limit." Without this they would fall to
-    /// ThirdParty (100 qps) and be wrongly throttled. Genuine
+    /// `ThirdParty` (100 qps) and be wrongly throttled. Genuine
     /// provenance-based tiering (canonical /usr install vs a
     /// user-installed lookalike of the same id) shares the F3 identity
     /// gap's future fix (the installd inode registry); a `graph.toml`
     /// may extend `first_party_apps` for other first-party apps.
     /// `code-indexer` is likewise a first-party system daemon: it reads the live
     /// `Project` roots (`MATCH (p:Project) RETURN p.root_path`) to scope which
-    /// files it indexes, then emits `code.indexed`. Without FirstParty it tiers
-    /// ThirdParty, so that Project read is refused by the read-scope label gate
+    /// files it indexes, then emits `code.indexed`. Without `FirstParty` it tiers
+    /// `ThirdParty`, so that Project read is refused by the read-scope label gate
     /// and the daemon indexes nothing at all (it gates indexing on being able to
     /// read the project roots) - inert in a real deployment.
     pub fn arlen_default() -> Self {
@@ -236,7 +236,7 @@ impl QuotaConfig {
 
 /// Whether a debug-only `ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY` value (the
 /// comma-separated env contents, `None` if unset) admits `app_id` as an extra
-/// FirstParty id. Exact, trimmed match per entry - never a prefix, and an unset
+/// `FirstParty` id. Exact, trimmed match per entry - never a prefix, and an unset
 /// env admits nothing. Pure, so the gate is tested without an env race.
 #[cfg(debug_assertions)]
 fn extra_first_party_admits(env_value: Option<&str>, app_id: &str) -> bool {

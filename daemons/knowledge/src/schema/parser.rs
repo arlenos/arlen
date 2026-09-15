@@ -18,7 +18,7 @@ pub struct SchemaFile {
     /// Entity type definitions keyed by local name (e.g. "Card", "Deck").
     #[serde(default)]
     pub entities: HashMap<String, EntityDefinition>,
-    /// Relation definitions keyed by relation name (e.g. "SIMILAR_TO").
+    /// Relation definitions keyed by relation name (e.g. "`SIMILAR_TO`").
     #[serde(default)]
     pub relations: HashMap<String, RelationDefinition>,
 }
