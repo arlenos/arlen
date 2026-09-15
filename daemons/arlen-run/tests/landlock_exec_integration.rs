@@ -2,8 +2,8 @@
 //! `arlen-run` binary, run as `--landlock-exec <dir> -- <program>`, must install a
 //! Landlock fence that PERMITS a write under the granted dir and DENIES one
 //! outside it, then exec the program under that fence. Metal-only (needs Landlock
-//! >= 5.13); the wiring that has bwrap invoke this mode is a separate slice, so
-//! this exercises the mechanism directly against the host filesystem.
+//! on 5.13 or newer); the wiring that has bwrap invoke this mode is a separate
+//! slice, so this exercises the mechanism directly against the host filesystem.
 
 #[cfg(target_os = "linux")]
 #[test]
