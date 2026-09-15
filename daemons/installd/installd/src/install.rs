@@ -694,6 +694,13 @@ pub fn install_to_user(
 ///
 /// Loads the manifest first to clean up schemas and modules, then
 /// removes the app directory.
+///
+/// **NOT the uninstall path the daemon runs, and that is the point of this note.**
+/// `JobKind::Uninstall` goes through `trash::stage_for_deletion`, which MOVES the
+/// app into the 30-day trash so a person can undo it. This one deletes outright.
+/// Wiring it back into the job would silently remove the restore window, so if a
+/// purge verb ever wants it, it wants it under a name that says so.
+#[allow(dead_code)]
 pub fn uninstall_user(app_id: &str) -> Result<(), InstallError> {
     validate_app_id(app_id)?;
 

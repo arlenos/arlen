@@ -74,6 +74,12 @@ impl LockEntry {
     }
 
     /// Note the recipe this was built from.
+    ///
+    /// No caller yet: nothing on the install path knows a recipe commit, because
+    /// a forage-built package arrives as a `.lunpkg` like any other. It lands
+    /// with whatever records the build's provenance.
+    #[allow(dead_code)]
+    #[allow(clippy::wrong_self_convention)]
     pub fn from_recipe(mut self, commit: impl Into<String>, revision: u32) -> Self {
         self.recipe_commit = commit.into();
         self.recipe_revision = revision;

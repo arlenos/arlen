@@ -61,6 +61,7 @@ pub enum JobState {
     /// kept because cancellation is the intended behaviour for a long install,
     /// and deleting it would erase that intent - but until a cancel path exists,
     /// no caller will ever observe it.
+    #[allow(dead_code)]
     Cancelled,
 }
 

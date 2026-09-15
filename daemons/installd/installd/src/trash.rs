@@ -348,9 +348,10 @@ fn ymd_to_days(y: u64, mo: u64, d: u64) -> u64 {
     } else {
         [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     };
-    for i in 0..(mo.saturating_sub(1) as usize).min(11) {
-        days += months[i];
-    }
+    days += months
+        .iter()
+        .take((mo.saturating_sub(1) as usize).min(11))
+        .sum::<u64>();
     days + d.saturating_sub(1)
 }
 
