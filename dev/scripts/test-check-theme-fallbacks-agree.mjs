@@ -47,6 +47,9 @@ const themeFile = [
   'success = "#22c55e"',
   'info    = "#3b82f6"',
   "",
+  "[typography]",
+  'size_base = "14px"',
+  "",
 ].join("\n");
 
 /// An app copy that agrees, with optional per-token surgery.
@@ -183,6 +186,28 @@ check(
       .replace(":root {", ":root {\n  --color-border-default: #262626;"),
   },
   (c, out) => c === 1 && out.includes("#27272a"),
+);
+
+check(
+  "a base size that matches the theme passes",
+  {
+    [THEME]: themeFile,
+    [LIGHT]: lightFile,
+    [APP]: appCss().replace(":root {", ":root {\n  --font-size-base: 14px;"),
+  },
+  (c) => c === 0,
+);
+
+// Every copy held 15px where the theme says 14, so first paint drew a size no
+// window renders and the whole `--text-*` ladder above it was out with it.
+check(
+  "a base size a pixel off the theme is a finding",
+  {
+    [THEME]: themeFile,
+    [LIGHT]: lightFile,
+    [APP]: appCss().replace(":root {", ":root {\n  --font-size-base: 15px;"),
+  },
+  (c, out) => c === 1 && out.includes("--font-size-base"),
 );
 
 check(

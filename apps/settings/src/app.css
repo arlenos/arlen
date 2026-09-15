@@ -64,9 +64,13 @@
   /* Type scale — a base-relative ladder off the theme's --font-size-base
      (emitted by sdk/theme, driven live by the Appearance "Text size" slider).
      Both the scoped primitives and the Tailwind text-* utilities read these,
-     so one knob scales the whole UI. The 15px fallback holds until the theme
-     injects the user's value; see docs plan "PR-3 semantic type scale". */
-  --font-size-base: 15px;
+     so one knob scales the whole UI. The fallback is the shipped theme's own
+     `typography.size_base` and holds until the theme injects the user's value;
+     see docs plan "PR-3 semantic type scale". It said 15px until 15 September,
+     a pixel above what every window actually renders, so first paint was a
+     size the machine does not use - the same drift the Settings typography
+     floor carried, found the same day. */
+  --font-size-base: 14px;
   --text-2xs: calc(var(--font-size-base) - 3px);
   --text-xs:  calc(var(--font-size-base) - 2px);
   --text-sm:  calc(var(--font-size-base) - 1px);
