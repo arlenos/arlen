@@ -422,7 +422,7 @@ fn main() -> ExitCode {
     // exhaustive.
     let filtered = egress::enforced_hosts(&inputs.network).is_some();
     let egress_guard = if let Some(hosts) = egress::enforced_hosts(&inputs.network) {
-        match egress::ProxyEgressEnforcer.install(hosts) {
+        match egress::ProxyEgressEnforcer.install(&args.app_id, hosts) {
             Ok(guard) => Some(guard),
             Err(e) => {
                 eprintln!("arlen-run: {}: {e}", args.app_id);
