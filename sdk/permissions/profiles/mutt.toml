@@ -1,0 +1,26 @@
+# Starting permission profile for Mutt (a terminal mail client). The same reach as
+# NeoMutt's next door, and for the same reasons: network is its function - IMAP,
+# SMTP and NNTP all go out - and Home rather than a narrower grant because a local
+# maildir has no fixed location, so ~/Maildir, ~/.mail and a path from mbox_type
+# are all ordinary and a profile that guesses wrong leaves the reader with no mail.
+# Downloads is where saved attachments land and is inside Home already, so it is
+# not named separately.
+#
+# Separate file rather than a group entry with NeoMutt: they are two packages a
+# person installs independently, and the agreement gate groups by app, not by
+# family.
+[info]
+app_id = "mutt"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true
