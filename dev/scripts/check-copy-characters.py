@@ -25,10 +25,20 @@ no rule in this tree asks for it to change. I had read the copy law's two bans a
 added a third from memory - which is how a gate starts producing noise and stops
 being read.
 
-NOT SCANNED, deliberately: `sdk/ui-kit` is another lane's. Its kit catalogue
-carries one middot separator today ("Arlen OS - {$version}" in an About line);
-that is reported to arlen-ui rather than edited here, since the copy law is the
-harness's own and extending it into their file is their call, not mine.
+THE KIT IS SCANNED NOW, and it was not until 16 September. This file used to
+exclude `sdk/ui-kit` and name the one string it was letting through: "Arlen OS
+- {$version}", the About line every app shows. The reasoning was ownership - the
+copy law is the harness's, and extending it into another lane's file is that
+lane's call. The planner ruled on that string on 15 September, which answers the
+ownership question the exclusion was waiting on, so the scan covers the kit and
+the string is fixed.
+
+THE PRODUCT IS CALLED ARLEN. Not "Arlen OS", which is the other half of the same
+finding and the half nothing caught: the middot was reported by this check for
+weeks while the name beside it was not. One catalogue string reaches every app's
+About dialog, so a name that is wrong there is wrong fifteen times. Matched
+case-insensitively and with any whitespace between the words, because the way a
+wrong name comes back is somebody typing it from memory.
 """
 
 import pathlib
@@ -45,10 +55,13 @@ ROOT = pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else pathlib.Pat
 
 M_DASH = "—"
 SEPARATOR = re.compile(r"\s·\s")
+# The product's name, wrongly. `\b` on the end so "Arlen OSS" or a German word
+# starting with OS is not a finding.
+PRODUCT_NAME = re.compile(r"\bArlen\s+OS\b", re.I)
 
 
 def catalogues() -> list[pathlib.Path]:
-    """Every app message catalogue under ROOT, kit excluded.
+    """Every message catalogue under ROOT, the kit's included.
 
     Asks git when ROOT is a repository, so an untracked scratch file cannot fail a
     run; walks the directory when it is not, which is the case for a fixture tree.
@@ -60,8 +73,7 @@ def catalogues() -> list[pathlib.Path]:
         found = [ROOT / f for f in out if "/i18n/messages" in f and f.endswith(".ts")]
     except (subprocess.CalledProcessError, FileNotFoundError):
         found = [p for p in ROOT.rglob("*/i18n/messages*.ts")]
-    kit = ROOT / "sdk" / "ui-kit"
-    return sorted(p for p in found if kit not in p.parents)
+    return sorted(found)
 
 
 def findings(path: pathlib.Path) -> list[str]:
@@ -74,6 +86,8 @@ def findings(path: pathlib.Path) -> list[str]:
             found.append(f"{where}: an m-dash. Use a comma, a semicolon or a second sentence.\n    {body}")
         if SEPARATOR.search(line):
             found.append(f"{where}: a middot used as a separator. Use a comma or a new sentence.\n    {body}")
+        if PRODUCT_NAME.search(line):
+            found.append(f"{where}: the product is called Arlen, never \"Arlen OS\".\n    {body}")
     return found
 
 

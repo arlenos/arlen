@@ -989,7 +989,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     descKey: "s.idx.about.version.desc",
     keywordsKey: "s.idx.about.version.keywords",
     panel: "about",
-    sectionKey: "s.idx.section.arlenos",
+    sectionKey: "s.idx.section.arlen",
     anchor: "arlen-version",
   },
   {
