@@ -3,12 +3,6 @@
 # decide what the app should get, make every id say it, drop the row.
 #
 # app	the ids that disagree
-snes9x	com.snes9x.Snes9x snes9x
-solfege	org.gnome.Solfege solfege
-stellarium	org.stellarium.Stellarium stellarium
-synfigstudio	org.synfig.SynfigStudio synfigstudio
-vorta	com.borgbase.Vorta vorta
-wardrobe	com.github.swordpuffin.wardrobe io.github.swordpuffin.wardrobe
 wesnoth	org.wesnoth.Wesnoth wesnoth
 xemu	app.xemu.xemu xemu
 zathura	org.pwmt.zathura zathura

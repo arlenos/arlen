@@ -1,6 +1,8 @@
-# Starting permission profile for Synfig Studio (a 2D animation tool).
-# Reads source images and writes rendered animations; no network by function.
-# No Knowledge Graph access.
+# Starting permission profile for Synfig Studio (a 2D animation tool). Imports
+# stills from Pictures and renders to Videos; no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had Pictures alone and
+# nowhere to put a render.
 [info]
 app_id = "org.synfig.SynfigStudio"
 tier = "third-party"
