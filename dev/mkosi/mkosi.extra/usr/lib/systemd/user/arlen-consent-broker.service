@@ -22,7 +22,7 @@ Type=simple
 # CALLS - it writes a consent grant to the knowledge daemon, a system service under
 # /run/arlen. A daemon can be right about where it listens and wrong about where it
 # calls, and only the second one needs this line.
-Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
+Environment=ARLEN_KNOWLEDGE_SOCKET=/run/user/%U/arlen/knowledge.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-consent-broker
 # This binds `$XDG_RUNTIME_DIR/arlen/consent-control.sock` and nothing in the crate
 # creates that directory, so it followed the rule the signer unit writes down only

@@ -47,6 +47,7 @@ function run(dir) {
 const PRODUCER = "use os_sdk::UnixEventEmitter;\nfn f() { let _ = UnixEventEmitter::new(p); }\n";
 const CONSUMER = 'fn f() { let s = consumer_socket(); }\n';
 const NEITHER = "struct S { event_bus: u8 }\nfn f() {}\n";
+const GRAPH = "use os_sdk::UnixGraphClient;\nfn f() { let _ = UnixGraphClient::new(p); }\n";
 
 // The defect: a daemon that publishes, on a user unit, with no pin.
 {
@@ -97,6 +98,55 @@ const NEITHER = "struct S { event_bus: u8 }\nfn f() {}\n";
 {
   const d = tree({ source: NEITHER });
   check("a crate that only names `event_bus` is not a subject", run(d).code === 0);
+  cleanup(d);
+}
+
+// The knowledge socket, the same shape one daemon over. Four real units pinned
+// it at /run/arlen while arlen-graph binds under /run/user/%U, so every one of
+// them dialled a path nothing binds.
+{
+  const d = tree({ source: GRAPH });
+  check("a graph client with no pin passes", run(d).code === 0);
+  cleanup(d);
+}
+
+{
+  const d = tree({
+    source: GRAPH,
+    unitEnv: ["ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock"],
+  });
+  const r = run(d);
+  check("a graph client pinned at /run/arlen is caught", r.code === 1);
+  check("and the message names that pin", r.out.includes("ARLEN_KNOWLEDGE_SOCKET"));
+  cleanup(d);
+}
+
+// Both env names reach the same socket and `ai-engine-daemon` pinned BOTH, so
+// neither may be the one the check happens to look at.
+{
+  const d = tree({
+    source: GRAPH,
+    unitEnv: ["ARLEN_DAEMON_SOCKET=/run/arlen/knowledge.sock"],
+  });
+  const r = run(d);
+  check("the daemon-side env name is caught too", r.code === 1);
+  check("and the message names it", r.out.includes("ARLEN_DAEMON_SOCKET"));
+  cleanup(d);
+}
+
+{
+  const d = tree({
+    source: GRAPH,
+    unitEnv: ["ARLEN_KNOWLEDGE_SOCKET=/run/user/%U/arlen/knowledge.sock"],
+  });
+  check("a pin at the per-user path is the correct one", run(d).code === 0);
+  cleanup(d);
+}
+
+// A daemon that touches no graph must not be asked about it.
+{
+  const d = tree({ source: PRODUCER });
+  check("a bus-only daemon is not asked for a graph pin", !run(d).out.includes("KNOWLEDGE"));
   cleanup(d);
 }
 
