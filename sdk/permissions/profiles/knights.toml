@@ -1,8 +1,20 @@
-# Starting permission profile for Knights (the KDE chess board). Opens and saves its documents from
-# Documents; no network and no Knowledge Graph access.
+# Starting permission profile for Knights (a chess board). Saves games as PGN in
+# Documents and plays online opponents over the network. No Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep), and each id had half of it: one
+# could save a game and not play online, the other the reverse.
 [info]
 app_id = "knights"
 tier = "third-party"
 
 [filesystem]
 documents = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true

@@ -1,6 +1,11 @@
-# Starting permission profile for a self-contained PIM/utility/dev app. No file
-# access, no network and no Knowledge Graph by default; PIM data lives in Akonadi,
-# config in its own dir, and any bus access goes through the session bus.
+# Starting permission profile for KAddressBook (a contacts manager). Imports and
+# exports vCards through Documents; no network and no Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, so a
+# vCard could be neither imported nor exported.
 [info]
 app_id = "kaddressbook"
 tier = "third-party"
+
+[filesystem]
+documents = true

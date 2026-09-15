@@ -1,5 +1,10 @@
-# Starting permission profile for KColorChooser (a screen colour picker). It copies
-# the picked colour code to the clipboard; no network, no user files, no graph.
+# Starting permission profile for KColorChooser (a colour picker). It samples a
+# screen colour and copies the code to the clipboard, so clipboard write is its
+# function; no network, no user files and no Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no clipboard grant,
+# which leaves a colour picker able to show you a colour and not to hand it over.
+# Same repair as the Eyedropper group.
 [info]
 app_id = "org.kde.kcolorchooser"
 tier = "third-party"
