@@ -9,6 +9,13 @@
 // the terminal never printed. An axe sweep found it sideways, by measuring the
 // contrast of a colour that does not ship.
 //
+// The second case, 15 September: the sixteen agreed and the palette still did
+// not. `fg`, `bg` and `cursor` are synthesised rather than authored, the xterm
+// grid's copy of them had drifted on two of three, and the gate reported green -
+// so the cases below cover the synthesised rung as well as the authored one,
+// including the two that must NOT fire (a copy that simply has no cursor field,
+// and an authored `[terminal]` value overruling the synthesis).
+//
 // Run: node dev/scripts/test-check-terminal-palette-agrees.mjs
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -33,17 +40,30 @@ const camel = (s) => {
   return tail ? head + tail[0].toUpperCase() + tail.slice(1) : head;
 };
 
-function themeFile(values = HEX) {
+// The three synthesised values, and what each copy calls them.
+const FG = "#fafafa";
+const BG = "#0f0f0f";
+const CURSOR = "#ff00ff";
+
+function themeFile(values = HEX, extra = "") {
   return (
-    "[color.bg]\napp = \"#0f0f0f\"\n\n[terminal.ansi]\n" +
+    "[color.bg]\napp = \"" + BG + "\"\n\n" +
+    "[color.fg]\nprimary = \"" + FG + "\"\n\n" +
+    "[color.semantic]\naccent = \"" + CURSOR + "\"\n\n" +
+    extra +
+    "[terminal.ansi]\n" +
     SLOTS.map((s, i) => `${s.padEnd(14)} = "${values[i]}"`).join("\n") +
     "\n"
   );
 }
 
-function terminalApp(values = HEX) {
+function terminalApp(values = HEX, synth = {}) {
+  const fg = synth.fg ?? FG;
+  const bg = synth.bg ?? BG;
+  const cursor = synth.cursor ?? CURSOR;
   return (
-    "export const arlenTerminalTheme = {\n  background: \"#0f0f0f\",\n" +
+    "export const arlenTerminalTheme = {\n" +
+    `  background: "${bg}",\n  foreground: "${fg}",\n  cursor: "${cursor}",\n` +
     SLOTS.map((s, i) => `  ${camel(s)}: "${values[i]}",`).join("\n") +
     "\n};\n"
   );
@@ -53,7 +73,7 @@ function settingsStore(values = HEX) {
   return (
     "export const SYS_DEFAULTS = {\n  cursorSize: 24,\n" +
     values.map((v, i) => `  ansi${i}: "${v}",`).join("\n") +
-    "\n  termBg: \"#0f0f0f\",\n};\n"
+    `\n  termFg: "${FG}",\n  termBg: "${BG}",\n};\n`
   );
 }
 
@@ -124,6 +144,70 @@ check(
   (code) => code === 0,
 );
 
+// --- the synthesised rung ------------------------------------------------
+
+check(
+  "a drifted foreground in the xterm grid is a finding",
+  {
+    [THEME]: themeFile(),
+    [APP]: terminalApp(HEX, { fg: "#e4e5ea" }),
+    [SETTINGS]: settingsStore(),
+  },
+  (code, out) =>
+    code === 1 && out.includes("`foreground` is #e4e5ea") && out.includes("color.fg.primary"),
+);
+
+check(
+  "a cursor that is not the accent is a finding",
+  {
+    [THEME]: themeFile(),
+    [APP]: terminalApp(HEX, { cursor: "#d4d4d8" }),
+    [SETTINGS]: settingsStore(),
+  },
+  (code, out) => code === 1 && out.includes("`cursor` is #d4d4d8"),
+);
+
+check(
+  "a drifted termFg in the Settings floor is a finding",
+  {
+    [THEME]: themeFile(),
+    [APP]: terminalApp(),
+    [SETTINGS]: settingsStore().replace(`termFg: "${FG}"`, 'termFg: "#cccccc"'),
+  },
+  (code, out) => code === 1 && out.includes("`termFg` is #cccccc"),
+);
+
+// The Settings floor holds no cursor field, and it should not have to. A gate
+// that demanded one would be changing the code to suit itself.
+check(
+  "a copy that names no cursor at all is not nagged for one",
+  { [THEME]: themeFile(), [APP]: terminalApp(), [SETTINGS]: settingsStore() },
+  (code) => code === 0,
+);
+
+// Authoring `[terminal]` is the supported way to move all five surfaces at once,
+// so an authored value must overrule the synthesis rather than fight it.
+check(
+  "an authored [terminal] value wins over the synthesised token",
+  {
+    [THEME]: themeFile(HEX, '[terminal]\ncursor = "#d4d4d8"\n\n'),
+    [APP]: terminalApp(HEX, { cursor: "#d4d4d8" }),
+    [SETTINGS]: settingsStore(),
+  },
+  (code) => code === 0,
+);
+
+check(
+  "a theme with no source for the synthesised three refuses rather than passing",
+  {
+    [THEME]: "[color.bg]\napp = \"#0f0f0f\"\n\n[terminal.ansi]\n" +
+      SLOTS.map((s, i) => `${s.padEnd(14)} = "${HEX[i]}"`).join("\n") + "\n",
+    [APP]: terminalApp(),
+    [SETTINGS]: settingsStore(),
+  },
+  (code, out) => code === 2 && out.includes("NOTHING TO COMPARE AGAINST"),
+);
+
 check(
   "a theme that authors no slots refuses rather than passing",
   {
@@ -148,4 +232,4 @@ if (failures.length) {
   }
   process.exit(1);
 }
-console.log("the theme is the source, and a copy that drifts from it is a finding");
+console.log("authored or synthesised, the theme is the source and a drifting copy is a finding");

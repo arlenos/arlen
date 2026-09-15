@@ -35,11 +35,22 @@ export interface XtermTheme {
 
 /// The Arlen terminal theme (xterm.js ITheme-shaped).
 export const arlenTerminalTheme: XtermTheme = {
-  // The app surface, not raw black; a soft light text, not harsh white.
+  // The three the theme does NOT author: `resolve_terminal` synthesises them from
+  // `bg.app`, `fg.primary` and `accent`, and that is what the emitted kitty, foot,
+  // Alacritty and Xresources configs carry. These are a copy because the canvas
+  // needs a palette at import time, before any theme reaches the frontend - so
+  // they have to say what the resolver says or the Arlen terminal paints
+  // differently from every other terminal on the same machine, which is what it
+  // did until 15 September: `#e4e5ea` text against the theme's `#fafafa`, and the
+  // `accent_pressed` grey where the cursor should be the accent.
+  //
+  // To make the cursor softer again, author `[terminal] cursor` in the theme
+  // file. That moves all five surfaces at once; changing it here moves one and
+  // breaks the agreement `check-terminal-palette-agrees.py` holds.
   background: "#0f0f0f",
-  foreground: "#e4e5ea",
-  // A soft, visible block cursor; the glyph under it takes the surface colour.
-  cursor: "#d4d4d8",
+  foreground: "#fafafa",
+  // The glyph under the block cursor takes the surface colour.
+  cursor: "#fafafa",
   cursorAccent: "#0f0f0f",
   // A quiet selection wash in the foreground register.
   selectionBackground: "#33353d",

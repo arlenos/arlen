@@ -103,7 +103,7 @@
   /* The muted Arlen terminal palette (mirrors terminal-theme.ts). */
   .page {
     --bg: #0f0f0f;
-    --fg: #e4e5ea;
+    --fg: #fafafa;
     --muted: #8a8c94;
     --faint: #54565e;
     --green: #8fae74;
@@ -126,7 +126,7 @@
     margin: 0 0 0.25rem;
     font-size: var(--text-sm);
     font-weight: 600;
-    color: #e4e5ea;
+    color: #fafafa;
     display: flex;
     align-items: center;
     gap: 0.5rem;
