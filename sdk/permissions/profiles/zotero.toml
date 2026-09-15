@@ -1,0 +1,21 @@
+# Starting permission profile for a reference manager that syncs. Its library and
+# attached PDFs live under Documents, and syncing to a Zotero account plus fetching
+# metadata by DOI is what the application is for, so it gets network. No Knowledge
+# Graph. Wider than JabRef's next door on purpose: JabRef edits BibTeX files and
+# fetching metadata is a refinement there; here the sync IS the product.
+# Observe-mode refines it.
+[info]
+app_id = "zotero"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true
