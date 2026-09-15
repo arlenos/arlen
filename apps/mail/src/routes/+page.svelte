@@ -23,6 +23,7 @@
     SidebarInset,
     SidebarTrigger,
   } from "@arlen/ui-kit/components/ui/sidebar";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
@@ -662,6 +663,15 @@
                 {$t("ml.nothingOpen")}
               {/if}
             </p>
+            <!-- A refusal with nothing to do about it is half a refusal. Reading
+                 the mailbox is the thing that failed and the thing that can be
+                 tried again, so the button is offered for exactly that state -
+                 not for an absent mailbox, where trying again changes nothing. -->
+            {#if $mailboxState === "unreadable"}
+              <Button variant="outline" size="sm" onclick={() => void loadMailbox()}>
+                {$t("ml.retry")}
+              </Button>
+            {/if}
           </div>
         {/if}
       </div>
