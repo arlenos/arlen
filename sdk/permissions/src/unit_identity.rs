@@ -184,6 +184,10 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-consent-broker.service", "consent-broker"),
     ("arlen-dogfood.service", "dogfood"),
     ("arlen-event-bus.service", "event-bus"),
+    // The filesystem MCP bridge, packaged 15 September with its two siblings. It
+    // installs at `/usr/bin/arlen-file-manager-mcp`, the path rule that produces
+    // this id, so the launcher table and the binary route agree.
+    ("arlen-file-manager-mcp.service", "file-manager-mcp"),
     ("arlen-graph.service", "knowledge"),
     ("arlen-journald-parser.service", "journald-parser"),
     // The graph's read-only MCP bridge, packaged 15 September. Until then the
@@ -210,6 +214,9 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     // rules resolve it to `sentineld`, so both resolvers name it the same and
     // there is no deviation to record.
     ("arlen-sentineld.service", "sentineld"),
+    // The /proc MCP bridge, packaged 15 September with its two siblings, and
+    // named by the same `/usr/bin/arlen-<name>` rule.
+    ("arlen-system-monitor-mcp.service", "system-monitor-mcp"),
     // The per-app settings broker. Packaged on 15 September, months after it was
     // finished: the unit existed, the binary was never built into the image, and
     // a brokered write met no socket - so every per-app settings write refused

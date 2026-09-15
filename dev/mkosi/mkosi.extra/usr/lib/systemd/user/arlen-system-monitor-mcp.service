@@ -1,0 +1,38 @@
+[Unit]
+Description=Arlen System Monitor MCP Server (user service)
+Documentation=https://github.com/arlenos/arlen
+# Serves read-only process-list and resource-usage tools on an MCP socket the
+# AI daemon connects to. It depends on nothing: it reads /proc directly and
+# binds its own socket.
+
+[Service]
+Type=simple
+# Installed at /usr/bin/arlen-system-monitor-mcp on purpose. The AI daemon
+# peer-authenticates this server by resolving its binary path to the app id
+# "system-monitor-mcp" (arlen-permissions maps /usr/bin/arlen-<name> to <name>);
+# a different install path would change the id and the AI daemon would refuse
+# the socket as an imposter.
+ExecStart=/usr/bin/arlen-system-monitor-mcp
+Restart=on-failure
+RestartSec=2
+
+Environment=RUST_LOG=info
+
+# Pure reader: it reads /proc (read-only) and serves one Unix socket. It never
+# writes outside the runtime dir and never uses the network.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/user/%U/arlen
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
