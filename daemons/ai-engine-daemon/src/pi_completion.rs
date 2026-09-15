@@ -650,7 +650,7 @@ mod repro_dump {
     /// served to a real pi rather than a hand-written lookalike. Not a test of
     /// behaviour; run with `--ignored --nocapture` when re-doing the repro.
     #[test]
-    #[ignore]
+    #[ignore = "a reproduction dump, not a behaviour test; run with --nocapture"]
     fn dump_sse_for_the_local_pi_reproduction() {
         let body = serde_json::json!({
             "id": "echo", "object": "chat.completion", "model": "echo",

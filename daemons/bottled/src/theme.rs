@@ -301,7 +301,7 @@ mod tests {
     ///
     ///   cargo test -p arlen-wine-core -- --ignored theme_metal
     #[test]
-    #[ignore]
+    #[ignore = "needs wine, bwrap and unprivileged user namespaces"]
     fn theme_metal_reaches_the_registry_through_the_confinement() {
         use std::process::Command;
         let dir = tempfile::tempdir().expect("temp");
