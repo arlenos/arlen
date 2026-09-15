@@ -1,6 +1,9 @@
-# Starting permission profile for Rider (a .NET IDE). Projects live in Documents; the IDE
-# fetches packages, plugins and language servers over the network (its function,
-# matching the PyCharm sibling). No graph, no media dirs.
+# Starting permission profile for Rider (a .NET IDE). Projects live in Documents; it fetches
+# plugins, packages and toolchains over the network. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no network, which
+# leaves an IDE unable to fetch a package or a plugin - the thing it spends its
+# first run doing. Same repair as the CLion and DataGrip groups.
 [info]
 app_id = "com.jetbrains.Rider"
 tier = "third-party"

@@ -1,8 +1,14 @@
-# Starting permission profile for a video editor/recorder. Works with Videos; no
-# network and no Knowledge Graph.
+# Starting permission profile for Shotcut (a video editor). Projects and renders
+# live in Videos; it imports stills from Pictures and audio from Music, which is
+# what an editor's timeline is made of. No network, no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had Videos alone, the
+# same gap the OpenShot group had.
 [info]
 app_id = "shotcut"
 tier = "third-party"
 
 [filesystem]
 videos = true
+music = true
+pictures = true

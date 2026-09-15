@@ -1,7 +1,9 @@
-# Starting permission profile for org.ryujinx.Ryujinx (a game-console emulator).
-# It loads game images from local files by function, so it gets Documents and
-# Downloads (where ROMs are kept) and no network; netplay is opt-in. No
-# Knowledge Graph access.
+# Starting permission profile for Ryujinx (a Nintendo Switch emulator). Games, firmware and
+# saves live in Documents and Downloads; no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, so the
+# emulator could not reach a game the user had put anywhere. Same gap as the
+# melonDS, mGBA and DuckStation groups.
 [info]
 app_id = "org.ryujinx.Ryujinx"
 tier = "third-party"

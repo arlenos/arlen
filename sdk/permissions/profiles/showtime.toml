@@ -1,11 +1,13 @@
-# Starting permission profile for a video player. It plays the user's local video
-# and audio files, so it gets Videos and Music - not Home, which is the scope the
-# other players in this corpus take (vlc, mpv, celluloid, totem). Playback is
-# offline, so no network of its own and no Knowledge Graph.
+# Starting permission profile for Showtime (a video player). Plays the user's
+# local video and music; no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id had Videos
+# alone. Like Celluloid beside it, this is a GStreamer front end that opens an
+# audio file as readily as a video one.
 [info]
 app_id = "showtime"
 tier = "third-party"
 
 [filesystem]
-music = true
 videos = true
+music = true
