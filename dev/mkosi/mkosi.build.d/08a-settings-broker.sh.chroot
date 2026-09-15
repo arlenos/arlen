@@ -1,0 +1,49 @@
+#!/bin/sh
+# Phase 8a (CHROOT): the settings broker (arlen-settings-broker), the user-session
+# daemon that owns writes to an app's own settings. Every settings page - the
+# Settings app's per-app section, and an app's own preferences - hands its write
+# to this broker, which checks it against the app's declared schema before it
+# touches a file. One process validating every write is the whole point: without
+# it a page can store a value the app never declared, at a type it never
+# declared, in a layer its scope forbids.
+#
+# It was finished, unit and all, and no phase built it, so on the image the
+# brokered write met no socket and every per-app settings write failed as "broker
+# not reachable" - which is the callers' correct behaviour (they refuse rather
+# than writing the file themselves) and reads, from outside, as the feature being
+# broken. Found by `check-packaged-units.sh`, which lists a finished unit no phase
+# installs.
+#
+# Runs as the SESSION USER, unlike the config broker: these are the person's own
+# application settings, and putting them behind a service account would buy no
+# isolation and mean a daemon owning somebody's preferences. Its unit says the
+# same thing at more length.
+#
+# Its own standalone cargo workspace (daemons/settings-broker) -> its own target
+# dir in the persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-settings-broker"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the settings broker (arlen-settings-broker) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/settings-broker/Cargo.toml
+
+# Install under /usr/lib/arlen/libexec, the path its unit's ExecStart names and
+# the one the identity resolver maps: the broker authenticates each caller from
+# the peer credential and is itself resolved by the same rules, so it has to live
+# beside the other libexec daemons.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-settings-broker" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-settings-broker"
+echo ">> staged arlen-settings-broker into the image (libexec, the canonical identity path)"

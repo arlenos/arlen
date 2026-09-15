@@ -203,6 +203,13 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     // rules resolve it to `sentineld`, so both resolvers name it the same and
     // there is no deviation to record.
     ("arlen-sentineld.service", "sentineld"),
+    // The per-app settings broker. Packaged on 15 September, months after it was
+    // finished: the unit existed, the binary was never built into the image, and
+    // a brokered write met no socket - so every per-app settings write refused
+    // with "broker not reachable", which is the callers' correct behaviour and
+    // reads from outside as the feature being broken. Registering it here is half
+    // of the fix; nothing starts a user unit off its `[Install]` alone.
+    ("arlen-settings-broker.service", "settings-broker"),
     ("arlen-terminal-run-mcp.service", "terminal-run-mcp"),
     ("arlen-timeline.service", "timeline"),
     ("arlen-undod.service", "undod"),
