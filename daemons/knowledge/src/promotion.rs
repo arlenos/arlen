@@ -35,9 +35,6 @@ pub(crate) fn annotation_id(target_type: &str, target_id: &str, namespace: &str)
     uuid::Uuid::new_v5(&ANNOTATION_UUID_NAMESPACE, key.as_bytes())
 }
 
-/// Fallback when `graph.toml [projects].auto_promote_threshold` is
-/// not set. Mirrors `WatchConfig::default().auto_promote_threshold`.
-const PROMOTION_THRESHOLD_DEFAULT: usize = 3;
 
 /// How often the promotion pass runs.
 /// Taken from the SDK, not restated here: the app's timeline refresh reads the same
@@ -138,16 +135,9 @@ async fn write_hwm(pool: &SqlitePool, hwm: i64) -> Result<()> {
     Ok(())
 }
 
-/// Run a single promotion pass.
-///
-/// Reads all events from SQLite with timestamp > high-water mark,
-/// promotes them to Ladybug, and updates the HWM only if every event
-/// in the batch was promoted successfully.
-///
-/// Promotion criteria for Phase 1A:
-/// - All `file.opened` events become `File` and `App` nodes with an `ACCESSED_BY` edge.
-/// - All `window.focused` events become `App`, `Session`, and `Event` nodes with `ACTIVE_IN` edge.
-/// - Other event types are stored in SQLite but not yet promoted (Phase 2).
+/// One unpromoted row of the events table: id, type, timestamp, source, pid,
+/// origin, payload - in the order the query below selects them.
+type EventRow = (String, String, i64, String, i64, String, Vec<u8>);
 
 /// Marks an origin that is a named system source rather than a user session.
 const SYSTEM_ORIGIN_PREFIX: &str = "system:";
@@ -244,6 +234,20 @@ pub(crate) async fn close_orphaned_presences(graph: &GraphHandle, now: i64) -> R
     Ok(closed)
 }
 
+/// Run a single promotion pass.
+///
+/// Reads all events from SQLite with timestamp > high-water mark,
+/// promotes them to Ladybug, and updates the HWM only if every event
+/// in the batch was promoted successfully.
+///
+/// Promotion criteria for Phase 1A:
+/// - All `file.opened` events become `File` and `App` nodes with an `ACCESSED_BY` edge.
+/// - All `window.focused` events become `App`, `Session`, and `Event` nodes with an
+///   `ACTIVE_IN` edge.
+/// - Other event types are stored in SQLite but not yet promoted (Phase 2).
+///
+/// It stood above the const and the row alias below, separated from this function
+/// by a blank line, so rustdoc attached it to nothing at all.
 async fn run_pass(
     pool: &SqlitePool,
     graph: &GraphHandle,
@@ -266,7 +270,7 @@ async fn run_pass(
     let hwm = read_hwm(pool).await?;
 
     // Fetch unprocessed events ordered by timestamp, including the payload.
-    let rows: Vec<(String, String, i64, String, i64, String, Vec<u8>)> = sqlx::query_as(
+    let rows: Vec<EventRow> = sqlx::query_as(
         "SELECT id, type, timestamp, source, pid, origin, payload
          FROM events
          WHERE timestamp > ?
@@ -3325,6 +3329,15 @@ mod shell_event_tests {
 
 #[cfg(test)]
 mod project_tests {
+    /// The threshold these tests drive `link_file_to_project` with.
+    ///
+    /// It sat at module scope claiming to be the fallback for
+    /// `graph.toml [projects].auto_promote_threshold`. It is not: the pass reads
+    /// `watch_config.auto_promote_threshold`, whose default comes from
+    /// `WatchConfig::default()`. It has only ever had test callers, and a comment
+    /// claiming otherwise is the kind a reader acts on.
+    const PROMOTION_THRESHOLD_DEFAULT: usize = 3;
+
     use super::*;
     use crate::project::{Project, ProjectStore};
     use tempfile::TempDir;

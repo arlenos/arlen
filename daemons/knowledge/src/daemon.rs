@@ -235,7 +235,7 @@ pub async fn listen(
             audit,
             uses,
         ),
-        listen_events(auth, graph),
+        listen_events(graph),
     )?;
 
     Ok(())
@@ -324,7 +324,7 @@ async fn listen_queries(
 }
 
 /// Subscribe to Event Bus and process permission/schema events.
-async fn listen_events(auth: Arc<Mutex<Authenticator>>, graph: GraphHandle) -> Result<()> {
+async fn listen_events(graph: GraphHandle) -> Result<()> {
     let uid = unsafe { libc::getuid() };
     let consumer_id = format!("graph-daemon-{uid}");
 
@@ -345,7 +345,7 @@ async fn listen_events(auth: Arc<Mutex<Authenticator>>, graph: GraphHandle) -> R
     loop {
         match events::recv_event(&mut stream).await {
             Some(event) => {
-                handle_graph_event(&auth, &graph, event).await;
+                handle_graph_event(&graph, event).await;
             }
             None => {
                 warn!("graph daemon: event bus disconnected, attempting reconnect");
@@ -411,11 +411,11 @@ fn profile_exists(app_id: &str) -> bool {
 }
 
 /// Process a graph-relevant event.
-async fn handle_graph_event(
-    auth: &Arc<Mutex<Authenticator>>,
-    graph: &GraphHandle,
-    event: GraphEvent,
-) {
+/// NB no `Authenticator`: this used to invalidate a token cache, and there is no
+/// cache any more. `issue_token_for_app` reads the profile from disk on every
+/// mint, so a narrowed profile is in force on the very next call, which the test
+/// in `auth.rs` pins. The parameter outlived the thing it was for.
+async fn handle_graph_event(graph: &GraphHandle, event: GraphEvent) {
     match event {
         GraphEvent::PermissionChanged { app_id } => {
             info!("permission changed for {app_id}");
@@ -1654,6 +1654,10 @@ async fn handle_restore(app_id: &str, body: &[u8], audit: &Arc<dyn AuditSink>) -
 /// the desktop user this daemon serves, which is the intended one - but that is a
 /// property of the deployment, not of the connection, and it is the same reasoning
 /// the block above the check spells out at length.
+// Nine arguments, and each is a separate thing the write path has to be told:
+// the body, the attested peer, the registry, the graph, the limiters, the auth
+// and the gates. A struct would move the list, not shorten it.
+#[allow(clippy::too_many_arguments)]
 async fn handle_write_request(
     body: &[u8],
     peer: Option<WritePeer>,
@@ -2696,6 +2700,14 @@ fn row_count(rs: &crate::graph::RowSet) -> i64 {
 /// debug-only test/dev accommodation, the same shape as the audit daemon's
 /// `ARLEN_AUDIT_EXTRA_ADMIT`. Same-uid only: a cross-uid peer keeps the strict
 /// resolve-or-reject path above, so this cannot widen cross-user access.
+/// **NOTHING CALLS THIS, and the harness does not know that.**
+/// `dev/integration/src/lib.rs` sets `ARLEN_KNOWLEDGE_DEV_SELF_ID` for every
+/// daemon it spawns, expecting it to be honoured here, and no resolution path
+/// consults this function - so the accommodation is inert and those scenarios
+/// pass by the identity broker instead. Wiring it belongs at the same-uid branch
+/// of the peer resolve, which is the identity path and wants a deliberate change
+/// rather than a lint fix.
+#[allow(dead_code)]
 fn same_uid_unresolved_id() -> String {
     #[cfg(debug_assertions)]
     {
@@ -2899,7 +2911,7 @@ async fn handle_merge_accept(
         // A merge is a write under the caller's grant for this entity type, and it
         // has now happened, so it counts. The refusal above (`can_write`) returns
         // before here, which is what keeps a denial out of the number.
-        record_capability_uses(graph, uses, app_id, &[core.entity_type.clone()]).await;
+        record_capability_uses(graph, uses, app_id, std::slice::from_ref(&core.entity_type)).await;
         // The merge is applied; mark accepted best-effort (a status-write hiccup
         // only leaves the suggestion listable, and a re-accept is now re-validated
         // and either re-runs the idempotent merge_node harmlessly or is refused as
@@ -5574,11 +5586,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_graph_event_permission_changed() {
-        let auth = Arc::new(Mutex::new(Authenticator::new()));
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         handle_graph_event(
-            &auth,
             &graph,
             GraphEvent::PermissionChanged {
                 app_id: "com.test".into(),
@@ -5591,10 +5601,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_graph_event_ai_level() {
-        let auth = Arc::new(Mutex::new(Authenticator::new()));
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
-        handle_graph_event(&auth, &graph, GraphEvent::AiLevelChanged).await;
+        handle_graph_event(&graph, GraphEvent::AiLevelChanged).await;
     }
 
     #[tokio::test]
@@ -5940,7 +5949,6 @@ mod tests {
     #[tokio::test]
     async fn permission_changed_for_an_uninstalled_app_removes_its_grants() {
         use crate::token::{CapabilityToken, EntityScope, InstanceScope};
-        let auth = Arc::new(Mutex::new(Authenticator::new()));
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
 
@@ -5972,7 +5980,6 @@ mod tests {
 
         // The uninstall event (profile gone) removes the orphaned grant.
         handle_graph_event(
-            &auth,
             &graph,
             GraphEvent::PermissionChanged { app_id: app.into() },
         )
@@ -6050,9 +6057,7 @@ mod tests {
             0
         );
 
-        let auth = Arc::new(Mutex::new(Authenticator::new()));
         handle_graph_event(
-            &auth,
             &graph,
             GraphEvent::PermissionChanged { app_id: app.into() },
         )

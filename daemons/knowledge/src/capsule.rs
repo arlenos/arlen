@@ -490,7 +490,7 @@ mod tests {
         assert_eq!(node.fields.len(), 2);
         assert_eq!(node.fields.get("path"), Some(&SliceValue::Text("/x/y.rs".into())));
         assert_eq!(node.fields.get("last_accessed"), Some(&SliceValue::Int(42)));
-        assert!(node.fields.get("app_id").is_none(), "an unprojected field is omitted");
+        assert!(!node.fields.contains_key("app_id"), "an unprojected field is omitted");
 
         // A missing node is None.
         assert!(load_node_fields(&graph, "File", "absent", &["path"]).await.unwrap().is_none());

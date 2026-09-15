@@ -1,58 +1,13 @@
-#![warn(clippy::pedantic)]
-#![allow(clippy::module_name_repetitions)]
-#![allow(clippy::must_use_candidate)]
+//! The graph daemon's entry point: resolve the paths, open the stores, and run
+//! the tasks. Everything it drives lives in the `knowledge` library beside it -
+//! this file declares no modules of its own, which is what keeps the daemon from
+//! being compiled a second time as a separate crate.
 
-mod proto {
-    #![allow(dead_code)]
-    #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
-}
 
-mod consumer;
-mod activity_delete;
-mod list;
-mod audit;
-mod auth;
-mod backup;
-mod capsule;
-mod entity_precision;
-mod code_analysis;
-mod git_ingest;
-mod cypher;
-mod daemon;
-mod db;
-mod events;
-mod fts;
-mod fuse;
-mod graph;
-mod identity;
-mod derivation;
-mod drift;
-mod lcg;
-mod meeting;
-mod lifecycle;
-mod library;
-mod links;
-mod migration;
-mod permission;
-mod project;
-mod promotion;
-mod provenance;
-mod quota;
-mod prep;
-mod retrieval;
-mod timeline_config;
-mod retention;
-mod revoke;
-mod schema;
-mod shared;
-mod working_set;
-mod time;
-mod token;
-mod typed_read;
-mod utils;
-mod write;
-mod writer;
+use knowledge::{
+    activity_delete, daemon, db, drift, git_ingest, graph, project, promotion, retention, utils,
+    writer,
+};
 
 use anyhow::{bail, Context, Result};
 use tracing::{info, warn};
@@ -69,7 +24,7 @@ const DEFAULT_GRAPH_PATH: &str = "/var/lib/arlen/knowledge/graph";
 /// var; the `/run/arlen/` last resort requires the write access only a
 /// privileged launcher has.
 fn pick_daemon_socket() -> String {
-    crate::utils::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock")
+    utils::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock")
 }
 
 /// Resolve a per-user data path: an explicit `env_var` wins (the
@@ -85,7 +40,7 @@ fn pick_data_path(env_var: &str, name: &str, system_default: &str) -> String {
     let pinned = std::env::var(env_var).ok().filter(|s| !s.is_empty());
     let xdg = std::env::var("XDG_DATA_HOME").ok();
     let home = std::env::var("HOME").ok();
-    let path = crate::utils::resolve_data_path(
+    let path = utils::resolve_data_path(
         pinned.as_deref(),
         xdg.as_deref(),
         home.as_deref(),
@@ -103,14 +58,9 @@ fn pick_data_path(env_var: &str, name: &str, system_default: &str) -> String {
 }
 
 fn main() -> Result<()> {
-    // BOTH TREES, because this crate compiles into two of them. The package is
-    // `knowledge`, so the library's modules log under `knowledge::*` - but the
-    // installed binary is `arlen-graph-daemon`, and everything `main.rs` declares
-    // (`mod graph`, `mod promotion`, `mod daemon` ...) logs under
-    // `arlen_graph_daemon::*`. The directive named only the first, so since the bin
-    // was renamed the daemon's own default has matched nothing it emits: an
-    // operator saw ERROR and silence from the process that does the work, while
-    // sibling daemons are readable at a glance.
+    // One tree now: everything the daemon runs is in the `knowledge` library, so
+    // it all logs under `knowledge::*`. The `arlen_graph_daemon` directive stays
+    // for this file's own lines and costs nothing.
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
@@ -121,7 +71,7 @@ fn main() -> Result<()> {
 
     info!("starting knowledge daemon");
 
-    let consumer_socket = crate::utils::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock");
+    let consumer_socket = utils::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock");
     let db_path = pick_data_path("ARLEN_DB_PATH", "events.db", DEFAULT_DB_PATH);
     let graph_path = pick_data_path("ARLEN_GRAPH_PATH", "graph", DEFAULT_GRAPH_PATH);
     let daemon_socket = pick_daemon_socket();

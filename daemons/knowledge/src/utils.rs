@@ -1,11 +1,4 @@
-//! Path and identity helpers shared by the library and the daemon binary.
-//!
-//! This crate builds a lib AND a bin over the same module tree, and the bin
-//! declares `mod utils` of its own. Three of the functions here have their only
-//! callers in the binary (`main.rs`, `daemon.rs`), so the LIB build sees them as
-//! dead while the daemon uses them every boot. The allow says that rather than
-//! deleting working code or widening its visibility to quiet a lint.
-#![allow(dead_code)]
+//! Path and identity helpers for the daemon and the library over it.
 
 //! Escape a string for safe interpolation into a Cypher single-quoted literal.
 //!
@@ -86,7 +79,7 @@ fn resolve_socket(env_val: Option<&str>, xdg: Option<&str>, file_name: &str) -> 
 /// system-wide `system_default` as a last resort. The per-user default
 /// keeps two profile-uids from sharing one store even absent the env, the
 /// same fail-safe the socket layer has (profile-system-plan.md PR-R1).
-pub(crate) fn resolve_data_path(
+pub fn resolve_data_path(
     pinned: Option<&str>,
     xdg: Option<&str>,
     home: Option<&str>,

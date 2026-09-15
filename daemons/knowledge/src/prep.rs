@@ -315,7 +315,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         graph.write("CREATE (p:Project {id: 'p1', name: 'Arlen'})".into()).await.unwrap();
-        let fresh = NOW - 1 * DAY;
+        let fresh = NOW - DAY;
         let cold = NOW - 200 * DAY;
         graph
             .write(format!(
@@ -356,7 +356,7 @@ mod tests {
         // explicitly referenced (LINKS_TO), each under its real relation.
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
-        let recent = NOW - 1 * DAY;
+        let recent = NOW - DAY;
         for f in ["f0", "co", "link"] {
             graph
                 .write(format!(

@@ -22,6 +22,8 @@ use std::time::Duration;
 // Include generated protobuf types.
 // We build the proto in knowledge's build.rs so we can use them here too.
 mod proto {
+    // Generated: the whole envelope is here, this test emits one message of it.
+    #![allow(dead_code)]
     include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
