@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
-# Arlen dev environment launcher.
+# Arlen dev environment launcher: the eBPF stack, in a VM, because it cannot run
+# on the host.
 #
-# Builds all daemons, copies them to the VM, and starts them in a tmux session.
-# The VM must be running before calling this script.
+# Builds the three daemons the kernel path needs, copies them to the VM, and
+# starts them in a tmux session. The VM must be running before calling this
+# script (`dev/vm/setup-vm.sh start`).
+#
+# EVERY PATH IN HERE WAS WRONG FROM THE JUNE RESTRUCTURE UNTIL 16 SEPTEMBER. The
+# crates moved under `daemons/` and the graph daemon's binary was renamed to
+# `arlen-graph-daemon` to match its unit; this script went on building each
+# manifest at its old top-level location, none of which exist. So `just vm`
+# failed on its first line for three months and nobody met it, because the one
+# thing it is for - the kernel layer, which is not in CI and cannot be tested on
+# this host - is also the thing nobody reaches for on an ordinary day. A dev tool
+# for the rarest job is the one most likely to rot unnoticed.
 #
 # Usage: ./dev.sh
 # Attach to existing session: ./dev.sh attach
@@ -33,28 +44,28 @@ scp_to_vm() {
 
 build_all() {
     echo "==> Building event-bus"
-    cargo build --manifest-path "$REPO_ROOT/event-bus/Cargo.toml"
+    cargo build --manifest-path "$REPO_ROOT/daemons/event-bus/Cargo.toml"
 
     echo "==> Building knowledge"
-    cargo build --manifest-path "$REPO_ROOT/knowledge/Cargo.toml"
+    cargo build --manifest-path "$REPO_ROOT/daemons/knowledge/Cargo.toml"
 
     echo "==> Building kernel-layer eBPF"
-    (cd "$REPO_ROOT/kernel-layer" && cargo +nightly build \
+    (cd "$REPO_ROOT/daemons/kernel-layer" && cargo +nightly build \
         -Z build-std=core \
         --target bpfel-unknown-none \
         -p kernel-layer-ebpf \
         --release)
 
     echo "==> Building kernel-layer daemon"
-    (cd "$REPO_ROOT/kernel-layer" && cargo build -p kernel-layer)
+    (cd "$REPO_ROOT/daemons/kernel-layer" && cargo build -p kernel-layer)
 }
 
 copy_to_vm() {
     echo "==> Copying binaries to VM"
-    scp_to_vm "$REPO_ROOT/event-bus/target/debug/event-bus" "~/event-bus"
-    scp_to_vm "$REPO_ROOT/knowledge/target/debug/knowledge" "~/knowledge"
-    scp_to_vm "$REPO_ROOT/kernel-layer/target/debug/kernel-layer" "~/kernel-layer"
-    scp_to_vm "$REPO_ROOT/kernel-layer/target/bpfel-unknown-none/release/kernel-layer-ebpf" "~/kernel-layer-ebpf"
+    scp_to_vm "$REPO_ROOT/daemons/event-bus/target/debug/event-bus" "~/event-bus"
+    scp_to_vm "$REPO_ROOT/daemons/knowledge/target/debug/arlen-graph-daemon" "~/knowledge"
+    scp_to_vm "$REPO_ROOT/daemons/kernel-layer/target/debug/kernel-layer" "~/kernel-layer"
+    scp_to_vm "$REPO_ROOT/daemons/kernel-layer/target/bpfel-unknown-none/release/kernel-layer-ebpf" "~/kernel-layer-ebpf"
 }
 
 setup_vm() {
