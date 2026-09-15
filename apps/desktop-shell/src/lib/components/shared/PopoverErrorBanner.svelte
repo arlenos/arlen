@@ -26,7 +26,11 @@
     padding: 6px 10px;
     background: color-mix(in srgb, var(--color-error) 15%, transparent);
     border-radius: var(--radius-input);
-    color: var(--color-error);
+    /* The label sits on a wash of its own colour, where the plain red does not
+       clear the contrast floor. `--destructive-on-tint` is the kit's shared
+       recipe for exactly that (lib/motion.css), and it follows the surface:
+       lighter on dark, darker on light. */
+    color: var(--destructive-on-tint);
     font-size: var(--text-2xs);
   }
 </style>
