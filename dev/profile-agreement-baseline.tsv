@@ -3,12 +3,6 @@
 # decide what the app should get, make every id say it, drop the row.
 #
 # app	the ids that disagree
-pycharm-community	com.jetbrains.PyCharm-Community pycharm-community
-rider	com.jetbrains.Rider rider
-rpcs3	net.rpcs3.RPCS3 rpcs3
-ryujinx	org.ryujinx.Ryujinx ryujinx
-shotcut	org.shotcut.Shotcut shotcut
-showtime	org.gnome.Showtime showtime
 snes9x	com.snes9x.Snes9x snes9x
 solfege	org.gnome.Solfege solfege
 stellarium	org.stellarium.Stellarium stellarium

@@ -1,5 +1,9 @@
-# Starting permission profile for PyCharm Community (a Python IDE).
-# Fetches packages over the network; projects live in Documents. No graph.
+# Starting permission profile for PyCharm Community (a Python IDE). Projects live in Documents; it fetches
+# plugins, packages and toolchains over the network. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no network, which
+# leaves an IDE unable to fetch a package or a plugin - the thing it spends its
+# first run doing. Same repair as the CLion and DataGrip groups.
 [info]
 app_id = "com.jetbrains.PyCharm-Community"
 tier = "third-party"
