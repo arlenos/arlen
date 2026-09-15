@@ -1,0 +1,38 @@
+# The knowledge-graph MCP server's read grant, at the knowledge daemon's system
+# profile path: /var/lib/arlen/permissions/<the user it applies to>/<app_id>.toml.
+# The server resolves to app_id "knowledge-mcp" from /usr/bin/arlen-knowledge-mcp.
+#
+# WHY IT NEEDS ONE AT ALL. The server is not in `first_party_apps`, so it tiers
+# ThirdParty and the read-scope label gate applies to it in full. Without this
+# file its readable set is empty and every query it forwards comes back refused -
+# the server would be in the image, running, answering nothing. That is the shape
+# this whole directory exists to prevent, and it is worth stating plainly because
+# the failure looks like the graph being empty rather than like a permission.
+#
+# The tier is the right one. This process takes Cypher from a model and runs it;
+# a caller like that should be held to a declared reach, not lifted over the gate
+# the way a first-party daemon is.
+#
+# WHY THESE FOUR FIELDS AND NO OTHERS. They are exactly what `ai-agent.toml`
+# grants. The server reads under its OWN identity, so its grant is the ceiling on
+# anything the AI can ask through it, and the AI engine can already query the
+# graph directly with that same reach. Equal ceilings make this bridge a
+# convenience rather than new reach - which is the property to preserve when
+# widening it later. Widen the engine's grant and this one together, or the bridge
+# becomes the wider door, and nothing in the file would say so.
+#
+# READ-ONLY, AND STRUCTURALLY SO: no `relations`, so the write socket refuses any
+# relation it might be asked for, and the server has no write path in its code
+# either. The two agree today; this list is the one a future reader can check.
+
+[info]
+app_id = "knowledge-mcp"
+tier = "third-party"
+
+[graph]
+read = [
+    "system.File.id",
+    "system.File.path",
+    "system.Project.id",
+    "system.Project.root_path",
+]
