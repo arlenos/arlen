@@ -1,5 +1,9 @@
-# Starting permission profile for zathura (a document/PDF viewer).
-# Reads documents from Documents and Downloads; no network, no graph.
+# Starting permission profile for zathura (a keyboard-driven document viewer).
+# Reads PDFs and DjVu from Documents and Downloads; no network and no Knowledge
+# Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had Documents alone,
+# and a PDF you just downloaded is the ordinary thing to open in a viewer.
 [info]
 app_id = "org.pwmt.zathura"
 tier = "third-party"

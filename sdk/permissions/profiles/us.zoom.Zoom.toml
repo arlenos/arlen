@@ -1,11 +1,17 @@
-# Starting permission profile for Zoom (video conferencing). Network is its
-# function; local recordings save under Documents. No graph.
+# Starting permission profile for Zoom (a video conferencing client). Joins
+# meetings over the network, which is its function; a recording or a received
+# file lands in Downloads and a shared document is opened from Documents. No
+# Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep), and each had half: one could open a
+# document to share and not keep a recording, the other the reverse.
 [info]
 app_id = "us.zoom.Zoom"
 tier = "third-party"
 
 [filesystem]
 documents = true
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

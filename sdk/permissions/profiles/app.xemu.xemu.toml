@@ -1,7 +1,9 @@
-# Starting permission profile for app.xemu.xemu (a game-console emulator).
-# It loads game images from local files by function, so it gets Documents and
-# Downloads (where ROMs are kept) and no network; netplay is opt-in. No
-# Knowledge Graph access.
+# Starting permission profile for xemu (an original Xbox emulator). Games, BIOS
+# images and saves live in Documents and Downloads; no network and no Knowledge
+# Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, the
+# same gap as every other emulator group in this catalogue.
 [info]
 app_id = "app.xemu.xemu"
 tier = "third-party"

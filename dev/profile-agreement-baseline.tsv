@@ -3,8 +3,3 @@
 # decide what the app should get, make every id say it, drop the row.
 #
 # app	the ids that disagree
-wesnoth	org.wesnoth.Wesnoth wesnoth
-xemu	app.xemu.xemu xemu
-zathura	org.pwmt.zathura zathura
-zeal	org.zealdocs.Zeal zeal
-zoom	us.zoom.Zoom zoom

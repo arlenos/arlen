@@ -1,6 +1,9 @@
-# Starting permission profile for Zeal (an offline developer-documentation
-# browser). It reads local docsets from the user's documents and fetches new
-# docsets over the network; no Knowledge Graph access.
+# Starting permission profile for Zeal (an offline documentation browser). It
+# downloads docsets over the network - the "offline" part is what it does AFTER
+# fetching them - and keeps user docsets in Documents. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, which
+# leaves a docset browser with no way to get a docset.
 [info]
 app_id = "org.zealdocs.Zeal"
 tier = "third-party"

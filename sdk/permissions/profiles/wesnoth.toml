@@ -1,8 +1,15 @@
-# Starting permission profile for a network game or voice client. Needs network
-# for multiplayer/voice; no local file access and no Knowledge Graph by default.
+# Starting permission profile for Wesnoth (a turn-based strategy game). Plays and
+# fetches campaigns from the add-on server over the network, and an add-on lands
+# in Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no file grant, so a
+# downloaded campaign had nowhere to go.
 [info]
 app_id = "wesnoth"
 tier = "third-party"
+
+[filesystem]
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

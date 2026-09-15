@@ -1,6 +1,21 @@
-# Starting permission profile for a self-contained utility (calculator or offline
-# docs). No file access, no network and no Knowledge Graph; its data lives in its
-# own app directory.
+# Starting permission profile for Zeal (an offline documentation browser). It
+# downloads docsets over the network - the "offline" part is what it does AFTER
+# fetching them - and keeps user docsets in Documents. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, which
+# leaves a docset browser with no way to get a docset.
 [info]
 app_id = "zeal"
 tier = "third-party"
+
+[filesystem]
+documents = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true
