@@ -1,5 +1,11 @@
-# Starting permission profile for gtimelog (a time tracker).
-# Self-contained; needs no filesystem, network, or Knowledge Graph access.
+# Starting permission profile for GTimeLog (a plain-text time tracker). Its log
+# is a text file in Documents; no network and no Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id granted nothing,
+# which leaves a plain-text tracker with nowhere to keep the text.
 [info]
 app_id = "io.github.nokse22.gtimelog"
 tier = "third-party"
+
+[filesystem]
+documents = true

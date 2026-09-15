@@ -1,6 +1,13 @@
-# Starting permission profile for a self-contained emulator. No file access, no
-# network and no Knowledge Graph by default; its data lives in its own app dir
-# (ROM/BIOS paths are granted explicitly).
+# Starting permission profile for Flycast (a Dreamcast emulator). ROMs and saves
+# live in Documents and Downloads; no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, so the
+# emulator could not reach a ROM; Downloads is added beside Documents because a
+# ROM arrives as a download at least as often.
 [info]
 app_id = "flycast"
 tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

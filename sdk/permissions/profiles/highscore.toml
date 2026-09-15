@@ -1,9 +1,13 @@
-# Starting permission profile for a game-emulator frontend (Highscore). It loads
-# game ROMs from disk, so it gets home filesystem access; it plays them locally and
-# needs no network.
+# Starting permission profile for HighScore (a game front end). ROMs and saves
+# live in Documents and Downloads; no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted the whole Home,
+# written as a category template. The two directories are where a ROM is, and one
+# anywhere else opens through the file portal.
 [info]
 app_id = "highscore"
 tier = "third-party"
 
 [filesystem]
-home = true
+documents = true
+downloads = true

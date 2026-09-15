@@ -1,6 +1,9 @@
-# Starting permission profile for High Score (a game-emulator front end).
-# It loads game images from local files by function, so it gets Documents and
-# Downloads (where ROMs are kept) and no network. No Knowledge Graph access.
+# Starting permission profile for HighScore (a game front end). ROMs and saves
+# live in Documents and Downloads; no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted the whole Home,
+# written as a category template. The two directories are where a ROM is, and one
+# anywhere else opens through the file portal.
 [info]
 app_id = "io.github.nokse22.HighScore"
 tier = "third-party"

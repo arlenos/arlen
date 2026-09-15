@@ -1,8 +1,15 @@
-# Starting permission profile for a video/RSS frontend. Needs network to fetch
-# content; no local file access and no Knowledge Graph by default.
+# Starting permission profile for FreeTube (a privacy-minded YouTube client).
+# Fetches over the network, which is its function, and saves a video you download
+# to Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no file grant, and
+# downloading a video is a button the app ships.
 [info]
 app_id = "FreeTube"
 tier = "third-party"
+
+[filesystem]
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

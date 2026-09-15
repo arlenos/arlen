@@ -1,6 +1,8 @@
-# Starting permission profile for a notes/PKM/finance/project/task tool. Works
-# with Documents (notes, ledgers, project files); no network and no Knowledge
-# Graph by default.
+# Starting permission profile for GTimeLog (a plain-text time tracker). Its log
+# is a text file in Documents; no network and no Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id granted nothing,
+# which leaves a plain-text tracker with nowhere to keep the text.
 [info]
 app_id = "gtimelog"
 tier = "third-party"
