@@ -1,6 +1,10 @@
 [Unit]
 Description=Arlen online-accounts daemon (user service)
 Documentation=https://github.com/arlenos/arlen
+# NOT ON THE IMAGE: online accounts are not in the image's scope yet (15 Aug).
+# The Files sidebar is the one shipped caller and it distinguishes "no account
+# daemon" from "no accounts configured", with a test for it, so its absence is a
+# state the surface says rather than one it guesses at.
 # arlen-accountsd owns org.arlen.Accounts1 on the session bus and mediates every
 # account-token handout against a per-app capability grant - the caller's Arlen
 # identity resolved from the bus-attested PID (GetConnectionUnixProcessID ->
