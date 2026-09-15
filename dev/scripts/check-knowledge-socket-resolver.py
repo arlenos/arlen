@@ -43,10 +43,15 @@ SINGLE = re.compile(
     r'(?:os_sdk::)?(?:runtime::)?socket_path\(\s*"ARLEN_(?:KNOWLEDGE|DAEMON)_SOCKET"'
 )
 
-# The daemon that OWNS the socket resolves its own bind, in its own crate helper.
-# Named rather than pattern-excused: the exemption is about which crate, and a
-# client that grew inside it would still be a finding worth seeing.
-OWNER = "daemons/knowledge/"
+# The daemon that OWNS the socket resolves its own BIND, and that is the one
+# place a single name is right. The exemption is the two files that bind, not the
+# crate: the timeline helper lives in the same crate and is a CLIENT of the
+# socket, so it reads both names through `knowledge::utils::knowledge_socket_path`
+# like every other client. Exempting the crate would have hidden it.
+OWNER = (
+    "daemons/knowledge/src/main.rs",
+    "daemons/knowledge/src/utils.rs",
+)
 
 SKIP_DIRS = {"target", "node_modules", ".git", ".svelte-kit", "build", "mkosi.builddir"}
 
@@ -73,7 +78,7 @@ def main() -> int:
         for n, line in enumerate(text.splitlines(), 1):
             if not SINGLE.search(line):
                 continue
-            if rel.startswith(OWNER):
+            if rel in OWNER:
                 continue
             problems.append(
                 f"{rel}:{n} resolves the knowledge socket from one env name. "

@@ -116,10 +116,12 @@ fn main() -> Result<()> {
         return Ok(());
     };
 
-    // The daemon's read socket: ARLEN_DAEMON_SOCKET wins, else the per-user
-    // $XDG_RUNTIME_DIR/arlen/knowledge.sock, else /run/arlen/knowledge.sock -
-    // the exact resolution the daemon binds with.
-    let socket = knowledge::utils::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock");
+    // The daemon's read socket, through the resolver that reads BOTH of its env
+    // names. This helper is a client, and a client pinned to one name is broken
+    // under the launcher that sets the other; the daemon's unit sets
+    // `ARLEN_DAEMON_SOCKET` and a session launcher exports
+    // `ARLEN_KNOWLEDGE_SOCKET`. Same precedence below the overrides.
+    let socket = knowledge::utils::knowledge_socket_path();
     // The identity the DAEMON will judge this helper as, resolved the same way it
     // resolves it, and said out loud at startup.
     //

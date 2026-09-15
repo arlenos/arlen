@@ -33,6 +33,30 @@ pub fn socket_path(env_var: &str, file_name: &str) -> String {
     path
 }
 
+/// The knowledge socket as a CLIENT resolves it: either of its two names.
+///
+/// One socket, two variables. `ARLEN_DAEMON_SOCKET` pins the daemon's own bind
+/// and is what its unit sets; `ARLEN_KNOWLEDGE_SOCKET` is what a session
+/// launcher exports for clients. A client that reads only one of them is broken
+/// under the launcher that sets the other, which is exactly how nineteen
+/// resolvers across the apps ended up dialling a path nothing bound - see
+/// `os_sdk::runtime::knowledge_socket_path`, the same function one crate over.
+///
+/// The timeline helper is a client of this daemon, so it reads both. The daemon
+/// itself binds through [`socket_path`] on its own variable, which is the one
+/// place a single name is right.
+#[must_use]
+pub fn knowledge_socket_path() -> String {
+    for name in ["ARLEN_KNOWLEDGE_SOCKET", "ARLEN_DAEMON_SOCKET"] {
+        if let Ok(v) = std::env::var(name) {
+            if !v.is_empty() {
+                return v;
+            }
+        }
+    }
+    socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock")
+}
+
 /// Pure precedence backing [`socket_path`], split out so it can be
 /// tested without mutating the process environment.
 fn resolve_socket(env_val: Option<&str>, xdg: Option<&str>, file_name: &str) -> String {

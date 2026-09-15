@@ -76,6 +76,17 @@ check(
   (c) => c === 0,
 );
 
+// The exemption is the two files that BIND, not the crate. The timeline helper
+// lives beside them and is a client of the socket.
+check(
+  "a client inside the owning crate is still a finding",
+  {
+    "daemons/knowledge/src/bin/arlen-timeline.rs":
+      'fn s() { knowledge::utils::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock"); }\n',
+  },
+  (c, out) => c === 1 && out.includes("arlen-timeline.rs"),
+);
+
 // A different socket entirely is not this check's business.
 check(
   "another socket's single-name resolver is not a finding",
