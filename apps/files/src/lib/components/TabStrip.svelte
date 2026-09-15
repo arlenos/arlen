@@ -29,21 +29,42 @@
   });
 </script>
 
+<!-- A GROUP, NOT A TABLIST, and the reason is that a tablist may hold nothing
+     but tabs. This said `role="tablist"` over `div` wrappers each holding a
+     `role="tab"` button AND a close button, which axe rates CRITICAL
+     (`aria-required-children`): the tablist has no tabs in the accessibility
+     tree at all, so the "tab 2 of 3, selected" announcement the role promises
+     was never delivered either.
+
+     Measured, all three shapes, rather than argued (15 Sep):
+
+       as it was ................. aria-required-children, critical
+       close button inside the tab  nested-interactive, serious
+       a labelled group ........... no violations
+
+     Wrapping differently does not help - `role="presentation"` on the wrapper
+     and flattening it both leave the close buttons as children the tablist may
+     not have. The close control is the thing a tablist cannot express, and
+     removing it to satisfy the role would take away the only pointer way to
+     close a tab.
+
+     So: a labelled group of plain buttons, with `aria-current` marking the open
+     one. Same precedent as `MillerColumns` in the kit - a role that promises a
+     structure and delivers none is worse than a modest one that is true. -->
 {#if $tabs.length > 1}
-  <div class="tab-strip" role="tablist">
+  <div class="tab-strip" role="group" aria-label={$t("f.tab.strip")}>
     {#each $tabs as tab (tab.id)}
       <div class="ts-tab" class:active={tab.id === $activeTabId}>
         <button
           class="ts-label"
-          role="tab"
-          aria-selected={tab.id === $activeTabId}
+          aria-current={tab.id === $activeTabId ? "true" : undefined}
           onclick={() => selectTab(tab.id)}
         >
           {labels[tab.id] ?? tabLabel(tab)}
         </button>
         <button
           class="ts-close"
-          aria-label={$t("f.tab.close")}
+          aria-label={$t("f.tab.closeNamed", { tab: labels[tab.id] ?? tabLabel(tab) })}
           onclick={() => closeTab(tab.id)}
         >
           <X size={12} strokeWidth={2} />

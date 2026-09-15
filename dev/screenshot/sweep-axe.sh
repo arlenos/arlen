@@ -85,7 +85,7 @@ SURFACES=(
   # where a primitive is looked at, so a fixture nobody measures is a blind spot
   # in the place the looking happens.
   "ui-kit /_a11y|/_icons|/_i18n|/_companion"
-  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/_thumbtest?view=grid|/_thumbtest?view=miller|/?locale=de@@files-refuses-op"
+  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/_thumbtest?view=grid|/_thumbtest?view=miller|/?locale=de@@files-refuses-op|/?locale=de@@files-two-tabs"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/?locale=de@@terminal-quick-connect|/?locale=de::#terminal-history-open@@terminal-history-refused"
   # THE OTHER NINETEEN SETTINGS PAGES, and they were missing for the reason
   # this header keeps naming: the list IS the coverage. Settings has 38 route
