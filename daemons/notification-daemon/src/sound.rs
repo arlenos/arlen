@@ -703,7 +703,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().to_path_buf();
         put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", Some("bell.oga"));
-        let r = resolve_sound(&[root.clone()], "arlen", "bell");
+        let r = resolve_sound(std::slice::from_ref(&root), "arlen", "bell");
         assert_eq!(r, SoundResolution::File(root.join("arlen/stereo/bell.oga")));
     }
 
@@ -723,7 +723,7 @@ mod tests {
         let root = tmp.path().to_path_buf();
         put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\nInherits=base\n"), "stereo", None);
         put(&root, "base", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", Some("error.oga"));
-        let r = resolve_sound(&[root.clone()], "arlen", "error");
+        let r = resolve_sound(std::slice::from_ref(&root), "arlen", "error");
         assert_eq!(r, SoundResolution::File(root.join("base/stereo/error.oga")));
     }
 
@@ -734,7 +734,7 @@ mod tests {
         put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", None);
         // No Inherits, but freedesktop is the implicit final fallback.
         put(&root, "freedesktop", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", Some("complete.oga"));
-        let r = resolve_sound(&[root.clone()], "arlen", "complete");
+        let r = resolve_sound(std::slice::from_ref(&root), "arlen", "complete");
         assert_eq!(r, SoundResolution::File(root.join("freedesktop/stereo/complete.oga")));
     }
 
@@ -751,11 +751,11 @@ mod tests {
         // The guard refuses the traversing name, so the existing outside file is
         // never resolved (without the guard this would return File(evil.oga)).
         assert_eq!(
-            resolve_sound(&[root.clone()], "arlen", "../../../outside/evil"),
+            resolve_sound(std::slice::from_ref(&root), "arlen", "../../../outside/evil"),
             SoundResolution::NotFound
         );
         // Any separator-bearing or empty name is not a valid flat sound name.
-        assert_eq!(resolve_sound(&[root.clone()], "arlen", "a/b"), SoundResolution::NotFound);
+        assert_eq!(resolve_sound(std::slice::from_ref(&root), "arlen", "a/b"), SoundResolution::NotFound);
         assert_eq!(resolve_sound(&[root], "arlen", ""), SoundResolution::NotFound);
     }
 
@@ -783,7 +783,7 @@ mod tests {
         let root = tmp.path().to_path_buf();
         // No index.theme: the sound lives directly under the theme dir.
         put(&root, "flat", None, "", Some("warning.ogg"));
-        let r = resolve_sound(&[root.clone()], "flat", "warning");
+        let r = resolve_sound(std::slice::from_ref(&root), "flat", "warning");
         assert_eq!(r, SoundResolution::File(root.join("flat/warning.ogg")));
     }
 
@@ -808,7 +808,7 @@ mod tests {
         put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", Some("dialog-error.oga"));
         let name = SoundEvent::Error.sound_name();
         assert_eq!(
-            resolve_sound(&[root.clone()], "arlen", name),
+            resolve_sound(std::slice::from_ref(&root), "arlen", name),
             SoundResolution::File(root.join("arlen/stereo/dialog-error.oga")),
         );
     }
@@ -850,7 +850,7 @@ mod tests {
             .overrides
             .insert("message-new-instant".to_string(), "custom-bell".to_string());
         assert_eq!(
-            resolve_cue(SoundEvent::NotificationArrived, &config, &[root.clone()]),
+            resolve_cue(SoundEvent::NotificationArrived, &config, std::slice::from_ref(&root)),
             SoundResolution::File(root.join("mytheme/custom-bell.oga")),
         );
     }

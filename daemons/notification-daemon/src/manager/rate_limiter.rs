@@ -17,6 +17,12 @@ pub struct RateLimiter {
     global: Vec<Instant>,
 }
 
+impl Default for RateLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RateLimiter {
     /// Create a new rate limiter.
     pub fn new() -> Self {

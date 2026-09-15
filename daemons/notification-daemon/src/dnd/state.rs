@@ -509,8 +509,7 @@ mod tests {
 
     #[test]
     fn test_fullscreen_queues() {
-        let mut state = DndState::default();
-        state.fullscreen_active = true;
+        let state = DndState { fullscreen_active: true, ..DndState::default() };
         let config = default_dnd(); // suppress_fullscreen = true by default
         let n = make_notification("app", Priority::Normal);
         assert_eq!(state.should_suppress(&n, &config, None), SuppressResult::Queue);
@@ -518,15 +517,12 @@ mod tests {
 
     #[test]
     fn test_fullscreen_disabled() {
-        let mut state = DndState::default();
-        state.fullscreen_active = true;
-        let mut config = default_dnd();
-        config.suppress_fullscreen = false;
+        let state = DndState { fullscreen_active: true, ..DndState::default() };
+        let config = DndConfig { suppress_fullscreen: false, ..default_dnd() };
         let n = make_notification("app", Priority::Normal);
         assert_eq!(state.should_suppress(&n, &config, None), SuppressResult::Allow);
     }
 
-    #[test]
     /// The same alert, from an app the user put on the always-allow list.
     ///
     /// This was QUEUED while the ordinary-app case above was allowed: steps 4
@@ -537,10 +533,8 @@ mod tests {
     /// now.
     #[test]
     fn test_fullscreen_critical_passes_for_an_always_allowed_app() {
-        let mut state = DndState::default();
-        state.fullscreen_active = true;
-        let mut config = default_dnd();
-        config.always_allow = vec!["phone".into()];
+        let state = DndState { fullscreen_active: true, ..DndState::default() };
+        let config = DndConfig { always_allow: vec!["phone".into()], ..default_dnd() };
         let n = make_notification("phone", Priority::Critical);
         assert_eq!(state.should_suppress(&n, &config, None), SuppressResult::Allow);
     }
@@ -549,8 +543,7 @@ mod tests {
     /// branch.
     #[test]
     fn test_fullscreen_critical_passes_through_bypass_dnd() {
-        let mut state = DndState::default();
-        state.fullscreen_active = true;
+        let state = DndState { fullscreen_active: true, ..DndState::default() };
         let config = default_dnd();
         let n = make_notification("phone", Priority::Critical);
         let ovr = AppOverride { bypass_dnd: Some(true), ..Default::default() };
@@ -566,18 +559,15 @@ mod tests {
     /// not the fullscreen courtesy.
     #[test]
     fn test_fullscreen_still_queues_a_normal_always_allowed_notification() {
-        let mut state = DndState::default();
-        state.fullscreen_active = true;
-        let mut config = default_dnd();
-        config.always_allow = vec!["phone".into()];
+        let state = DndState { fullscreen_active: true, ..DndState::default() };
+        let config = DndConfig { always_allow: vec!["phone".into()], ..default_dnd() };
         let n = make_notification("phone", Priority::Normal);
         assert_eq!(state.should_suppress(&n, &config, None), SuppressResult::Queue);
     }
 
     #[test]
     fn test_fullscreen_critical_passes() {
-        let mut state = DndState::default();
-        state.fullscreen_active = true;
+        let state = DndState { fullscreen_active: true, ..DndState::default() };
         let config = default_dnd();
         let n = make_notification("app", Priority::Critical);
         // Critical is checked before fullscreen.
@@ -732,8 +722,7 @@ mod tests {
     fn test_always_allow_overrides_focus() {
         let mut state = DndState::default();
         state.focus.activate("proj".into(), vec!["phone".into()]);
-        let mut config = default_dnd();
-        config.always_allow = vec!["phone".into()];
+        let config = DndConfig { always_allow: vec!["phone".into()], ..default_dnd() };
         let n = make_notification("phone", Priority::Normal);
         // always_allow is checked before focus.
         assert_eq!(state.should_suppress(&n, &config, None), SuppressResult::Allow);

@@ -769,10 +769,13 @@ mod tests {
         );
     }
 
+    /// What the minter was asked to bind: the command and its argv, once.
+    type SeenArgv = Arc<StdMutex<Option<(String, Vec<String>)>>>;
+
     /// A minter that records the argv it was asked to bind and returns a fixed
     /// token, so a test can prove the biscuit is minted over the exact command+args.
     struct MockMinter {
-        seen: Arc<StdMutex<Option<(String, Vec<String>)>>>,
+        seen: SeenArgv,
         token: String,
     }
     impl ConsentMinter for MockMinter {
