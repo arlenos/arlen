@@ -31,7 +31,7 @@ enum VPath {
     ProjectDir(String),
     /// Leaf project directory. Stores the graph project ID.
     ProjectApp(String),
-    File { target: String, name: String },
+    File { target: String },
 }
 
 /// Find the longest common directory prefix of a list of absolute paths.
@@ -62,21 +62,6 @@ fn last_n_components(path: &str, n: usize) -> String {
     let components: Vec<&str> = path.trim_end_matches('/').rsplit('/').take(n).collect();
     let result: Vec<&str> = components.into_iter().rev().collect();
     result.join("/")
-}
-
-/// Sanitize a project name for use as a FUSE directory name.
-fn sanitize_dirname(name: &str) -> String {
-    let s: String = name
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    if s.is_empty() { "unnamed".to_string() } else { s }
 }
 
 /// A synchronous, read-only graph query source for the timeline filesystem.
@@ -518,7 +503,7 @@ impl TimelineFs {
         for (name, target) in Self::dedup_basenames(paths) {
             let file_ino = self.register(
                 &format!("file:{}:{name}", parent_ino.0),
-                VPath::File { target, name: name.clone() },
+                VPath::File { target },
             );
             entries.push((file_ino, FileType::Symlink, name));
         }
@@ -728,37 +713,6 @@ mod tests {
         // and running fusermount would only add a confusing failure.
         assert!(!mount_point_needs_clearing(&Err(Error::from(ErrorKind::NotFound))));
         assert!(!mount_point_needs_clearing(&Err(Error::from(ErrorKind::PermissionDenied))));
-    }
-
-    #[test]
-    fn sanitize_simple() {
-        assert_eq!(sanitize_dirname("my-project"), "my-project");
-        assert_eq!(sanitize_dirname("my_project"), "my_project");
-        assert_eq!(sanitize_dirname("v1.2.3"), "v1.2.3");
-    }
-
-    #[test]
-    fn sanitize_spaces() {
-        assert_eq!(sanitize_dirname("My Project"), "My-Project");
-    }
-
-    #[test]
-    fn sanitize_special_chars() {
-        assert_eq!(sanitize_dirname("project/name"), "project-name");
-        assert_eq!(sanitize_dirname("project:name"), "project-name");
-        assert_eq!(sanitize_dirname("a@b#c"), "a-b-c");
-    }
-
-    #[test]
-    fn sanitize_empty() {
-        assert_eq!(sanitize_dirname(""), "unnamed");
-    }
-
-    #[test]
-    fn sanitize_unicode() {
-        let s = sanitize_dirname("prüfung");
-        assert!(s.contains('-'));
-        assert!(s.starts_with("pr"));
     }
 
     #[test]

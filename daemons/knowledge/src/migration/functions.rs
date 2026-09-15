@@ -11,7 +11,10 @@ use serde_json::Value;
 /// a migration against, and `apply_transform` is what runs once it passes. A
 /// name present here but not dispatched used to be expressible, and it would
 /// validate a migration and then fail partway through applying it.
-const TRANSFORMS: &[(&str, fn(&Value) -> Result<Value, String>)] = &[
+/// One named transform: the name a migration asks for, and what runs for it.
+type Transform = (&'static str, fn(&Value) -> Result<Value, String>);
+
+const TRANSFORMS: &[Transform] = &[
     ("split_comma", split_comma),
     ("split_newline", split_newline),
     ("join_comma", |v| join_array(v, ", ")),
@@ -197,6 +200,9 @@ mod tests {
         assert!(apply_transform("parse_int", &json!("abc")).is_err());
     }
 
+    // Not an approximation of pi: a decimal string the parser has to read back
+    // as the same number, which is what makes it a good one to test with.
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_parse_float() {
         let r = apply_transform("parse_float", &json!("3.14")).unwrap();

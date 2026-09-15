@@ -1,3 +1,12 @@
+//! Path and identity helpers shared by the library and the daemon binary.
+//!
+//! This crate builds a lib AND a bin over the same module tree, and the bin
+//! declares `mod utils` of its own. Three of the functions here have their only
+//! callers in the binary (`main.rs`, `daemon.rs`), so the LIB build sees them as
+//! dead while the daemon uses them every boot. The allow says that rather than
+//! deleting working code or widening its visibility to quiet a lint.
+#![allow(dead_code)]
+
 //! Escape a string for safe interpolation into a Cypher single-quoted literal.
 //!
 //! Cypher uses `'...'` for string literals with `\` as the escape character.

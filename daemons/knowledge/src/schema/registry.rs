@@ -210,6 +210,11 @@ impl SchemaRegistry {
     pub fn len(&self) -> usize {
         self.schemas.len()
     }
+
+    /// Whether no app has registered a schema yet.
+    pub fn is_empty(&self) -> bool {
+        self.schemas.is_empty()
+    }
 }
 
 /// Parse "com.anki.Card" into ("com.anki", "Card").
