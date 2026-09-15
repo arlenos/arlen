@@ -1,9 +1,15 @@
-# Starting permission profile for KDE Connect (phone integration). Needs network
-# to reach the paired device; no local file access and no Knowledge Graph by
-# default (file transfers are granted per-transfer).
+# Starting permission profile for KDE Connect (a phone-to-desktop bridge). Talks
+# to the paired device over the network, which is its function, and puts a file
+# the phone sends into Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no file grant, and
+# "send a file to my computer" is the feature people install this for.
 [info]
 app_id = "kdeconnect"
 tier = "third-party"
+
+[filesystem]
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

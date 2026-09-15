@@ -1,7 +1,12 @@
-# Starting permission profile for Konsole (the KDE terminal emulator). Like any
-# terminal it runs an interactive shell in the user's environment, so it needs the
-# home tree and the network its commands use, granted by function. No Knowledge
-# Graph access.
+# Starting permission profile for Konsole (a terminal emulator). A terminal runs
+# the user's shell, so its reach IS the user's reach: Home, and the network the
+# commands they type need. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no network, which
+# leaves `ssh`, `curl` and every package manager refused inside a window whose
+# purpose is running them. Written down for the same reason as the Ghostty group:
+# this is the rare profile where the wide grant is the honest one, because
+# narrowing a terminal narrows the user rather than the app.
 [info]
 app_id = "org.kde.konsole"
 tier = "third-party"
