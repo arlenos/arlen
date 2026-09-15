@@ -123,8 +123,9 @@ impl EphemeralStack {
 
     /// Drop the test caller to the unprivileged ThirdParty tier (no
     /// `ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY`) for every daemon spawned after this
-    /// call. The caller is still resolved (via `ARLEN_KNOWLEDGE_DEV_SELF_ID`) so
-    /// its identity is known; it just is not system-anchored. Needed by the
+    /// call. The caller is still resolved - the identity broker names it, the way
+    /// it names every unit the supervisor starts - so its identity is known; it
+    /// just is not system-anchored. Needed by the
     /// scenarios whose assertion is a refusal of an unprivileged caller (the
     /// write-tier gate and the authority-label read gate). Call before spawning
     /// knowledge. See [`first_party`](Self::first_party) for why FirstParty is the
@@ -282,13 +283,17 @@ impl EphemeralStack {
         // the harness, so it cannot read a same-uid peer's `/proc/<pid>/exe` and
         // would resolve THIS test connection to the `unknown` sentinel - which the
         // read-scope label gate denies regardless of the seeded profile or the
-        // FirstParty tier above (both keyed on the resolved id). Declare the test's
-        // own id so the debug-only daemon fallback resolves us to it; the deployed
-        // root daemon reads the exe directly and never consults this.
+        // FirstParty tier above (both keyed on the resolved id).
+        //
+        // `ARLEN_KNOWLEDGE_DEV_SELF_ID` used to be set here too, for a daemon-side
+        // fallback that resolved an unreadable same-uid peer to a declared id. That
+        // fallback is gone: the graph daemon now REFUSES a caller the identity
+        // broker cannot name rather than serving it an empty scope that reads like
+        // a permissions decision. Nothing read the variable, so setting it only
+        // suggested an accommodation that was not happening.
         if let Some(id) = own_app_id() {
             env.insert("ARLEN_AUDIT_EXTRA_ADMIT".to_string(), id.clone());
             env.insert("ARLEN_REVOKE_EXTRA_ADMIT".to_string(), id.clone());
-            env.insert("ARLEN_KNOWLEDGE_DEV_SELF_ID".to_string(), id.clone());
             // The consent broker's control socket, same shape and same reason:
             // its dev admission is an exact id and a cargo test binary's is
             // hash-suffixed, so the three consent scenarios connected as a caller

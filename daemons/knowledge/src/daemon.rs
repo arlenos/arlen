@@ -2683,43 +2683,6 @@ fn row_count(rs: &crate::graph::RowSet) -> i64 {
         .unwrap_or(0)
 }
 
-/// The app id for a SAME-uid peer whose `/proc/<pid>/exe` could not be read for
-/// identity resolution.
-///
-/// The deployed knowledge daemon runs as root (for the eBPF sensor) and reads
-/// any peer's exe, so it always resolves a real id. A NON-root daemon (the
-/// integration harness and `just dev`, which run every daemon as the developer
-/// uid) cannot read a same-uid peer's `/proc/<pid>/exe` (`__ptrace_may_access`
-/// denies the cross-process read), so the peer resolves to the `unknown`
-/// sentinel and the read-scope label gate then denies every seeded read.
-///
-/// In a debug build ONLY, honor a caller id declared by the launcher
-/// (`ARLEN_KNOWLEDGE_DEV_SELF_ID`, set by the integration harness to the test's
-/// own resolved app id) so its seeded read profile applies. A release daemon
-/// never consults this env (it resolves via `/proc` as root); it is a
-/// debug-only test/dev accommodation, the same shape as the audit daemon's
-/// `ARLEN_AUDIT_EXTRA_ADMIT`. Same-uid only: a cross-uid peer keeps the strict
-/// resolve-or-reject path above, so this cannot widen cross-user access.
-/// **NOTHING CALLS THIS, and the harness does not know that.**
-/// `dev/integration/src/lib.rs` sets `ARLEN_KNOWLEDGE_DEV_SELF_ID` for every
-/// daemon it spawns, expecting it to be honoured here, and no resolution path
-/// consults this function - so the accommodation is inert and those scenarios
-/// pass by the identity broker instead. Wiring it belongs at the same-uid branch
-/// of the peer resolve, which is the identity path and wants a deliberate change
-/// rather than a lint fix.
-#[allow(dead_code)]
-fn same_uid_unresolved_id() -> String {
-    #[cfg(debug_assertions)]
-    {
-        if let Ok(id) = std::env::var("ARLEN_KNOWLEDGE_DEV_SELF_ID") {
-            if !id.is_empty() {
-                return id;
-            }
-        }
-    }
-    "unknown".to_string()
-}
-
 /// Who the kernel will let connect to the read socket at all.
 ///
 /// The peer check at accept time is the authority boundary and stays the
