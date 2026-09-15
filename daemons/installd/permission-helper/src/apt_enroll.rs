@@ -293,7 +293,7 @@ mod tests {
         let overrides = tmp.path().join("usr/local/share/applications");
 
         let written =
-            write_launcher_overrides("hello", &[packaged.clone()], &overrides).unwrap();
+            write_launcher_overrides("hello", std::slice::from_ref(&packaged), &overrides).unwrap();
         assert_eq!(written.len(), 1);
         let body = std::fs::read_to_string(&written[0]).unwrap();
         assert!(
@@ -314,7 +314,7 @@ mod tests {
         let packaged = tmp.path().join("hello.desktop");
         std::fs::write(&packaged, "[Desktop Entry]\nExec=/usr/bin/hello\n").unwrap();
         let overrides = tmp.path().join("over");
-        write_launcher_overrides("hello", &[packaged.clone()], &overrides).unwrap();
+        write_launcher_overrides("hello", std::slice::from_ref(&packaged), &overrides).unwrap();
         let once = std::fs::read_to_string(overrides.join("hello.desktop")).unwrap();
         // Second pass reads the PACKAGED entry again, so it is idempotent by
         // construction; assert it rather than assume it.

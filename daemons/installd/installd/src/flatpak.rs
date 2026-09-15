@@ -27,6 +27,10 @@ pub enum FlatpakError {
 }
 
 /// Metadata about an installed Flatpak app.
+///
+/// Never constructed today: its only producer is `get_flatpak_info`, which has no
+/// caller (see the note there).
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FlatpakInfo {
     pub app_id: String,
@@ -80,6 +84,7 @@ pub fn uninstall_flatpak(app_id: &str) -> Result<(), FlatpakError> {
 /// why `FlatpakInfo` reads as never constructed. Kept as the obvious building
 /// block for surfacing installed Flatpak metadata; delete it if that surface is
 /// not coming.
+#[allow(dead_code)]
 pub fn get_flatpak_info(app_id: &str) -> Result<FlatpakInfo, FlatpakError> {
     let output = Command::new("flatpak")
         .args(["info", "--user", app_id])

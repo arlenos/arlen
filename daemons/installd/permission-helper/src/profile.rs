@@ -146,6 +146,10 @@ pub fn profile_exists(uid: u32, app_id: &str) -> bool {
 }
 
 /// Check if a profile exists at an explicit base directory.
+// Nothing in the helper asks this yet: the write path overwrites rather than
+// checking first, and the read path is the SDK's. Its tests below are the only
+// callers, which is what makes it read as dead.
+#[allow(dead_code)]
 pub fn profile_exists_in(base: &Path, uid: u32, app_id: &str) -> bool {
     profile_path_in(base, uid, app_id).exists()
 }

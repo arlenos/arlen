@@ -217,11 +217,13 @@ mod tests {
 
     #[test]
     fn graph_capabilities_translate_to_profile() {
-        let mut caps = ModuleCapabilities::default();
-        caps.graph = Some(GraphCapability {
+        let caps = ModuleCapabilities {
+            graph: Some(GraphCapability {
             read: vec!["core.File".into()],
             write: vec!["module.x.".into()],
-        });
+        }),
+            ..ModuleCapabilities::default()
+        };
         let p = profile_from_manifest(&manifest_with(caps));
         assert_eq!(p.graph.read, vec!["core.File"]);
         assert_eq!(p.graph.write, vec!["module.x."]);
@@ -229,10 +231,12 @@ mod tests {
 
     #[test]
     fn network_capabilities_translate_to_profile() {
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
             allowed_domains: vec!["api.example.com".into()],
-        });
+        }),
+            ..ModuleCapabilities::default()
+        };
         let p = profile_from_manifest(&manifest_with(caps));
         assert_eq!(p.network.allowed_domains, vec!["api.example.com"]);
         assert!(!p.network.allow_all);
@@ -240,11 +244,13 @@ mod tests {
 
     #[test]
     fn event_bus_capabilities_translate_to_profile() {
-        let mut caps = ModuleCapabilities::default();
-        caps.event_bus = Some(EventBusCapability {
+        let caps = ModuleCapabilities {
+            event_bus: Some(EventBusCapability {
             subscribe: vec!["focus.".into()],
             publish: vec!["module.x.".into()],
-        });
+        }),
+            ..ModuleCapabilities::default()
+        };
         let p = profile_from_manifest(&manifest_with(caps));
         assert_eq!(p.event_bus.subscribe.as_deref(), Some(&["focus.".to_string()][..]));
         assert_eq!(p.event_bus.publish, vec!["module.x."]);
