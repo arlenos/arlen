@@ -2289,7 +2289,6 @@ mod tests {
         assert_eq!(info.original_path, PathBuf::from("/home/u/plain.txt"));
     }
 
-    #[test]
     /// A volume trash records its `Path=` relative to the top directory, so the
     /// parser has to hand that back as it stands rather than absolutising it
     /// against anything. A host joins it onto the trash's own top directory; a
@@ -2516,7 +2515,7 @@ mod tests {
 
         assert_eq!(empty_trash(&trash_dir).unwrap(), 1);
         assert!(
-            !tmp.path().join("Trash/files/dirlink").symlink_metadata().is_ok(),
+            tmp.path().join("Trash/files/dirlink").symlink_metadata().is_err(),
             "the link itself is gone"
         );
         assert!(
@@ -2546,7 +2545,7 @@ mod tests {
 
         delete_trashed_item(&trash_dir, "dirlink").unwrap();
         assert!(
-            !tmp.path().join("Trash/files/dirlink").symlink_metadata().is_ok(),
+            tmp.path().join("Trash/files/dirlink").symlink_metadata().is_err(),
             "the link itself is gone"
         );
         assert!(

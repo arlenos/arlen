@@ -83,6 +83,9 @@ fn png_declaring(w: u32, h: u32, dw: u32, dh: u32) -> Vec<u8> {
     ihdr.extend_from_slice(&dh.to_be_bytes());
     ihdr.extend_from_slice(&[8, 2, 0, 0, 0]); // 8-bit RGB
     let mut raw = Vec::new();
+    // Not a Vec of one repeated value: each row is a filter byte followed by that
+    // row's pixels, which is the PNG scanline layout the lint cannot see.
+    #[allow(clippy::same_item_push)]
     for _ in 0..h {
         raw.push(0u8); // filter: none
         for _ in 0..w {

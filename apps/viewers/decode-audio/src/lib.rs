@@ -43,11 +43,9 @@ fn compute_peaks(
         Err(_) => return Vec::new(),
     };
     let mut frame_idx: usize = 0;
-    loop {
-        let packet = match format.next_packet() {
-            Ok(p) => p,
-            Err(_) => break, // end of stream or a read error: stop with what we have
-        };
+    // End of stream or a read error ends the loop: we keep what we have rather
+    // than failing a waveform that is already most of the way drawn.
+    while let Ok(packet) = format.next_packet() {
         if packet.track_id() != track_id {
             continue;
         }

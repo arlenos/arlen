@@ -3595,17 +3595,16 @@ file.*
     .ok()
     .flatten();
 
-    match foreign_event {
-        Some(event) => assert_eq!(
+    // Silence is also correct: it means nothing matched at all. What must never
+    // happen is an event carrying a uid other than this consumer's.
+    if let Some(event) = foreign_event {
+        assert_eq!(
             event.uid, own_uid,
             "a subscriber that asked for uid {foreign_uid} was delivered an event \
              stamped uid {}, so its claimed filter was honoured rather than clamped \
              to its attested uid - which is exactly how one session reads another's",
             event.uid
-        ),
-        // Silence is also correct: it means nothing matched at all. What must never
-        // happen is an event carrying a uid other than this consumer's.
-        None => {}
+        );
     }
 }
 

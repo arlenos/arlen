@@ -20,6 +20,8 @@ use sqlx::sqlite::SqlitePoolOptions;
 
 mod proto {
     #![allow(clippy::all)]
+    // Generated: the whole envelope is here, this example sends one message of it.
+    #![allow(dead_code)]
     include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 

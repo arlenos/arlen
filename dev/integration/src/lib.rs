@@ -1444,7 +1444,7 @@ mod frontend_matrix {
             }
             let dir = manifest.parent().unwrap();
             let rel = dir.strip_prefix(&root).unwrap_or(dir).to_string_lossy().to_string();
-            if !listed.iter().any(|l| rel == *l) {
+            if !listed.contains(&rel) {
                 missing.push(rel);
             }
         }
@@ -2080,7 +2080,7 @@ mod scenario_privilege {
         let mut privileged = true;
         let mut seeds = false;
         let mut offenders: Vec<String> = Vec::new();
-        let mut finish = |name: &str, privileged: bool, seeds: bool, out: &mut Vec<String>| {
+        let finish = |name: &str, privileged: bool, seeds: bool, out: &mut Vec<String>| {
             if name.is_empty() || !seeds || !privileged {
                 return;
             }
