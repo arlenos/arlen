@@ -57,6 +57,15 @@ TOKENS = {
     "--color-info": ("color.semantic", "info"),
 }
 
+# Not a colour, same story. The type scale is a ladder off one base, and every
+# copy held `15px` where the theme says `14px` - so first paint drew a size no
+# window renders, and every `--text-*` step above it was a pixel out too. The
+# comparison strips the unit, because the theme writes a CSS length and a copy
+# may write the same length spelled differently.
+SIZED = {
+    "--font-size-base": ("typography", "size_base"),
+}
+
 # `--color-border` is deliberately absent from the table above: several copies
 # define it as `var(--color-border-default)` so a light block can move both at
 # once, and comparing a var against a literal would report a design as a defect.
@@ -171,6 +180,13 @@ def check(path: Path, css: str, want: dict[tuple[str, str], str]) -> list[str]:
         if got is None:
             problems.append(f"{rel}: {token} is not defined; the theme says {expected}")
         elif got.startswith("#") and got != expected:
+            problems.append(f"{rel}: {token} is {got}, the theme says {expected}")
+    for token, key in SIZED.items():
+        expected = want.get(key)
+        got = first_definition(css, token)
+        if expected is None or got is None:
+            continue
+        if got.rstrip("px").strip() != expected.rstrip("px").strip():
             problems.append(f"{rel}: {token} is {got}, the theme says {expected}")
     for tokens, key in TOKENS_EITHER.items():
         expected = want.get(key)
