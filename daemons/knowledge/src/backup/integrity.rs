@@ -259,7 +259,7 @@ mod tests {
         // drops (and releases the store lock) at the end of this block - so the
         // reopen by graph_check below does not race a detached worker thread.
         {
-            let db = lbug::Database::new(gpath.to_str().unwrap(), lbug::SystemConfig::default())
+            let db = lbug::Database::new(gpath.to_str().unwrap(), crate::graph::system_config())
                 .expect("create graph");
             let _conn = lbug::Connection::new(&db).expect("connect");
         }

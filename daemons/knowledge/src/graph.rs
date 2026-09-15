@@ -1,5 +1,28 @@
 use anyhow::{anyhow, Result};
 use lbug::{Connection, Database, SystemConfig, Value};
+
+/// The engine configuration a database opens with.
+///
+/// Production takes the defaults. A TEST build takes a smaller ceiling, and the
+/// reason is a hard resource limit rather than tidiness: each instance reserves
+/// its `max_db_size` as one mmap, and the default is 8 TiB. Two dozen tests in
+/// this crate open a graph, so a parallel `cargo test` opened two dozen 8 TiB
+/// mappings at once and forty-two of them died on
+/// `Buffer manager exception: Mmap for size 8796093022208 failed`.
+///
+/// That is why `dev/check-crate.sh` special-cases this crate with
+/// `--test-threads=1`, and why a bare `cargo test` here fails for everyone who
+/// has not read that file. One gigabyte is more than any test in this crate
+/// writes, and two dozen of those coexist without noticing.
+pub(crate) fn system_config() -> SystemConfig {
+    if cfg!(test) {
+        SystemConfig::default()
+            .max_db_size(1 << 30)
+            .buffer_pool_size(64 << 20)
+    } else {
+        SystemConfig::default()
+    }
+}
 use std::thread;
 use tokio::sync::mpsc;
 use tracing::{debug, info};
@@ -425,7 +448,7 @@ fn ladybug_thread(
         };
     }
 
-    let db = opening!(Database::new(path, SystemConfig::default())
+    let db = opening!(Database::new(path, system_config())
         .map_err(|e| anyhow!("failed to open ladybug database: {e}")));
     let conn = opening!(
         Connection::new(&db).map_err(|e| anyhow!("failed to create ladybug connection: {e}"))
@@ -1393,7 +1416,7 @@ mod tests {
         // leaving an old table that fails every op-id query at runtime.
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
         conn.query("CREATE NODE TABLE File(id STRING, PRIMARY KEY(id))").unwrap();
         conn.query("CREATE NODE TABLE Project(id STRING, PRIMARY KEY(id))").unwrap();
@@ -1428,7 +1451,7 @@ mod tests {
         // the edge property + a File->File edge round-trips.
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
         create_schema(&conn).expect("multi-pair DERIVED_FROM schema creates");
 
@@ -1456,7 +1479,7 @@ mod tests {
         // tier needs no schema migration. Idempotent on an existing store.
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
 
         create_schema(&conn).expect("create_schema reserves the git tables");
@@ -1508,7 +1531,7 @@ mod tests {
         // label. All createable on a fresh store, idempotent on an existing one.
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
 
         create_schema(&conn).expect("create_schema builds the code tables");
@@ -1570,7 +1593,7 @@ mod tests {
         // lifecycle-state columns. App/Event already exist for the edge endpoints.
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
 
         create_schema(&conn).expect("create_schema builds the LCG tables");
@@ -1615,7 +1638,7 @@ mod tests {
         // and classify, `show_connection` to resolve a rel table's endpoints.
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
         conn.query("CREATE NODE TABLE A(id STRING, PRIMARY KEY(id))").unwrap();
         conn.query("CREATE NODE TABLE B(id STRING, PRIMARY KEY(id))").unwrap();
@@ -1657,7 +1680,7 @@ mod tests {
         // fallback instead, which is still bounded to the bridge's own tables.
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
 
         // One bridge's node table, one neighbour's, and an edge between them -
@@ -1699,7 +1722,7 @@ mod tests {
         // mandatory: the engine refuses to strand an edge table.
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
         conn.query("CREATE NODE TABLE e_md_obsidian_Note(id STRING, PRIMARY KEY(id))")
             .unwrap();
@@ -1726,7 +1749,7 @@ mod tests {
         // would instead select the reified `Membership` fact-node fallback.
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
         conn.query("CREATE NODE TABLE File(id STRING, PRIMARY KEY(id))").unwrap();
         conn.query("CREATE NODE TABLE Project(id STRING, PRIMARY KEY(id))").unwrap();
@@ -1780,7 +1803,7 @@ mod tests {
     fn gd_r4_kuzu_does_not_support_foreach_create() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
         conn.query("CREATE NODE TABLE File(id STRING, PRIMARY KEY(id))").unwrap();
         conn.query("CREATE NODE TABLE Project(id STRING, PRIMARY KEY(id))").unwrap();
@@ -1810,7 +1833,7 @@ mod tests {
         // `ALTER ADD IF NOT EXISTS` convergence proven for op_id.
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("graph");
-        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let db = Database::new(path.to_str().unwrap(), system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
         conn.query("CREATE NODE TABLE File(id STRING, PRIMARY KEY(id))").unwrap();
         conn.query("CREATE NODE TABLE Project(id STRING, PRIMARY KEY(id))").unwrap();
@@ -1848,7 +1871,7 @@ mod tests {
         // Cypher statements); a failure here would mean the node-create-plus-edges
         // path needs a different mechanism.
         let tmp = tempfile::TempDir::new().unwrap();
-        let db = Database::new(tmp.path().join("graph").to_str().unwrap(), SystemConfig::default())
+        let db = Database::new(tmp.path().join("graph").to_str().unwrap(), system_config())
             .unwrap();
         let conn = Connection::new(&db).unwrap();
         conn.query("CREATE NODE TABLE N(id STRING, PRIMARY KEY(id))").unwrap();
@@ -1892,7 +1915,7 @@ mod tests {
         // AnnotationVersion content node, so annotation history is retained
         // instead of overwritten. This checks the schema supports that shape.
         let tmp = tempfile::TempDir::new().unwrap();
-        let db = Database::new(tmp.path().join("graph").to_str().unwrap(), SystemConfig::default())
+        let db = Database::new(tmp.path().join("graph").to_str().unwrap(), system_config())
             .unwrap();
         let conn = Connection::new(&db).unwrap();
         create_schema(&conn).expect("schema");
@@ -2027,12 +2050,12 @@ mod read_only_probe {
         let path = dir.path().join("graph");
         let path = path.to_str().expect("utf-8 path");
 
-        let writer = Database::new(path, SystemConfig::default()).expect("the writer opens");
+        let writer = Database::new(path, system_config()).expect("the writer opens");
         let conn = Connection::new(&writer).expect("a connection");
         conn.query("CREATE NODE TABLE Probe(id STRING, PRIMARY KEY(id))").expect("schema");
         conn.query("CREATE (:Probe {id: 'one'})").expect("a row");
 
-        match Database::new(path, SystemConfig::default().read_only(true)) {
+        match Database::new(path, system_config().read_only(true)) {
             Ok(reader) => {
                 let rconn = Connection::new(&reader).expect("a read connection");
                 let rows = rconn.query("MATCH (p:Probe) RETURN p.id").expect("the read runs");

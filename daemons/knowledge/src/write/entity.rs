@@ -682,10 +682,10 @@ mod tests {
     // This is what confirms the FieldType -> column-type mapping (incl. DOUBLE).
     #[test]
     fn generated_ddl_creates_a_working_table() {
-        use lbug::{Connection, Database, SystemConfig, Value};
+        use lbug::{Connection, Database, Value};
 
         let tmp = tempfile::TempDir::new().unwrap();
-        let db = Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default())
+        let db = Database::new(tmp.path().join("g").to_str().unwrap(), crate::graph::system_config())
             .unwrap();
         let conn = Connection::new(&db).unwrap();
 
@@ -751,10 +751,10 @@ mod tests {
 
     #[test]
     fn upsert_round_trips_idempotently_on_a_real_graph() {
-        use lbug::{Connection, Database, SystemConfig, Value};
+        use lbug::{Connection, Database, Value};
         let tmp = tempfile::TempDir::new().unwrap();
         let db =
-            Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default()).unwrap();
+            Database::new(tmp.path().join("g").to_str().unwrap(), crate::graph::system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
 
         let d = def(&[("title", FieldType::String), ("count", FieldType::Int)]);
@@ -1074,10 +1074,10 @@ mod tests {
 
     #[test]
     fn link_merges_an_idempotent_edge_on_a_real_graph() {
-        use lbug::{Connection, Database, SystemConfig, Value};
+        use lbug::{Connection, Database, Value};
         let tmp = tempfile::TempDir::new().unwrap();
         let db =
-            Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default()).unwrap();
+            Database::new(tmp.path().join("g").to_str().unwrap(), crate::graph::system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
 
         let d = def(&[("title", FieldType::String)]);
@@ -1151,10 +1151,10 @@ mod tests {
 
     #[test]
     fn merge_repoints_edges_onto_the_canonical_and_deletes_the_duplicate() {
-        use lbug::{Connection, Database, SystemConfig, Value};
+        use lbug::{Connection, Database, Value};
         let tmp = tempfile::TempDir::new().unwrap();
         let db =
-            Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default()).unwrap();
+            Database::new(tmp.path().join("g").to_str().unwrap(), crate::graph::system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
 
         let ty = "md.obsidian.Note";
@@ -1231,10 +1231,10 @@ mod tests {
         // keyed on the daemon-stamped _owner (BR-1: source_id = _owner). Confirm
         // the purge is TENANT-ISOLATED - it removes exactly the target owner's
         // nodes + their edges and leaves another owner's data intact.
-        use lbug::{Connection, Database, SystemConfig, Value};
+        use lbug::{Connection, Database, Value};
         let tmp = tempfile::TempDir::new().unwrap();
         let db =
-            Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default()).unwrap();
+            Database::new(tmp.path().join("g").to_str().unwrap(), crate::graph::system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
 
         let ty = "md.obsidian.Note";
@@ -1300,10 +1300,10 @@ mod tests {
         // Regression for the review's HIGH: with the canonical absent, the
         // canonical-anchored delete must no-op, so the duplicate + its edges
         // survive rather than being silently DETACH-destroyed.
-        use lbug::{Connection, Database, SystemConfig, Value};
+        use lbug::{Connection, Database, Value};
         let tmp = tempfile::TempDir::new().unwrap();
         let db =
-            Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default()).unwrap();
+            Database::new(tmp.path().join("g").to_str().unwrap(), crate::graph::system_config()).unwrap();
         let conn = Connection::new(&db).unwrap();
 
         let ty = "md.obsidian.Note";
