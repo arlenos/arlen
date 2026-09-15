@@ -68,7 +68,15 @@ NOT_YET_DEPLOYED: dict[str, str] = {
         "sidebar is the one shipped caller and distinguishes absent from "
         "none-configured, with a test for it"
     ),
-    "arlen-connectionsd.service": "connections daemon is not part of the image scope yet (15 Aug, no shipped caller)",
+    "arlen-connectionsd.service": (
+        "the connections daemon holds egress credentials sealed under a master, and "
+        "first-boot key custody is a decision rather than a build phase (16 Sep). NOT "
+        "for want of a caller, which is what this said until then: ai-proxy's "
+        "connections_client fetches a keyed provider's credential at egress time and "
+        "fails the forward closed without it, so on the image today every AI provider "
+        "that needs an API key is unreachable. Invisible so far because the shipped "
+        "provider is local and key-less"
+    ),
     "arlen-transferd.service": "transfer daemon is not part of the image scope yet (15 Aug, no shipped caller)",
     "arlen-trash-cleanup.service": "trash retention timer, unreviewed for deployment (15 Aug)",
 }
