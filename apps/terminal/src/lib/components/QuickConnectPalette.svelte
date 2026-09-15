@@ -62,16 +62,31 @@
   const freeText = $derived(q.length > 0 && (/[.@]/.test($query.trim())) ? $query.trim() : null);
 
 
-  function onWindowKeydown(e: KeyboardEvent) {
-    if ($paletteOpen && e.key === "Escape") {
-      e.preventDefault();
-      closeQuickConnect();
-    }
+  // The value bits-ui reports for the highlighted row. Saving a host used to be a
+  // button INSIDE the row, which a listbox forbids (an `option` may not contain a
+  // control) and which no keyboard could reach anyway - the palette's focus lives
+  // in the input and arrow keys move the selection, so Tab never landed on it.
+  // The action now sits beside the list, on whatever row is highlighted.
+  let highlighted = $state("");
+  const highlightedRecent = $derived<RecentHost | null>(
+    recentMatched.find((r) => `recent-${r.id}` === highlighted) ?? null,
+  );
+
+  function saveHighlighted() {
+    if (highlightedRecent) promoteToSaved(highlightedRecent);
   }
 
-  function promote(e: Event, r: RecentHost) {
-    e.stopPropagation();
-    promoteToSaved(r);
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (!$paletteOpen) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeQuickConnect();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && highlightedRecent) {
+      e.preventDefault();
+      saveHighlighted();
+    }
   }
 </script>
 
@@ -93,7 +108,7 @@
       aria-label={$t("term.qc.aria")}
       tabindex="-1"
     >
-      <Command shouldFilter={false}>
+      <Command shouldFilter={false} bind:value={highlighted}>
         <CommandInput placeholder={$t("term.qc.placeholder")} autofocus bind:value={$query} />
         {#if $remotesMocked}
           <!-- These read as saved SSH connections; unlabelled a user will try to
@@ -124,9 +139,6 @@
                 <span class="qc-badge qc-badge-dim"></span>
                 <span class="qc-addr qc-name">{r.user}@{r.host}</span>
                 <span class="qc-meta">{r.lastUsed}</span>
-                <button class="qc-promote" title={$t("term.qc.saveHost")} aria-label={$t("term.qc.saveAria", { host: r.host })} onclick={(e) => promote(e, r)}>
-                  <Star size={13} strokeWidth={2} />
-                </button>
               </CommandItem>
             {/each}
           {/if}
@@ -142,6 +154,18 @@
         <div class="qc-foot">
           <span>{$t("term.qc.enterConnects")}</span>
           <span>{$t("term.escCloses")}</span>
+          {#if highlightedRecent}
+            <button
+              class="qc-save"
+              aria-label={$t("term.qc.saveAria", { host: highlightedRecent.host })}
+              onmousedown={(e) => e.preventDefault()}
+              onclick={saveHighlighted}
+            >
+              <Star size={12} strokeWidth={2} />
+              <span>{$t("term.qc.saveHost")}</span>
+              <span class="qc-key">{$t("term.qc.saveShortcut")}</span>
+            </button>
+          {/if}
         </div>
       </Command>
     </div>
@@ -222,18 +246,6 @@
     font-size: var(--text-2xs);
     color: var(--color-fg-secondary, #a1a1aa);
   }
-  .qc-promote {
-    flex-shrink: 0;
-    display: inline-flex;
-    padding: 2px;
-    border: none;
-    background: transparent;
-    color: var(--color-fg-secondary, #a1a1aa);
-    border-radius: var(--radius-chip);
-  }
-  .qc-promote:hover {
-    color: var(--color-warning);
-  }
   .qc-empty {
     padding: 1.25rem;
     text-align: center;
@@ -242,10 +254,32 @@
   }
   .qc-foot {
     display: flex;
+    align-items: center;
     gap: 14px;
     padding: 6px 12px;
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
     font-size: var(--text-xs);
+    color: var(--color-fg-secondary, #a1a1aa);
+  }
+  /* Pushed to the far end so the two standing hints keep their reading order and
+     the one thing that acts sits apart from them. */
+  .qc-save {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-inline-start: auto;
+    padding: 2px 8px;
+    border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
+    border-radius: var(--radius-chip);
+    background: transparent;
+    font-size: var(--text-xs);
+    color: var(--foreground);
+  }
+  .qc-save:hover {
+    color: var(--color-warning);
+    border-color: color-mix(in srgb, var(--color-warning) 45%, transparent);
+  }
+  .qc-key {
     color: var(--color-fg-secondary, #a1a1aa);
   }
 </style>
