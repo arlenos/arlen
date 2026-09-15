@@ -15,12 +15,13 @@ import { derived, writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
 import { t } from "$lib/i18n/messages";
-import { ioWhyKey } from "$lib/io-why";
+import { ioWhyKey } from "@arlen/ui-kit/io-why";
+import { kt } from "@arlen/ui-kit/i18n/messages.kit";
 
 /// The host's errno text as a sentence of the reader's, or nothing.
 function why(text: string): string {
   const key = ioWhyKey(text);
-  return key ? get(t)(key) : "";
+  return key ? get(kt)(key) : "";
 }
 
 /// When a reminder goes off, exactly as the core's `Trigger` says it: a signed

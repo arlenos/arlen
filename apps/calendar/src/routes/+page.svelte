@@ -11,7 +11,8 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { listen } from "@tauri-apps/api/event";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
-  import { ioWhyKey } from "$lib/io-why";
+  import { ioWhyKey } from "@arlen/ui-kit/io-why";
+  import { kt } from "@arlen/ui-kit/i18n/messages.kit";
   import {
     SidebarProvider,
     SidebarInset,
@@ -338,9 +339,15 @@
     return $t("cal.keep.otherReason");
   });
 
+  /// The host's errno text as a sentence of the reader's, or nothing.
+  ///
+  /// The keys are the KIT's (`k.why.*`), so they resolve through `kt`. This app
+  /// carried its own copy of the module and its own `cal.why.*` catalogue until
+  /// 16 September - word-for-word the same five sentences in both locales, with
+  /// only the key prefix differing.
   const whyText = (text: string): string => {
     const key = ioWhyKey(text);
-    return key ? $t(key) : "";
+    return key ? $kt(key) : "";
   };
 </script>
 
