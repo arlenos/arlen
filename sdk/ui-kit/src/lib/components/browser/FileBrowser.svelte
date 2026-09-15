@@ -16,7 +16,8 @@
   import type { BrowserState } from "./controller";
   import { type FileEntry, type ColumnSpec, DEFAULT_COLUMNS, joinPath } from "./types";
   import { Selection } from "./selection";
-  import { readsAsInternal } from "../../errors";
+  import { ioWhyKey } from "../../io-why";
+  import { kt } from "../../i18n/messages.kit";
   import FileList from "./FileList.svelte";
   import FileGrid, {
     GRID_GAP_PX,
@@ -76,8 +77,9 @@
     /// The can't-open-folder state text. The kit keeps the which-hint mapping;
     /// the host owns the words (English defaults, so the kit stays i18n-neutral).
     errorTitle?: string;
-    /// Hint shown when the error is not one this component recognises AND does
-    /// not read as a message for a person. See `readsAsInternal` below.
+    /// Hint shown when nothing else can be said: the host's text is not an errno
+    /// this kit can read, or is a JS runtime error. It is the LAST branch rather
+    /// than one of several, because the host's own text is never rendered here.
     hintUnknown?: string;
     /// Hint shown when the error is a permission denial.
     hintPermission?: string;
@@ -462,21 +464,35 @@
     <div class="fb-state">
       <span class="fb-state-title">{errorTitle}</span>
       <span class="fb-state-hint">
-        {#if /permission denied/i.test($error)}
-          {hintPermission}
-        {:else if /not connected/i.test($error)}
+        <!-- THE HINT IS ALWAYS THIS COMPONENT'S OWN SENTENCE, never the host's
+             text. It used to fall through to `{$error}` for anything the three
+             patterns above did not match, on the argument that a backend's own
+             message ("disk quota exceeded") is worth showing. What that produced
+             on a German file manager was an English line under a German title,
+             and at its worst the raw
+             "stub-host: no backend behind this window (files_list)" - a sentence
+             about the harness, in the middle of the pane, to somebody who just
+             wanted a folder. The ruling of 13 September is the one that governs:
+             the backend answers with a token, the frontend writes the sentence,
+             the detail goes to the log. `ioWhyKey` does exactly that for the
+             errno texts, and it console-warns the ones it cannot read, so nothing
+             is lost that a person could have acted on anyway. -->
+        {#if /not connected/i.test($error)}
+          <!-- Not an errno: a place that is mounted over a network and is not
+               there right now. The reader knows this one and `io-why` does not. -->
           {hintNotConnected}
-        {:else if /no such directory/i.test($error)}
+        {:else if ioWhyKey($error) === "k.why.permission"}
+          {hintPermission}
+        {:else if ioWhyKey($error) === "k.why.gone"}
           {hintNoSuchDir}
-        {:else if readsAsInternal($error)}
-          <!-- A backend's own message ("disk quota exceeded") is worth showing;
-               a JS runtime error is not. Without this the file manager greeted a
-               user with "TypeError: undefined is not an object (evaluating
-               'window.__TAURI_INTERNALS__.invoke')" in the middle of the pane,
-               which names an internal and offers nothing to do about it. -->
-          {hintUnknown}
+        {:else if ioWhyKey($error)}
+          {$kt(ioWhyKey($error) ?? "")}
         {:else}
-          {$error}
+          <!-- Including a JS runtime error, which `readsAsInternal` exists to
+               catch: the file manager once greeted a user with "TypeError:
+               undefined is not an object (evaluating
+               'window.__TAURI_INTERNALS__.invoke')" in the middle of the pane. -->
+          {hintUnknown}
         {/if}
       </span>
     </div>
