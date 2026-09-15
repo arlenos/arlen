@@ -3,11 +3,6 @@
 # decide what the app should get, make every id say it, drop the row.
 #
 # app	the ids that disagree
-musescore	musescore org.musescore.MuseScore
-neochat	neochat org.kde.neochat
-nextcloud	com.nextcloud.desktopclient.nextcloud nextcloud
-openshot	openshot openshot-qt org.openshot.OpenShot
-peek	com.uploadedlobster.peek peek
 pencil2d	org.pencil2d.Pencil2D pencil2d
 pidgin	im.pidgin.Pidgin pidgin
 podcasts	gnome-podcasts org.gnome.Podcasts

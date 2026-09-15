@@ -1,6 +1,12 @@
-# Starting permission profile for the Nextcloud desktop sync client. Syncing is
-# its function, so it gets network; the synced folder lives under Documents. No
-# graph.
+# Starting permission profile for the Nextcloud desktop client (a file sync
+# client). Syncs a folder over the network, which is its function; the synced
+# folder lives under Documents.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted the whole Home,
+# reasoning that a sync root can be anywhere. It can, and a root outside Documents
+# is exactly what a grant refinement is for - a sync client asks for its root once
+# at setup, which is the shape of a request rather than a standing key to the home
+# directory.
 [info]
 app_id = "com.nextcloud.desktopclient.nextcloud"
 tier = "third-party"

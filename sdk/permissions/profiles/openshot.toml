@@ -1,8 +1,14 @@
-# Starting permission profile for a video editor/converter/ripper. Works with the
-# user's Videos; no network and no Knowledge Graph.
+# Starting permission profile for OpenShot (a video editor). Projects and renders
+# live in Videos; it imports stills from Pictures and audio from Music, which is
+# what an editor's timeline is made of. No network, no Knowledge Graph.
+#
+# ONE ANSWER FOR ALL THREE PACKAGING IDS (15 Sep): two had Videos alone, which
+# leaves an editor unable to reach the photo or the music track a cut needs.
 [info]
 app_id = "openshot"
 tier = "third-party"
 
 [filesystem]
 videos = true
+music = true
+pictures = true

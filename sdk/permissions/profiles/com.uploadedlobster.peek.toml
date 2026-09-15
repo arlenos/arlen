@@ -1,8 +1,14 @@
-# Starting permission profile for Peek (a screen recorder).
-# It records the screen and saves a clip by function, so it gets Videos and no network. No Knowledge Graph access.
+# Starting permission profile for Peek (a screen recorder). It records a region
+# of the screen through the portal and writes the result as a GIF or a short
+# video, so it gets both Pictures and Videos; no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep), and each id had half: one could
+# save the video and not the GIF, the other the reverse. Peek writes both formats
+# from the same button.
 [info]
 app_id = "com.uploadedlobster.peek"
 tier = "third-party"
 
 [filesystem]
+pictures = true
 videos = true

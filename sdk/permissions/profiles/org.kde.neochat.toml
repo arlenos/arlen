@@ -1,6 +1,9 @@
-# Starting permission profile for NeoChat (a chat client).
-# Messaging over the network by function; saves received files to Downloads.
-# No Knowledge Graph access.
+# Starting permission profile for NeoChat (a Matrix client). Talks to a
+# homeserver over the network, which is its function, and saves an attachment you
+# choose to Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no file grant, the
+# same gap the FluffyChat group had - "save attachment" with nowhere to put it.
 [info]
 app_id = "org.kde.neochat"
 tier = "third-party"
