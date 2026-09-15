@@ -3,6 +3,7 @@
   import { t, locale } from "$lib/i18n/messages";
   import { kt } from "@arlen/ui-kit/i18n/messages.kit";
   import { ioWhyKey } from "@arlen/ui-kit/io-why";
+  import { readsAsInternal } from "@arlen/ui-kit/errors";
   import { formatSize } from "@arlen/ui-kit/components/browser";
   import { initAppMenu, menuAction } from "$lib/menu";
   /// The viewer routes one window to one file by media type. When launched on a
@@ -84,22 +85,6 @@
   /// from a file that failed to open, and from no file at all.
   let askFailed = $state(false);
 
-  /// Whether a failure message is machinery talking rather than something for a
-  /// person. A decoder's own words are worth showing - "unsupported JPEG
-  /// progressive scan" tells someone what is wrong with their file - but a JS
-  /// runtime error names an internal and offers nothing to do about it.
-  ///
-  /// The same predicate as `readsAsInternal` in ui-kit's `FileBrowser`, which
-  /// learned it by greeting a user with "TypeError: undefined is not an object
-  /// (evaluating 'window.__TAURI_INTERNALS__.invoke')" in the middle of the pane.
-  /// Copied rather than shared because it lives inside that component and the
-  /// viewer does not depend on the browser module; if a third app needs it, that
-  /// is the moment it moves somewhere both can reach.
-  function readsAsInternal(message: string): boolean {
-    return /\b(TypeError|ReferenceError|SyntaxError)\b|undefined is not|is not a function|window\.__/.test(
-      message,
-    );
-  }
 
   /// Whether the failure came with a reason worth showing.
   ///

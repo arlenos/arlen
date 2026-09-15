@@ -16,6 +16,7 @@
   import type { BrowserState } from "./controller";
   import { type FileEntry, type ColumnSpec, DEFAULT_COLUMNS, joinPath } from "./types";
   import { Selection } from "./selection";
+  import { readsAsInternal } from "../../errors";
   import FileList from "./FileList.svelte";
   import FileGrid, {
     GRID_GAP_PX,
@@ -97,15 +98,6 @@
   const loading = $derived(controller.loading);
   const error = $derived(controller.error);
 
-  /// Does this error read as a JavaScript runtime failure rather than something
-  /// a person can act on? Deliberately narrow: it matches the shapes a missing
-  /// or broken bridge produces, and lets every other message through, because a
-  /// backend that says why is more useful than a generic sentence.
-  function readsAsInternal(message: string): boolean {
-    return /\b(TypeError|ReferenceError|SyntaxError)\b|undefined is not|is not a function|window\.__/.test(
-      message,
-    );
-  }
   const sortKey = $derived(controller.sortKey);
   const ascending = $derived(controller.ascending);
   const viewMode = $derived(controller.viewMode);
