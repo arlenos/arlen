@@ -380,7 +380,7 @@ mod tests {
     ///
     ///   cargo test -p arlen-theme --manifest-path sdk/Cargo.toml -- --ignored wine_metal
     #[test]
-    #[ignore]
+    #[ignore = "needs wine and regedit on the host"]
     fn wine_metal_accepts_the_document_and_keeps_every_slot() {
         use std::process::Command;
         let dir = std::env::temp_dir().join(format!("arlen-wine-reg-{}", std::process::id()));

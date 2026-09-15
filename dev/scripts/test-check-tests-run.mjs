@@ -172,6 +172,48 @@ r = run(d);
 check("an assertion in shipping code is not a test", r.code === 0, `exit=${r.code} out=${r.out}`);
 cleanup(d);
 
+// --- the ignore rung --------------------------------------------------------
+
+d = rustTree(`pub fn thing() -> u8 { 1 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn a_test_that_does_not_say_why_it_is_off() {
+        assert_eq!(thing(), 1);
+    }
+}
+`);
+r = run(d);
+check(
+  "an ignored test with no reason is caught",
+  r.code === 1 && /a_test_that_does_not_say_why_it_is_off/.test(r.out) && /does not say why/.test(r.out),
+  `exit=${r.code} out=${r.out}`,
+);
+cleanup(d);
+
+// The reason is the whole point, and it is what sixty tests in the tree already
+// write. A test that gives one is waiting for a machine, not switched off.
+d = rustTree(`pub fn thing() -> u8 { 1 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "needs a pty"]
+    fn a_test_that_says_why() {
+        assert_eq!(thing(), 1);
+    }
+}
+`);
+r = run(d);
+check("an ignored test that says why passes", r.code === 0, `exit=${r.code} out=${r.out}`);
+cleanup(d);
+
 d = mint("arlen-testsrun-empty-");
 r = run(d);
 check(
@@ -183,4 +225,4 @@ cleanup(d);
 
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
 if (failures.length) process.exit(1);
-console.log("tests nothing runs are caught at both rungs, and helpers are left alone");
+console.log("at all three rungs a test that does not run is caught, and helpers are left alone");

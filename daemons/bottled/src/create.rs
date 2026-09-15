@@ -212,7 +212,7 @@ mod tests {
     ///
     ///   cargo test -p arlen-wine-core -- --ignored boot_metal
     #[test]
-    #[ignore]
+    #[ignore = "needs wine, bwrap and unprivileged user namespaces"]
     fn boot_metal_leaves_a_prefix_with_a_registry_in_it() {
         let dir = tempfile::tempdir().expect("temp");
         let prefix = dir.path().join("pfx");

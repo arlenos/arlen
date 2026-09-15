@@ -45,6 +45,13 @@ invariant - an assertion nobody runs - and clears everything else by
 construction: the function must contain an `assert`, and nothing in its own file
 may call it. A helper is called; that is what makes it a helper.
 
+And a third, the cheapest of the three: an `#[ignore]` says WHY. Sixty places in
+this tree write `#[ignore = "needs a pty"]` or `"needs bwrap and unprivileged
+user namespaces"`, which is what lets a reader tell a test that is waiting for a
+machine from one that was switched off and forgotten. Six wrote the bare
+attribute. The bare form is the one that rots: nobody can tell, a year later,
+whether it is still true.
+
 Run: dev/scripts/check-tests-run.py [tree]
 """
 
@@ -149,6 +156,27 @@ def orphaned_assertions(path: Path) -> list[tuple[int, str]]:
     return found
 
 
+#: A bare `#[ignore]` - no reason given. The `= "..."` form is what this asks for.
+BARE_IGNORE = re.compile(r"^\s*#\[ignore\]\s*$", re.M)
+
+
+def unexplained_ignores(path: Path) -> list[tuple[int, str]]:
+    """Every `#[ignore]` with no reason, and the function it sits above."""
+    lines = path.read_text(encoding="utf-8", errors="replace").split("\n")
+    found = []
+    for i, line in enumerate(lines):
+        if not BARE_IGNORE.match(line):
+            continue
+        name = "?"
+        for k in range(i + 1, min(i + 4, len(lines))):
+            m = FN.match(lines[k])
+            if m:
+                name = m.group(2)
+                break
+        found.append((i + 1, name))
+    return found
+
+
 def rust_sources(root: Path) -> list[Path]:
     """Every Rust file in the tree that somebody here wrote."""
     return [p for p in root.rglob("*.rs") if not SKIP_PARTS & set(p.parts)]
@@ -175,9 +203,12 @@ def main() -> int:
 
     sources = rust_sources(root)
     orphans: list[str] = []
+    silent_ignores: list[str] = []
     for src in sources:
         for line, name in orphaned_assertions(src):
             orphans.append(f"{src.relative_to(root)}:{line}: `{name}` asserts and has no `#[test]`")
+        for line, name in unexplained_ignores(src):
+            silent_ignores.append(f"{src.relative_to(root)}:{line}: `{name}` is ignored and does not say why")
 
     if checked == 0 and not sources:
         print("NOTHING WAS READ: no component with test files and no Rust source", file=sys.stderr)
@@ -204,12 +235,24 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    if silent or orphans:
+    if silent_ignores:
+        print("tests that do not run and do not say why:", file=sys.stderr)
+        for i in silent_ignores:
+            print(f"  {i}", file=sys.stderr)
+        print(
+            '\nWrite the reason into the attribute - `#[ignore = "needs a pty"]`,'
+            "\nthe form sixty other tests here use. It is what lets the next reader tell"
+            "\na test waiting for a machine from one somebody switched off.",
+            file=sys.stderr,
+        )
+
+    if silent or orphans or silent_ignores:
         return 1
 
     print(
         f"check-tests-run: {checked} component(s) with tests declare a script,"
-        f" {len(sources)} Rust file(s) hold no assertion nothing runs"
+        f" {len(sources)} Rust file(s) hold no assertion nothing runs and no"
+        " unexplained `#[ignore]`"
     )
     return 0
 

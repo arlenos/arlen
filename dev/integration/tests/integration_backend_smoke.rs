@@ -3623,7 +3623,7 @@ file.*
 /// store has no route to a pacman or dnf package), and both halves have to reach
 /// the surface or it offers a button that cannot work.
 #[tokio::test]
-#[ignore]
+#[ignore = "needs arlen-store-backend built and a machine with MetaInfo installed"]
 async fn the_store_serves_a_distribution_app_as_present_but_not_installable() {
     if !arlen_integration::binary_built("store-backend", "arlen-store-backend") {
         eprintln!(
@@ -4042,7 +4042,7 @@ async fn setting_one_config_family_leaves_the_other_alone() {
 /// cannot be asserted by the submitter - which is the property being relied on,
 /// not one being worked around.
 #[tokio::test]
-#[ignore]
+#[ignore = "needs arlen-auditd built and a per-user runtime dir"]
 async fn a_transfer_is_recorded_in_both_profiles_ledgers() {
     use audit_proto::{ReadClient, LedgerAuditSink};
     use audit_proto::client::AuditClient;
