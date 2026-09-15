@@ -389,6 +389,15 @@ fn take_expr(chars: &[char], i: &mut usize, line: &mut usize) -> String {
                 }
             }
             None => {
+                // NB a regex literal here would desynchronise this brace match
+                // the same way it desynchronised the script scanner - a `/…['"]…/`
+                // inside a markup expression opens a quote that closes in the
+                // wrong place. `scan_script` skips regexes (`is_regex_start`),
+                // and a `.svelte` file's `<script>` body goes through it, so the
+                // residual is only an expression written inline in the MARKUP.
+                // Left rather than fixed because this loop is a brace matcher
+                // with its own depth bookkeeping, and the shape has not appeared
+                // in this tree; if it does, the two helpers are one call away.
                 if ch == '\'' || ch == '"' || ch == '`' {
                     quote = Some(ch);
                 } else if ch == '{' {
