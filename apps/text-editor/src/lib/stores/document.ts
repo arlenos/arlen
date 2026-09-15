@@ -128,6 +128,29 @@ function canvasType(name: string): "markdown" | "code" {
   return /\.(md|markdown|mdown|mkd)$/i.test(name) ? "markdown" : "code";
 }
 
+/// The last path the editor was ASKED for, whether or not it opened.
+///
+/// `openTarget` holds the basename, for the titlebar; a retry needs the whole
+/// path, and the difference is the reason this is a second store rather than a
+/// reader of that one.
+const lastRequested = writable<string | null>(null);
+
+/// Ask again for whatever the editor last failed to open.
+///
+/// Offered only for the failures a second attempt can answer differently - a file
+/// that could not be READ, or one the host could not name a reason for. A path
+/// that is not absolute, or a file that is not text, will say the same thing every
+/// time, and a button that repeats an answer is worse than no button.
+///
+/// With no path remembered, the launch question is asked again: `initial_file`
+/// itself can fail, and that failure has no path to retry.
+export async function retryOpen(): Promise<void> {
+    let path: string | null = null;
+    lastRequested.subscribe((p) => (path = p))();
+    if (path) await openPath(path);
+    else await loadInitialFile();
+}
+
 /// Open one file by path, replacing whatever is open.
 ///
 /// Shared by the launch path and the lens's related-file links, so a file opened
@@ -136,6 +159,7 @@ function canvasType(name: string): "markdown" | "code" {
 /// already renders `openError` where the text would be.
 export async function openPath(path: string): Promise<void> {
   if (!tauriAvailable) return;
+  lastRequested.set(path);
   openTarget.set(path.split("/").pop() || path);
   try {
     const opened = await invoke<{ path: string; text: string; stamp: string }>(

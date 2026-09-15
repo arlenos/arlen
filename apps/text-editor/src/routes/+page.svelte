@@ -10,7 +10,7 @@
   import LensPanel from "$lib/components/editor/LensPanel.svelte";
   import AiEditReview from "$lib/components/editor/AiEditReview.svelte";
   import { loadLens } from "$lib/stores/lens";
-  import { openDocument, openError, openTarget, loadInitialFile, saveProblemKey } from "$lib/stores/document";
+  import { openDocument, openError, openTarget, loadInitialFile, retryOpen, saveProblemKey } from "$lib/stores/document";
   import { onMount } from "svelte";
   import { initAppMenu, menuAction } from "$lib/menu";
   import { publishPresence, recordSave } from "$lib/graphInput";
@@ -320,6 +320,11 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     return `${$t("te.open.failed")} ${$t("te.open.otherReason")}`;
   });
 
+  /// Whether a second ask could say something different. See the markup below.
+  const openRetryable = $derived(
+    $openError !== null && ($openError.problem === "unreadable" || $openError.problem === "other"),
+  );
+
   const whyText = (text: string): string => {
     const key = ioWhyKey(text);
     return key ? $kt(key) : "";
@@ -419,8 +424,19 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
            an answer, a file that changed on disk. -->
       {#if $openError}
         <!-- The editor was asked to open a file and could not; nothing goes on
-             the canvas under a filename that is not its text. -->
-        <div class="note"><Notice tone="error" text={openText} /></div>
+             the canvas under a filename that is not its text.
+             A WAY FORWARD, for the two causes that can answer differently on a
+             second ask: a file that could not be read (a permission or a mount can
+             change under it) and one the host could not name a reason for. A path
+             that is not absolute, or a file that is not text, is a permanent fact
+             about the request, and offering to repeat it would be offering the
+             same sentence again. -->
+        <div class="note" class:note-row={openRetryable}>
+          <Notice tone="error" text={openText} />
+          {#if openRetryable}
+            <Button size="sm" onclick={() => void retryOpen()}>{$t("te.open.retry")}</Button>
+          {/if}
+        </div>
       {/if}
       {#if saveError}
         <div class="note"><Notice tone="error" text={$t(saveError)} /></div>

@@ -15,6 +15,7 @@ const messages: Catalogs = {
     "te.editor.aria": "Document text",
     "te.openFile": "Open file",
     "te.open.failed": "This file could not be opened.",
+    "te.open.retry": "Try again",
     // The detail line for a cause this editor cannot name. It used to be the
     // host's own words, drawn as they came.
     "te.open.otherReason": "The reason is one this editor cannot name.",
@@ -107,6 +108,7 @@ const messages: Catalogs = {
 
     "te.openFile": "Datei öffnen",
     "te.open.failed": "Diese Datei konnte nicht geöffnet werden.",
+    "te.open.retry": "Erneut versuchen",
     "te.open.otherReason": "Den Grund kann dieser Editor nicht benennen.",
     "te.open.notAbsolute": "Das ist kein vollständiger Pfad, es gibt also nichts zu öffnen.",
     "te.open.unreadable": "Diese Datei konnte nicht gelesen werden. {$why}",
