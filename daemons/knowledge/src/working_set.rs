@@ -132,7 +132,7 @@ mod tests {
     async fn the_working_set_leads_with_the_most_live_entities() {
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
-        let fresh = NOW - 1 * DAY;
+        let fresh = NOW - DAY;
         let cold = NOW - 200 * DAY;
         let recent_proj = NOW - 2 * DAY;
         graph
@@ -168,7 +168,7 @@ mod tests {
     async fn an_archived_project_is_excluded() {
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
-        let recent = NOW - 1 * DAY;
+        let recent = NOW - DAY;
         graph
             .write(format!(
                 "CREATE (p:Project {{id: 'live', name: 'Live', last_accessed: {recent}}})"
