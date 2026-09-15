@@ -117,8 +117,9 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// consent dialog at all. In debug builds a `dev.`-prefixed id is also admitted.
 const CONTROL_ADMITTED: &[&str] = &["dev.arlen.desktop-shell"];
 
-/// App ids permitted ONLY the grant-management ops (`ListGrants` / `RevokeGrant`)
-/// - the App-access panel's "what you allowed" + release-a-grant surface.
+/// App ids permitted ONLY the grant-management ops (`ListGrants` /
+/// `RevokeGrant`) - the App-access panel's "what you allowed" + release-a-grant
+/// surface.
 /// `settings` is already the revoke authority (it drives the profile-scope revoke
 /// 0x06 on the `is_settings_principal` anchor), so releasing a consent grant is a
 /// strict subset of the power it already holds; it is deliberately NOT admitted to

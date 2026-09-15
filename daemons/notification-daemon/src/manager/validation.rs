@@ -56,7 +56,7 @@ pub fn sanitize_input(
         .cloned()
         .collect();
     // Ensure even length.
-    if sanitized_actions.len() % 2 != 0 {
+    if !sanitized_actions.len().is_multiple_of(2) {
         sanitized_actions.pop();
     }
 

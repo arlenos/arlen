@@ -434,7 +434,7 @@ mod tests {
     #[tokio::test]
     async fn hello_syncs_a_job_registered_before_connect() {
         use crate::job::{JobRegistry, JobViewServer};
-        use tokio::io::AsyncWriteExt;
+        
 
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("notif.sock");

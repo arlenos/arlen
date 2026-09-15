@@ -95,8 +95,9 @@ impl IntegrityChecker {
     /// Graph check: open the graph database and run a trivial query. Returns
     /// `true` only when the store exists and the engine opens it and executes a
     /// query. Fail-closed: a missing graph directory, or one the engine cannot
-    /// open (corrupt/locked), returns `false`. The `exists` guard is load-bearing
-    /// - the engine would otherwise CREATE an empty graph for a missing path and
+    /// open (corrupt/locked), returns `false`. The `exists` guard is
+    /// load-bearing - the engine would otherwise CREATE an empty graph for a
+    /// missing path and
     /// wrongly report it sound, so a backup whose graph is absent is not sound.
     pub async fn graph_check(&self) -> bool {
         if !self.graph_path.exists() {

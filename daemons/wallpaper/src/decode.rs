@@ -68,6 +68,7 @@ pub fn load_image_rgba(path: &str) -> Result<DecodedImage, DecodeError> {
 ///     centre-crops the overflow, so the output is fully painted.
 ///   - [`Scale::Zoom`] scales the image to FIT inside the output (smallest scale),
 ///     centres it, and fills the letterbox margins with `letterbox`.
+///
 /// Pure (no I/O, no Wayland), so it is unit-tested; the renderer calls it once per
 /// output/source change and copies the result into its `wl_shm` buffer. `out_w`/
 /// `out_h` of 0 yield an empty buffer.

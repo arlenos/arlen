@@ -24,8 +24,9 @@ mod proto {
 
 /// A monorepo daemon binary, from the shared target directory.
 ///
-/// This used to be a local copy that joined `<parent>/<repo>/target/debug/<name>`
-/// - the per-repo layout from before the monorepo - so it resolved to
+/// This used to be a local copy that joined
+/// `<parent>/<repo>/target/debug/<name>` - the per-repo layout from before the
+/// monorepo - so it resolved to
 /// `dev/event-bus/target/debug/event-bus`, which has not existed for months. The
 /// test is `#[ignore]`d, so nothing ever ran it and nothing ever said so: it
 /// failed with `failed to start event-bus: No such file or directory`, naming the

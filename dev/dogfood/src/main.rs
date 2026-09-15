@@ -13,6 +13,7 @@
 //!   - the automatic `auto-tag-by-project` curator wrote a FILE_PART_OF edge
 //!     through the live executor and `compensate` undid it (the whole
 //!     predict -> gate -> execute -> audit -> compensate path is live in the VM).
+//!
 //! The conversational explain call is best-effort inspection only (a small local
 //! model's grounding quality is not a boolean).
 //!

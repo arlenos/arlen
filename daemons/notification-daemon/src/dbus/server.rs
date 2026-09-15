@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use zbus::interface;

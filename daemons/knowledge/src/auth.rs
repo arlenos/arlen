@@ -140,9 +140,9 @@ mod tests {
     // Only the tests build a profile from an explicit path; the daemon always
     // resolves through the tiered loader.
     use arlen_permissions::load_profile_from;
-    use crate::token::{EntityScope, InstanceScope, RelationScope};
+    use crate::token::InstanceScope;
     use std::io::Write;
-    use tempfile::TempDir;
+    
 
     fn load_profile(content: &str) -> PermissionProfile {
         let mut f = tempfile::NamedTempFile::new().unwrap();

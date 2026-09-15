@@ -246,6 +246,11 @@ fn available_space(path: &Path) -> u64 {
             let mut stat: MaybeUninit<libc::statvfs> = MaybeUninit::uninit();
             if libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) == 0 {
                 let stat = stat.assume_init();
+                // The casts are deliberate and the lint is target-blind: these
+                // fields are `c_ulong`, which is 64-bit here and 32-bit on a
+                // 32-bit target, where the product of a block count and a block
+                // size overflows without them.
+                #[allow(clippy::unnecessary_cast)]
                 return stat.f_bavail as u64 * stat.f_frsize as u64;
             }
         }
