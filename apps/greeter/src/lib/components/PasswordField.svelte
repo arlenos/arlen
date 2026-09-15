@@ -56,13 +56,19 @@
     aria-invalid={error}
     {onkeydown}
   />
+  <!-- IN THE TAB ORDER, and it used to carry `tabindex={-1}` with no reason
+       beside it. A control with an `aria-label` and an `aria-pressed` is a control
+       meant to be operated; removing it from the tab order left it reachable with
+       a mouse and by nothing else, on the one screen where a person cannot switch
+       to another app and try there. Checking what you typed before committing to
+       it is exactly what somebody typing a long password one-handed needs, and Tab
+       now reaches password, reveal, sign in, in that order. -->
   <button
     type="button"
     class="icon"
     id="greeter-password-reveal"
     aria-label={reveal ? $t("g.password.hide") : $t("g.password.show")}
     aria-pressed={reveal}
-    tabindex={-1}
     disabled={disabled || busy}
     onclick={() => (reveal = !reveal)}
   >

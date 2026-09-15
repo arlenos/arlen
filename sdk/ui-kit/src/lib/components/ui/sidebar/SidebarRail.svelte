@@ -7,6 +7,15 @@
   const sidebar = useSidebar();
 </script>
 
+<!-- OUT OF THE TAB ORDER ON PURPOSE, and the reason belongs here because the next
+     reader will see a labelled button with `tabindex={-1}` and want to fix it. The
+     rail is the 4px strip along the sidebar's edge: a pointer convenience that
+     duplicates `SidebarTrigger`, which every app using it has in its header
+     (checked: settings, files, pdf, knowledge, terminal, mail, calendar, meetings).
+     A 4px invisible strip in the tab order is a stop with nothing to look at,
+     landing on the same action one Tab away. It stays reachable by keyboard
+     through the trigger; the day an app ships the rail WITHOUT one, this is the
+     line to revisit. -->
 <button
   type="button"
   data-slot="sidebar-rail"
