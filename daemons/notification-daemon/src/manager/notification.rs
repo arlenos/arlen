@@ -94,6 +94,10 @@ impl NotificationManager {
     /// D-Bus layer. When false, a determined `Critical` is clamped to `High`.
     ///
     /// Returns the notification ID if stored, or 0 if rate-limited.
+    // Eleven arguments: the same eleven the bus method hands over, passed
+    // through unchanged. Grouping them here would only move the list; the wire
+    // shape would still be eleven.
+    #[allow(clippy::too_many_arguments)]
     pub async fn handle_notify(
         &self,
         id: u32,

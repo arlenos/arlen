@@ -95,14 +95,10 @@ pub mod command_executor;
 /// Report-side compensation: op-id-keyed retract receipts for committed writes.
 pub mod compensation;
 
-
-/// The undo-signer client: submit a created undo entry to the signed, HMAC-chained
-/// log so a graph compensation survives a restart.
-
-
-/// The recent-actions read: undo entries joined to the audit ledger by call
-/// chain, so a surface can name who acted and offer the undo.
-
+// The undo-signer client and the recent-actions read were documented here until
+// undo moved to `arlen-undo` (the note further down says why). Their `pub mod`
+// lines went with them and the two doc blocks stayed, describing modules this
+// crate no longer has.
 
 /// The pi engine sidecar: the confined `pi --mode rpc` spawn (argv builder).
 pub mod sidecar;

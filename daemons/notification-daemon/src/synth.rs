@@ -687,7 +687,7 @@ mod tests {
         let n = render_default_synth_theme(&root, SR).unwrap();
         assert_eq!(n, 4);
         for (name, _) in &cues {
-            match resolve_sound(&[root.clone()], SYNTH_THEME_NAME, name) {
+            match resolve_sound(std::slice::from_ref(&root), SYNTH_THEME_NAME, name) {
                 SoundResolution::File(p) => {
                     assert_eq!(p.extension().and_then(|e| e.to_str()), Some("wav"))
                 }

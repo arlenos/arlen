@@ -13,6 +13,10 @@ use tokio::sync::{broadcast, Mutex};
 use crate::dbus::server::{CloseReason, NotifyEvent};
 use crate::error::NotifyError;
 use crate::socket::protocol::{proto, read_message, write_message};
+
+/// Every connected client's write half, shared so a broadcast can reach them all.
+/// Each writer is behind its own lock: a slow client holds up only itself.
+type ClientWriters = Arc<Mutex<Vec<Arc<Mutex<WriteHalf<UnixStream>>>>>>;
 use crate::storage::Database;
 
 /// Socket server that manages shell client connections.
@@ -88,8 +92,7 @@ impl SocketServer {
         tracing::info!("socket server listening on {}", self.path.display());
 
         // Shared list of client writers for broadcasting.
-        let writers: Arc<Mutex<Vec<Arc<Mutex<WriteHalf<UnixStream>>>>>> =
-            Arc::new(Mutex::new(Vec::new()));
+        let writers: ClientWriters = Arc::new(Mutex::new(Vec::new()));
 
         // Broadcast task: forwards D-Bus events to all connected clients.
         let writers_for_broadcast = writers.clone();

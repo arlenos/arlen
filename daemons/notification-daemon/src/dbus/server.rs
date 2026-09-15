@@ -281,6 +281,9 @@ impl NotificationServer {
     /// Receive an incoming notification.
     ///
     /// Returns the assigned notification ID.
+    // Eleven arguments: the `org.freedesktop.Notifications.Notify` signature, fixed by the spec. Grouping them into a struct here would
+    // only move the list, and the wire shape would still be eleven.
+    #[allow(clippy::too_many_arguments)]
     async fn notify(
         &self,
         app_name: &str,
