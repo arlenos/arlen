@@ -38,7 +38,15 @@ function run(...paths) {
   const started = Date.now();
   const r = run("daemons/knowledge/src/daemon.rs", "apps/files/core/src/lib.rs");
   check("a commit touching no shared crate does no work", r.code === 0 && r.out.trim() === "");
-  check("and returns immediately", Date.now() - started < 3000);
+  // THIRTY SECONDS, AND IT WAS THREE. The bound is not a performance budget, it is
+  // the difference between "did not run cargo" and "ran cargo over 34 crates",
+  // which is seconds against minutes - so anything in between distinguishes them
+  // just as well. Three was tuned on a quiet machine and this control runs inside
+  // a hook that starts 180 gates at once: on 16 September it failed a commit on a
+  // loaded laptop while passing on its own a moment later. A control that fails
+  // for a reason that is not the fault teaches people to pass --no-verify, and
+  // takes the true reds with it.
+  check("and returns without building anything", Date.now() - started < 30000);
 }
 
 // A shared change selects the crate itself AND its dependents. `--all-targets` on

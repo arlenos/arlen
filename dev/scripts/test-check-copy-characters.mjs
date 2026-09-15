@@ -86,7 +86,44 @@ console.log("copy characters:");
         r.out.trim().split("\n")[0]);
 }
 
-// The two deliberate non-bans. These are what keep the gate credible.
+{
+  const r = gateOver(`"t.fault": "Arlen OS",`);
+  check("the product called \"Arlen OS\" is caught", r.code === 1 && r.out.includes("Arlen"),
+        r.out.trim().split("\n")[0]);
+}
+
+{
+  // From memory, which is how a wrong name actually comes back: any case, any
+  // spacing.
+  const r = gateOver(`"t.fault": "Willkommen bei arlen   os",`);
+  check("and it is caught however it was typed", r.code === 1,
+        r.out.trim().split("\n")[0]);
+}
+
+{
+  // The kit's catalogue is in scope now, so the control has to say so: before
+  // 16 September this file was excluded and its About line went unchecked.
+  const dir = (() => {
+    const d = mint("arlen-copy-chars-kit-");
+    const i18n = path.join(d, "sdk", "ui-kit", "src", "lib", "i18n");
+    mkdirSync(i18n, { recursive: true });
+    writeFileSync(path.join(i18n, "messages.kit.ts"),
+      `const messages = {\n  en: {\n    "k.about.build": "Arlen OS {$version}",\n  },\n};\nexport default messages;\n`,
+      "utf8");
+    return d;
+  })();
+  let r;
+  try {
+    r = { code: 0, out: execFileSync("python3", [gate, dir], { encoding: "utf8" }) };
+  } catch (e) {
+    r = { code: e.status ?? 1, out: (e.stdout ?? "") + (e.stderr ?? "") };
+  } finally {
+    cleanup(dir);
+  }
+  check("the kit's own catalogue is scanned", r.code === 1, r.out.trim().split("\n")[0]);
+}
+
+// The deliberate non-bans. These are what keep the gate credible.
 {
   const r = gateOver(`"t.fine": "Open with…",`);
   check("the platform ellipsis convention is left alone", r.code === 0, r.out.trim().split("\n")[0]);
@@ -97,4 +134,4 @@ console.log("copy characters:");
 }
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
-console.log("the gate catches an m-dash and a middot separator, and stays quiet on an ellipsis");
+console.log("the gate catches an m-dash, a middot separator and the wrong product name, and stays quiet on an ellipsis");
