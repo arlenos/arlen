@@ -345,6 +345,11 @@
 
 @layer base {
   * {
+    /* `outline-ring/50` sets only `outline-color`, which WebKitGTK ignores while
+       `outline-style` is `auto` - so on its own this line has never drawn a ring.
+       The one you see comes from the `*:focus-visible` rule in
+       sdk/ui-kit/src/lib/motion.css, imported above. This line stays for
+       `border-border`. */
     @apply border-border outline-ring/50;
 		user-select: none;
 		-webkit-user-select: none;
