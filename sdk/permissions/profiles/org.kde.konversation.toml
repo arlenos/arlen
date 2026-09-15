@@ -1,7 +1,15 @@
-# Starting permission profile for Konversation (an IRC client). Connects to IRC servers over the network (its function).
+# Starting permission profile for Konversation (an IRC client). Talks to servers
+# over the network, which is its function, and puts a DCC transfer into
+# Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id had no file
+# grant, so a file somebody sent had nowhere to land.
 [info]
 app_id = "org.kde.konversation"
 tier = "third-party"
+
+[filesystem]
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

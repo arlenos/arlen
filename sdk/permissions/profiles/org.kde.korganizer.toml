@@ -1,4 +1,9 @@
-# Starting permission profile for KOrganizer (a calendar). Local calendars live in Documents; CalDAV sync is the user's opt-in network grant.
+# Starting permission profile for KOrganizer (a calendar and task list). Imports
+# and exports iCalendar files through Documents; no network and no Knowledge
+# Graph access by default - a remote calendar is a refinement, not a default.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, so an
+# .ics file could be neither imported nor exported.
 [info]
 app_id = "org.kde.korganizer"
 tier = "third-party"

@@ -1,6 +1,21 @@
-# Starting permission profile for a planetarium app. No file access, no network
-# and no Knowledge Graph by default; its star catalogues live in its own data dir
-# (extra catalogue downloads are refined later).
+# Starting permission profile for KStars (a desktop planetarium). Downloads star
+# catalogues and imagery over the network, which is how it fills its sky, and
+# keeps observation lists in Documents. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing at all,
+# so it could neither fetch a catalogue nor save an observing list.
 [info]
 app_id = "kstars"
 tier = "third-party"
+
+[filesystem]
+documents = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true

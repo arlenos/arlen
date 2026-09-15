@@ -3,11 +3,6 @@
 # decide what the app should get, make every id say it, drop the row.
 #
 # app	the ids that disagree
-konversation	konversation org.kde.konversation
-korganizer	korganizer org.kde.korganizer
-kstars	kstars org.kde.kstars
-lmms	com.lmms.LMMS lmms org.lmms.LMMS
-lutris	lutris net.lutris.Lutris
 mediawriter	mediawriter org.fedoraproject.MediaWriter
 melonds	melonds net.kuribo64.melonDS
 mgba	io.mgba.mGBA mgba
