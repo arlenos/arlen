@@ -122,10 +122,16 @@
     font-variant-numeric: tabular-nums;
     text-align: center;
     color: var(--color-fg-primary);
-    outline: none;
     border-radius: var(--radius-input, 8px);
   }
-  .ti-digit:focus {
+  /* NO `outline: none` here, and the reason is measured. These two fields are the
+     only way to set a timer from the keyboard, and the 10% tint below was their
+     whole focus indicator: against the app ground that is 1.27:1 between focused
+     and unfocused, where the floor for an indicator is 3:1. Standing on the
+     minutes field looked like standing nowhere. The system ring draws now and the
+     tint stays as a second cue, on `:focus-visible` so a click does not paint a
+     box the mouse already told you about. */
+  .ti-digit:focus-visible {
     background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
   }
   .ti-colon {

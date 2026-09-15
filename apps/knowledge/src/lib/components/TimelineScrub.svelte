@@ -105,8 +105,14 @@
     height: 2.25rem;
     margin: 0.25rem 1.1rem 0;
     touch-action: none;
-    outline: none;
   }
+  /* NO `outline: none`, measured the same way the clock's timer fields were. The
+     accent rail below was the whole indicator, and a 2px line going from 14% grey
+     to 45% accent is 1.22:1 between the two states - a change a person can see
+     when they are looking for it and not when they are not, where an indicator
+     wants 3:1. The system ring draws round the track now; the rail keeps its
+     accent as the second cue, which is the half that says WHICH control rather
+     than THAT something has focus. */
   .scrub:focus-visible .rail {
     background: color-mix(in srgb, var(--color-accent, var(--color-fg-primary)) 45%, transparent);
   }
