@@ -66,11 +66,16 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root {
-    /* Both names, because the theme injects `--duration-normal` as an INLINE
-       style on the root element, which beats any stylesheet rule: setting only
-       the alias here would let a themed middle duration flow straight past a
-       person who asked for less motion. Setting `--duration-medium` directly
-       is what stops it. */
+    /* BOTH names. The theme reaches a page as a `:root` block appended to the
+       head at runtime, so it carries the same specificity as this rule and
+       wins on order. Setting only `--duration-normal` here would leave the
+       alias free to pick the theme's value up again; naming `--duration-medium`
+       directly is what a reduce-motion request needs in order to hold.
+
+       NB that ordering means a themed duration can still outrank this whole
+       block, which is a pre-existing question about where the injected sheet
+       sits rather than anything this alias introduced. Written up rather than
+       guessed at. */
     --duration-micro:  0ms;
     --duration-fast:   0ms;
     --duration-normal: 0ms;
