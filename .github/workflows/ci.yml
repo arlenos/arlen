@@ -301,6 +301,8 @@ jobs:
           python3 dev/scripts/check-runtime-deps.py
           python3 dev/scripts/check-linked-libraries.py
           python3 dev/scripts/check-bus-socket-pins.py
+          python3 dev/scripts/check-knowledge-socket-resolver.py
+          node dev/scripts/test-check-knowledge-socket-resolver.mjs
           python3 dev/scripts/check-probe-admission.py
           python3 dev/scripts/check-dbus-activation.py
           python3 dev/scripts/check-portal-interfaces.py

@@ -54,7 +54,7 @@ async fn main() {
 
     let producer = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
     let consumer = os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock");
-    let graph_socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let graph_socket = os_sdk::runtime::knowledge_socket_path();
     info!(consumer = %consumer.display(), "code-indexer starting");
 
     let emitter = UnixEventEmitter::for_system_named("code-indexer", producer.to_string_lossy().into_owned());

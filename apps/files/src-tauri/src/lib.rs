@@ -480,7 +480,7 @@ async fn read_last_accessed(client: &os_sdk::graph::UnixGraphClient, path: &str)
 /// the fixture path is for a missing BACKEND, not a file the graph has nothing on.
 #[tauri::command]
 async fn provenance_of(r#ref: String) -> ProvenanceChain {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     // Collapsed here rather than carried into the chain: the chain does not need
     // three states, it needs to know whether it can claim to be whole.
@@ -521,7 +521,7 @@ async fn provenance_of(r#ref: String) -> ProvenanceChain {
 /// op). Best-effort: an out-of-scope object, an absent daemon or any error yields
 /// no lines, so the info panel still shows the conventional metadata.
 async fn read_woher(path: &str) -> Vec<ProvenanceEntry> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     // The File node id in the graph is the file's absolute path.
     match client.read_provenance(&abs(path)).await {
@@ -565,7 +565,7 @@ fn related_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value
 /// with no graph daemon are different facts, and a bare `Vec` tells them apart for
 /// nobody.
 async fn read_related(path: &str) -> ReadOutcome<Relation> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     // The File node id in the graph is the file's absolute path. The id is
     // escaped before interpolation (filenames may contain a quote); the read
@@ -604,7 +604,7 @@ fn file_part_of_as_of(as_of_micros: Option<i64>) -> String {
 /// outcome as `read_related`. Unlike the plain read it names the rel (`r`) so the
 /// bitemporal stamps can be filtered.
 async fn read_related_as_of(path: &str, as_of_micros: Option<i64>) -> ReadOutcome<Relation> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = format!(
         "MATCH (f:File {{id: '{}'}})-[r:FILE_PART_OF]->(p:Project) WHERE {} \
@@ -627,7 +627,7 @@ async fn project_members_as_of(id: &str, as_of_micros: Option<i64>) -> ReadOutco
             reason: "no project id".into(),
         };
     }
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = format!(
         "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project {{id: '{}'}}) WHERE {} \
@@ -657,7 +657,7 @@ async fn facet_members(location: &str) -> ReadOutcome<FileEntry> {
     let Some(cypher) = arlen_file_browser_core::facet_query::facet_cypher(&sel, now_micros) else {
         return ReadOutcome::Rows { rows: Vec::new() };
     };
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     ReadOutcome::from_result(
         "facet_members",
@@ -824,7 +824,7 @@ async fn files_ask(folder: String, query: String) -> Result<arlen_file_browser_c
     // KG read: the project + touching-app vocab the inference matches the query
     // against. The read socket scopes to this caller and audits the read; the
     // returned `tags` count is the user-facing half of the anti-Recall promise.
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let projects =
         kg_name_pairs(&client, "MATCH (p:Project) RETURN p.id AS id, p.name AS name LIMIT 200").await;
@@ -1997,7 +1997,7 @@ fn projects_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
 /// It did not even log which failure it was.
 #[tauri::command]
 async fn files_projects() -> ReadOutcome<Project> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = "MATCH (p:Project) WHERE p.expired_at IS NULL \
                   RETURN p.id AS id, p.name AS name, p.root_path AS path LIMIT 64";
@@ -2049,7 +2049,7 @@ fn touched_apps_from_rows(rows: &[std::collections::HashMap<String, serde_json::
 /// absent daemon is not entitled to make it.
 #[tauri::command]
 async fn files_touched_apps() -> ReadOutcome<TouchedApp> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = "MATCH (f:File)-[:ACCESSED_BY]->(a:App) \
                   RETURN a.id AS id, a.name AS label, count(f) AS count \
@@ -2123,7 +2123,7 @@ fn recent_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>
 /// registered entrance to the same rows is how one surface ends up believing
 /// something the next one does not.
 async fn files_recent() -> ReadOutcome<RecentFile> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = "MATCH (f:File) WHERE f.last_accessed IS NOT NULL \
                   RETURN f.path AS path, f.last_accessed AS accessed \
@@ -2298,7 +2298,7 @@ async fn project_members(id: &str) -> ReadOutcome<FileEntry> {
             reason: "no project id".into(),
         };
     }
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = format!(
         "MATCH (f:File)-[:FILE_PART_OF]->(p:Project {{id: '{}'}}) \
@@ -2321,7 +2321,7 @@ async fn search_location(query: &str) -> ReadOutcome<FileEntry> {
     if query.is_empty() {
         return ReadOutcome::Rows { rows: Vec::new() };
     }
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = format!(
         "MATCH (f:File) WHERE f.path CONTAINS '{}' \
