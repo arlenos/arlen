@@ -123,34 +123,14 @@ const DEV_ADMITTED: &[&str] = &["dev.arlen-calendar-app"];
 
 /// The caller's attested app id, or why it could not be established.
 ///
-/// The bus attests the sender and turns it into a pid the caller cannot forge;
-/// the start time is read either side of the resolve so a pid recycled
-/// underneath it is refused rather than mistaken for the app. The same shape the
-/// clock and power daemons use, and duplicated for the same reason: it is four
-/// lines of protocol, and a shared helper would put a bus dependency in the
-/// permissions crate that every confined app links.
+/// Shared rather than copied: `arlen-dbus-identity` is its own crate, so nothing
+/// that links `arlen-permissions` gains a bus dependency, which was the reason
+/// this was duplicated in the first place.
 async fn resolve_caller_app_id(
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
 ) -> Result<String, String> {
-    use arlen_permissions::identity::{app_id_from_pid, pid_start_time};
-    let sender = header
-        .sender()
-        .ok_or_else(|| "no sender in message".to_string())?;
-    let proxy = zbus::fdo::DBusProxy::new(connection)
-        .await
-        .map_err(|e| format!("DBusProxy: {e}"))?;
-    let pid = proxy
-        .get_connection_unix_process_id(sender.clone().into())
-        .await
-        .map_err(|e| format!("get caller pid: {e}"))?;
-    let start_before = pid_start_time(pid).map_err(|e| format!("pid start time: {e}"))?;
-    let app_id = app_id_from_pid(pid).map_err(|e| format!("resolve app id: {e}"))?;
-    let start_after = pid_start_time(pid).map_err(|e| format!("pid start time: {e}"))?;
-    if start_before != start_after {
-        return Err("pid recycled during resolution".to_string());
-    }
-    Ok(app_id)
+    arlen_dbus_identity::resolve_caller(header, connection).await
 }
 
 /// Refuse a caller that is not the calendar app.
@@ -331,7 +311,10 @@ async fn main() {
         // library is silent.
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                tracing_subscriber::EnvFilter::new("warn,arlen_calendard=info")
+                // `audit` is a TARGET, not a crate: the caller identity this daemon resolves on
+                // every gated method files its lines under it, and a directive for the crate does
+                // not reach them.
+                tracing_subscriber::EnvFilter::new("warn,arlen_calendard=info,audit=info")
             }),
         )
         .init();

@@ -1,0 +1,16 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-dbus-identity"
+version = "0.1.0"
+edition = "2021"
+description = "Resolve the attested app id of a D-Bus caller: the bus names the sender's pid, the identity broker names the process, and the exe read is the fallback"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-permissions = { path = "../permissions" }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

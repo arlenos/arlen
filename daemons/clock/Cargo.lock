@@ -38,6 +38,7 @@ dependencies = [
 name = "arlen-clock"
 version = "0.1.0"
 dependencies = [
+ "arlen-dbus-identity",
  "arlen-permissions",
  "chrono",
  "chrono-tz",
@@ -49,6 +50,14 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "zbus",
+]
+
+[[package]]
+name = "arlen-dbus-identity"
+version = "0.1.0"
+dependencies = [
+ "arlen-permissions",
  "zbus",
 ]
 

@@ -28,6 +28,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
+name = "arlen-dbus-identity"
+version = "0.1.0"
+dependencies = [
+ "arlen-permissions",
+ "zbus",
+]
+
+[[package]]
 name = "arlen-forage-signing"
 version = "0.1.0"
 dependencies = [
@@ -284,6 +292,7 @@ dependencies = [
 name = "connections"
 version = "0.1.0"
 dependencies = [
+ "arlen-dbus-identity",
  "arlen-forage-signing",
  "arlen-permissions",
  "arlen-secret-vault",

@@ -27,7 +27,10 @@ async fn main() {
         // the 2 in `undo_history.rs` belong to the library.
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                tracing_subscriber::EnvFilter::new("warn,arlen_undod=info,arlen_undo=info")
+                // `audit` is a TARGET, not a crate: the caller identity this daemon resolves on
+                // every gated method files its lines under it, and a directive for the crate does
+                // not reach them.
+                tracing_subscriber::EnvFilter::new("warn,arlen_undod=info,arlen_undo=info,audit=info")
             }),
         )
         .init();

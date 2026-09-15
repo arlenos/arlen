@@ -34,29 +34,18 @@ pub struct UndoInterface {
     pub audit: std::sync::Arc<dyn audit_proto::sink::AuditSink>,
 }
 
-/// Resolve the calling app's Arlen identity from the D-Bus connection: the bus
-/// attests the sender's PID (`GetConnectionUnixProcessID`, never a client value)
-/// and the resolver maps `/proc/<pid>/exe` to an app id. Any failure is an `Err`
-/// and the caller is refused.
+/// The caller's attested app id, from `arlen-dbus-identity`.
 ///
-/// Spelled here rather than shared: it is mechanism that either resolves or fails,
-/// unlike the ADMISSION LIST, which is policy two daemons must agree on and so
-/// lives in `arlen_permissions::identity::is_user_surface`.
+/// It gains a pid-reuse guard by moving here, which the copy that used to stand
+/// in this file did not have: the bus attests a pid, and between that and the
+/// identity resolution the number can name a different process. Every caller of
+/// this decides whether somebody may see and REVERSE the user's actions, so the
+/// stricter answer is the right one.
 async fn resolve_caller(
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
 ) -> Result<String, String> {
-    let sender = header
-        .sender()
-        .ok_or_else(|| "no sender in message".to_string())?;
-    let proxy = zbus::fdo::DBusProxy::new(connection)
-        .await
-        .map_err(|e| format!("DBusProxy: {e}"))?;
-    let pid = proxy
-        .get_connection_unix_process_id(sender.clone().into())
-        .await
-        .map_err(|e| format!("get caller pid: {e}"))?;
-    arlen_permissions::identity::app_id_from_pid(pid).map_err(|e| format!("resolve app id: {e}"))
+    arlen_dbus_identity::resolve_caller(header, connection).await
 }
 
 /// Whether the caller is a surface allowed to see and reverse the user's actions,

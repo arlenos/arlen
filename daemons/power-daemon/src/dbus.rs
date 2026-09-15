@@ -348,36 +348,14 @@ impl PowerInterface {
     }
 }
 
-/// Resolve the calling app's Arlen identity from the D-Bus connection, with a
-/// PID-reuse guard.
+/// Resolve the calling app's Arlen identity from the D-Bus connection.
 ///
-/// The session bus daemon attests the sender's PID (`GetConnectionUnixProcessID`,
-/// not a client-supplied value), and `app_id_from_pid` resolves `/proc/<pid>/exe`
-/// through the F3 `path_to_app_id` chain. The caller PID's start time is captured
-/// before and re-checked after the `/proc` read, so a PID recycled to a different
-/// process during resolution is rejected (the knowledge-daemon / online-accounts
-/// pattern). Every method using this resolver hands out a privileged action, so
-/// the guard is applied unconditionally. Any failure is an `Err` (fail-closed).
+/// The two tiers, and why a daemon that reads `/proc/<pid>/exe` alone cannot keep
+/// its own hardening, are in `arlen-dbus-identity`. Every method using this
+/// resolver hands out a privileged action, so any failure is an `Err` and denies.
 async fn resolve_caller_app_id(
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
 ) -> Result<String, String> {
-    use arlen_permissions::identity::{app_id_from_pid, pid_start_time};
-    let sender = header
-        .sender()
-        .ok_or_else(|| "no sender in message".to_string())?;
-    let proxy = zbus::fdo::DBusProxy::new(connection)
-        .await
-        .map_err(|e| format!("DBusProxy: {e}"))?;
-    let pid = proxy
-        .get_connection_unix_process_id(sender.clone().into())
-        .await
-        .map_err(|e| format!("get caller pid: {e}"))?;
-    let start_before = pid_start_time(pid).map_err(|e| format!("pid start time: {e}"))?;
-    let app_id = app_id_from_pid(pid).map_err(|e| format!("resolve app id: {e}"))?;
-    let start_after = pid_start_time(pid).map_err(|e| format!("pid start time: {e}"))?;
-    if start_before != start_after {
-        return Err("pid recycled during resolution".to_string());
-    }
-    Ok(app_id)
+    arlen_dbus_identity::resolve_caller(header, connection).await
 }
