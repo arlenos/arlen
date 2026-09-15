@@ -30,6 +30,7 @@
   import WaypointerResult from "./waypointer/WaypointerResult.svelte";
   import WaypointerAskPane from "./waypointer/WaypointerAskPane.svelte";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
+  import { appIdFromName } from "@arlen/ui-kit/components/ui/app-icon";
   import {
     askMode,
     ask as askAgent,
@@ -926,14 +927,24 @@
     close();
   }
 
-  /// Looks up the app icon (base64 data URL) by app_id or exec name.
-  function appIconFor(name: string): string | null {
+  /// The app entry behind a window's app_id or exec name, if the index knows one.
+  function appEntryFor(name: string) {
     const lower = name.toLowerCase();
-    const app = allApps.find((a) =>
+    return allApps.find((a) =>
       a.icon_name.toLowerCase() === lower ||
       a.exec.toLowerCase().split(/\s/)[0].endsWith(lower)
     );
-    return app?.icon_data ?? null;
+  }
+
+  /// Looks up the app icon (base64 data URL) by app_id or exec name.
+  function appIconFor(name: string): string | null {
+    return appEntryFor(name)?.icon_data ?? null;
+  }
+
+  /// The same lookup, as one of OUR app ids: a window of an Arlen app draws the
+  /// kit's glyph, a window of anything else keeps the icon theme's raster.
+  function appIconIdFor(name: string) {
+    return appIdFromName(appEntryFor(name)?.icon_name);
   }
 </script>
 
@@ -1085,6 +1096,8 @@
                 onSelect={() => launchAppAndClose(app)}
               >
                 <WaypointerResult
+                  appId={appIdFromName(app.icon_name)}
+                  appState={commandValue === `recent-app-${app.exec}` ? "hover" : "rest"}
                   iconUrl={app.icon_data}
                   fallbackIcon={AppWindow}
                   title={app.name}
@@ -1125,6 +1138,8 @@
                 onSelect={() => switchToWindow(win)}
               >
                 <WaypointerResult
+                  appId={appIconIdFor(win.app_id)}
+                  appState={commandValue === `window-${win.id}` ? "hover" : "rest"}
                   iconUrl={icon}
                   badge="window"
                   fallbackIcon={AppWindow}
@@ -1167,6 +1182,8 @@
                 onSelect={() => launchAppAndClose(app)}
               >
                 <WaypointerResult
+                  appId={appIdFromName(app.icon_name)}
+                  appState={commandValue === app.name ? "hover" : "rest"}
                   iconUrl={app.icon_data}
                   fallbackIcon={AppWindow}
                   title={app.name}

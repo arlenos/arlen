@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/svelte";
 import AppIcon from "./app-icon.svelte";
-import { APP_IDS, APP_ICON_STATES, GLYPHS } from "./glyphs.js";
+import { APP_IDS, APP_ICON_STATES, GLYPHS, appIdFromName } from "./glyphs.js";
 
 describe("app icon", () => {
   it("draws every app's glyph inside the plate and hides it from readers", () => {
@@ -21,6 +21,28 @@ describe("app icon", () => {
       expect(svg?.getAttribute("aria-hidden"), app).toBe("true");
       expect(container.querySelector(".plate"), app).not.toBeNull();
       expect(container.querySelectorAll(".glyph > *").length, app).toBe(GLYPHS[app].length);
+    }
+  });
+
+  it("reads an app id off any of the three names an app is called, and only ours", () => {
+    // The desktop entry's Icon= and basename, and what a window announces.
+    for (const app of APP_IDS) {
+      expect(appIdFromName(`arlen-${app}`), app).toBe(app);
+      expect(appIdFromName(`dev.arlen.${app}`), app).toBe(app);
+      expect(appIdFromName(`org.arlen.${app}`), app).toBe(app);
+    }
+    // Everything the shell will actually hand it that is not ours.
+    for (const other of [
+      "firefox",
+      "org.gnome.Calculator",
+      "/usr/share/icons/hicolor/48x48/apps/thing.png",
+      "arlen-not-an-app",
+      "dev.arlen.not-an-app",
+      "",
+      null,
+      undefined,
+    ]) {
+      expect(appIdFromName(other as string | null), String(other)).toBeNull();
     }
   });
 

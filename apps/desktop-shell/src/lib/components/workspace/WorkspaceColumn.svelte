@@ -9,6 +9,7 @@
   import type { WorkspaceInfo } from "$lib/stores/workspaces.js";
   import { activateWorkspace } from "$lib/stores/workspaces.js";
   import { minimizedByWorkspace } from "$lib/stores/minimizedWindows.js";
+  import { appIdFromName } from "@arlen/ui-kit/components/ui/app-icon";
   import { projectPerWorkspace } from "$lib/stores/workspaceProjects.js";
   import { selectedWindowIds } from "$lib/stores/overlaySelection.js";
   import type { DragEngine } from "$lib/workspace/drag.svelte.js";
@@ -150,6 +151,7 @@
             wsIndex={index}
             title={win.title}
             appId={win.app_id}
+            appIconId={appIdFromName(win.app_id)}
             iconUrl={iconUrls[win.app_id]}
             selected={$selectedWindowIds.has(win.id)}
             keyboardFocus={focusedWindowId === win.id}
@@ -205,6 +207,7 @@
             title={m.title}
             appId={m.appId}
             minimized
+            appIconId={appIdFromName(m.appId)}
             iconUrl={iconUrls[m.appId]}
             selected={$selectedWindowIds.has(m.windowId)}
             keyboardFocus={focusedWindowId === m.windowId}

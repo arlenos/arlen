@@ -55,6 +55,30 @@ export const APP_IDS: readonly AppId[] = [
   "file-picker",
 ];
 
+/// The prefixes one of our apps is named by, in the three places the shell meets
+/// one. A desktop entry's `Icon=` and its basename are `arlen-<id>`; a window
+/// announces the toolkit's identifier, which for every app here is the Tauri
+/// `identifier` - `dev.arlen.<id>`. `org.arlen.` is accepted because it is the
+/// published org id and a packaged build may carry it.
+const NAME_PREFIXES = ["arlen-", "dev.arlen.", "org.arlen."] as const;
+
+/// The app id behind whatever string names an app, or null when it is not ours.
+///
+/// Takes a desktop `Icon=` name, a desktop basename, or a window's announced
+/// app id, because the shell has all three and they name the same app. Anything
+/// else - a third-party app, a theme icon, a path - is null, and the caller keeps
+/// whatever raster it had: this is an addition for our own apps, never a
+/// replacement for the freedesktop lookup.
+export function appIdFromName(name: string | null | undefined): AppId | null {
+  if (!name) return null;
+  for (const prefix of NAME_PREFIXES) {
+    if (!name.startsWith(prefix)) continue;
+    const id = name.slice(prefix.length);
+    if ((APP_IDS as readonly string[]).includes(id)) return id as AppId;
+  }
+  return null;
+}
+
 /// One element per stroke, on the 24 grid.
 export const GLYPHS: Record<AppId, readonly string[]> = {
   // lucide: folder

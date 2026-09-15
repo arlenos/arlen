@@ -10,6 +10,7 @@ import { writable, derived, get } from "svelte/store";
 import { toast } from "svelte-sonner";
 import type { Component } from "svelte";
 import NotificationToastIcon from "$lib/components/NotificationToastIcon.svelte";
+import { appIdFromName, type AppId } from "@arlen/ui-kit/components/ui/app-icon";
 import { activePopover } from "./activePopover.js";
 import { windows } from "./windows.js";
 
@@ -346,13 +347,18 @@ function showToast(n: Notification) {
 /// component (which is a function of `(anchor, props)`) in a thin
 /// forwarder that injects the baked-in values.
 function makeToastIcon(iconUrl: string, appName: string): Component {
+  // One of OUR apps draws the kit's icon rather than the raster the daemon
+  // resolved. A Tauri app sends its `productName` as the D-Bus app name, which
+  // for every app here is `arlen-<id>`, so this reads without a second table;
+  // anything else answers null and the icon falls back as before.
+  const appId = appIdFromName(appName);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Inner = NotificationToastIcon as unknown as (
     anchor: any,
-    props: { iconUrl: string; appName: string },
+    props: { iconUrl: string; appName: string; appId: AppId | null },
   ) => unknown;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return ((anchor: any) => Inner(anchor, { iconUrl, appName })) as Component;
+  return ((anchor: any) => Inner(anchor, { iconUrl, appName, appId })) as Component;
 }
 
 /// Find a matching open window for a notification and activate it.

@@ -8,6 +8,7 @@
 
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import { AppWindow } from "lucide-svelte";
+  import { AppIcon, type AppId } from "@arlen/ui-kit/components/ui/app-icon";
   import type { WorkspaceInfo } from "$lib/stores/workspaces.js";
   import type { DragEngine } from "$lib/workspace/drag.svelte.js";
   import { cardTitle } from "$lib/workspace/format.js";
@@ -19,6 +20,7 @@
     wsIndex,
     title,
     appId,
+    appIconId = null,
     minimized = false,
     iconUrl = null,
     selected,
@@ -35,6 +37,12 @@
     wsIndex: number;
     title: string;
     appId: string;
+    /// One of OUR apps, when this window belongs to one. A window announces the
+    /// id its `.desktop` file carries - `arlen-terminal` - which is the same
+    /// string the icon is named by, so the card can draw the kit's glyph rather
+    /// than the raster the icon theme found. Null for every other window, and
+    /// `iconUrl` carries those exactly as before.
+    appIconId?: AppId | null;
     minimized?: boolean;
     iconUrl?: string | null;
     selected: boolean;
@@ -79,7 +87,9 @@
           ? $t("sh.aria.windowMinimized", { window: title || appId, n: wsIndex + 1 })
           : $t("sh.aria.window", { window: title || appId, n: wsIndex + 1 })}
       >
-        {#if iconUrl}
+        {#if appIconId}
+          <AppIcon app={appIconId} size={24} />
+        {:else if iconUrl}
           <img
             class="window-card-icon"
             src={iconUrl}
