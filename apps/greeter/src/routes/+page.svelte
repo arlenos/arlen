@@ -48,10 +48,24 @@
   const multi = $derived((profiles?.length ?? 0) > 1);
   const pickedProfile = $derived(profiles?.find((p) => p.id === picked) ?? null);
 
-  onMount(async () => {
-    // First, so somebody who needs a screen reader has it before the prompt is
-    // drawn rather than after.
-    void loadRememberedA11y();
+  /// How often to ask again while the login service has not answered.
+  ///
+  /// THE GREETER IS THE ONE SCREEN WITH NO WAY OUT. There is no shell behind it
+  /// and no other window to go to, so "Login is not reachable right now" with
+  /// nothing re-asking is a person looking at a sentence until they hold the power
+  /// button. And the reason it is usually TRUE is that this screen is drawn at
+  /// boot, sometimes before `greetd` has finished coming up - a state that fixes
+  /// itself in seconds if anybody looks again.
+  ///
+  /// Three seconds because it is a local socket, the cost is nothing, and a person
+  /// waiting at a login screen notices four seconds. It stops at the first answer:
+  /// an empty profile list is an ANSWER (that box has no users), not a failure.
+  const RETRY_MS = 3000;
+  let retry: ReturnType<typeof setInterval> | undefined;
+
+  /// Ask for everything the screen needs. Returns whether the login service
+  /// answered at all.
+  async function load(): Promise<boolean> {
     const [ps, ss, wp] = await Promise.all([listProfiles(), listSessions(), readWallpaper()]);
     profiles = ps;
     sessions = ss ?? [];
@@ -64,6 +78,27 @@
       if (ps.length === 1) picked = ps[0].id;
     }
     loaded = true;
+    return ps !== null;
+  }
+
+  onMount(() => {
+    // First, so somebody who needs a screen reader has it before the prompt is
+    // drawn rather than after.
+    void loadRememberedA11y();
+    void (async () => {
+      if (await load()) return;
+      retry = setInterval(() => {
+        void load().then((ok) => {
+          if (ok && retry) {
+            clearInterval(retry);
+            retry = undefined;
+          }
+        });
+      }, RETRY_MS);
+    })();
+    return () => {
+      if (retry) clearInterval(retry);
+    };
   });
 
   function hasHardware(p: Profile): boolean {
