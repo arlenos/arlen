@@ -1,6 +1,10 @@
-# Starting permission profile for Czkawka (a duplicate-file finder).
-# It scans the user's data for duplicate/redundant files by function, so it gets
-# the data directories and no network. No Knowledge Graph access.
+# Starting permission profile for Czkawka (a duplicate and junk-file finder).
+# Scanning the user's media is its function, so it holds the media directories
+# and Documents and Downloads; no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted the whole Home.
+# The five named directories are what a duplicate finder is pointed at, and they
+# stop short of the dotfiles and the app data a Home grant hands over.
 [info]
 app_id = "com.github.qarmin.czkawka"
 tier = "third-party"

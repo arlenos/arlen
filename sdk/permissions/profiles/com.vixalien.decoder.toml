@@ -1,6 +1,9 @@
-# Starting permission profile for Decoder (a QR/barcode scanner and generator).
-# It reads codes through the camera portal and copies decoded text to the
-# clipboard; no network, no user files and no Knowledge Graph access.
+# Starting permission profile for Decoder (a QR and barcode reader). It reads a
+# code from the camera or a picture and copies the result to the clipboard, so
+# clipboard write is its function; no network and no Knowledge Graph access.
+#
+# ONE ANSWER FOR ALL THREE PACKAGING IDS (15 Sep): two of them had no clipboard
+# grant, which leaves the app able to decode a code and not to hand it over.
 [info]
 app_id = "com.vixalien.decoder"
 tier = "third-party"

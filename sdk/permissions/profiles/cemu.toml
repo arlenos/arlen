@@ -1,6 +1,9 @@
-# Starting permission profile for a self-contained emulator. No file access, no
+# Starting permission profile for Cemu (a console emulator). No file access, no
 # network and no Knowledge Graph by default; its data lives in its own app dir
-# (ROM/BIOS paths are granted explicitly).
+# and a ROM elsewhere is opened through the file portal.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id granted
+# Documents, which is neither where ROMs live nor needed to reach one.
 [info]
 app_id = "cemu"
 tier = "third-party"
