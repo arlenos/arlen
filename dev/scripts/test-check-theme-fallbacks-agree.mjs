@@ -20,6 +20,7 @@ const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-theme-fallbacks-agree.py");
 
 const THEME = "sdk/theme/themes/dark.toml";
+const LIGHT = "sdk/theme/themes/light.toml";
 const APP = "apps/demo/src/app.css";
 
 const themeFile = [
@@ -75,6 +76,48 @@ function appCss(edits = {}) {
   return `:root {\n${body}\n}\n`;
 }
 
+const lightFile = [
+  "[color.bg]",
+  'shell   = "#ececef"',
+  'app     = "#f5f5f7"',
+  'card    = "#ffffff"',
+  'overlay = "#1f1f2933"',
+  'input   = "#ffffff"',
+  "",
+  "[color.fg]",
+  'primary   = "#171717"',
+  'secondary = "#525252"',
+  'disabled  = "#a3a3a3"',
+  'inverse   = "#fafafa"',
+  "",
+  "[color.border]",
+  'default = "#e5e5e5"',
+  'strong  = "#8a8a8f"',
+  "",
+  "[color.semantic]",
+  'error   = "#dc2626"',
+  'warning = "#a16207"',
+  'success = "#16a34a"',
+  'info    = "#2563eb"',
+  "",
+].join("\n");
+
+/// A light block naming the four semantic colours, with optional surgery.
+function lightBlock(edits = {}) {
+  const tokens = {
+    "--color-error": "#dc2626",
+    "--color-warning": "#a16207",
+    "--color-success": "#16a34a",
+    "--color-info": "#2563eb",
+    ...edits,
+  };
+  const body = Object.entries(tokens)
+    .filter(([, v]) => v !== null)
+    .map(([k, v]) => `  ${k}: ${v};`)
+    .join("\n");
+  return `[data-theme="light"] {\n${body}\n}\n`;
+}
+
 const failures = [];
 
 function check(name, files, expect) {
@@ -94,17 +137,17 @@ function check(name, files, expect) {
 
 console.log("check-theme-fallbacks-agree:");
 
-check("a copy that mirrors the theme passes", { [THEME]: themeFile, [APP]: appCss() }, (c) => c === 0);
+check("a copy that mirrors the theme passes", { [THEME]: themeFile, [LIGHT]: lightFile, [APP]: appCss() }, (c) => c === 0);
 
 check(
   "a drifted literal is a finding",
-  { [THEME]: themeFile, [APP]: appCss({ "--color-border": "#262626" }) },
+  { [THEME]: themeFile, [LIGHT]: lightFile, [APP]: appCss({ "--color-border": "#262626" }) },
   (c, out) => c === 1 && out.includes("--color-border") && out.includes("#27272a"),
 );
 
 check(
   "a token the copy never names is a finding",
-  { [THEME]: themeFile, [APP]: appCss({ "--color-info": null }) },
+  { [THEME]: themeFile, [LIGHT]: lightFile, [APP]: appCss({ "--color-info": null }) },
   (c, out) => c === 1 && out.includes("--color-info"),
 );
 
@@ -114,6 +157,7 @@ check(
   "a token written as a var rather than a literal is not a finding",
   {
     [THEME]: themeFile,
+    [LIGHT]: lightFile,
     [APP]: appCss({ "--color-fg-secondary": "var(--color-fg-primary)" }),
   },
   (c) => c === 0,
@@ -124,6 +168,7 @@ check(
   "a later light block does not count as a drift",
   {
     [THEME]: themeFile,
+    [LIGHT]: lightFile,
     [APP]: appCss() + ".light {\n  --color-bg-app: #ffffff;\n  --color-warning: #a16207;\n}\n",
   },
   (c) => c === 0,
@@ -133,6 +178,7 @@ check(
   "a border written through its own default token is still compared",
   {
     [THEME]: themeFile,
+    [LIGHT]: lightFile,
     [APP]: appCss({ "--color-border": "var(--color-border-default)" })
       .replace(":root {", ":root {\n  --color-border-default: #262626;"),
   },
@@ -147,7 +193,51 @@ check(
 
 check(
   "a tree with no app.css refuses rather than passing",
-  { [THEME]: themeFile },
+  { [THEME]: themeFile, [LIGHT]: lightFile },
+  (c, out) => c === 2 && out.includes("NOTHING WAS READ"),
+);
+
+check(
+  "a light block that names the four correctly passes",
+  { [THEME]: themeFile, [LIGHT]: lightFile, [APP]: appCss() + lightBlock() },
+  (c) => c === 0,
+);
+
+// The real case: only the yellow was ever redefined, so the other three drew
+// the dark theme's colours on a near-white field.
+check(
+  "a light block naming only the warning is a finding",
+  {
+    [THEME]: themeFile,
+    [LIGHT]: lightFile,
+    [APP]:
+      appCss() +
+      lightBlock({ "--color-error": null, "--color-success": null, "--color-info": null }),
+  },
+  (c, out) => c === 1 && out.includes("--color-error") && out.includes("#dc2626"),
+);
+
+check(
+  "a light block with the dark theme's error is a finding",
+  {
+    [THEME]: themeFile,
+    [LIGHT]: lightFile,
+    [APP]: appCss() + lightBlock({ "--color-error": "#ef4444" }),
+  },
+  (c, out) => c === 1 && out.includes("light --color-error"),
+);
+
+// A copy with no light block at all inherits the dark one, which is a choice
+// three real apps make.
+check(
+  "no light block at all is not a finding",
+  { [THEME]: themeFile, [LIGHT]: lightFile, [APP]: appCss() },
+  (c) => c === 0,
+);
+
+check(
+  "a tree with no light theme refuses rather than passing",
+  { [THEME]: themeFile, [APP]: appCss() },
   (c, out) => c === 2 && out.includes("NOTHING WAS READ"),
 );
 

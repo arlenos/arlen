@@ -156,7 +156,15 @@
   /* Border */
   --color-border-default: #e5e5e5;
   --color-border-strong:  #8a8a8f;
+  /* The light theme's own semantic set, not the dark one left standing.
+     Only `warning` was ever redefined here, so a light window drew its
+     errors in the dark theme's `#ef4444` on a near-white field - 3.5:1,
+     under the floor - and its successes and infos in the dark values
+     too. From `themes/light.toml`, like the rest of this block. */
+  --color-error:          #dc2626;
   --color-warning:        #a16207;
+  --color-success:        #16a34a;
+  --color-info:           #2563eb;
   --color-ai:             #2f6fae;
   --color-border:         var(--color-border-default);
 

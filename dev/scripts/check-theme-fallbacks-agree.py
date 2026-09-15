@@ -34,6 +34,7 @@ from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 THEME = ROOT / "sdk/theme/themes/dark.toml"
+LIGHT_THEME = ROOT / "sdk/theme/themes/light.toml"
 
 # The CSS token each theme field is copied into. Only literals are compared: a
 # copy is free to write `var(--color-fg-primary)` where the theme names a colour,
@@ -63,6 +64,31 @@ TOKENS = {
 # when that exists.
 TOKENS_EITHER = {
     ("--color-border", "--color-border-default"): ("color.border", "default"),
+}
+
+# The light block redefines a SUBSET, and the subset is the point: what it
+# names must match `light.toml`, and what it leaves alone correctly inherits
+# from the dark block above it. Until 15 September every light block redefined
+# `warning` and nothing else, so a light window drew its errors in the DARK
+# theme's colour on a near-white field - 3.5:1, under the floor - and its
+# successes and infos likewise. Somebody had clearly hit the yellow and fixed
+# only the yellow.
+LIGHT_TOKENS = {
+    "--color-bg-shell": ("color.bg", "shell"),
+    "--color-bg-app": ("color.bg", "app"),
+    "--color-bg-card": ("color.bg", "card"),
+    "--color-bg-overlay": ("color.bg", "overlay"),
+    "--color-bg-input": ("color.bg", "input"),
+    "--color-fg-primary": ("color.fg", "primary"),
+    "--color-fg-secondary": ("color.fg", "secondary"),
+    "--color-fg-disabled": ("color.fg", "disabled"),
+    "--color-fg-inverse": ("color.fg", "inverse"),
+    "--color-border-default": ("color.border", "default"),
+    "--color-border-strong": ("color.border", "strong"),
+    "--color-error": ("color.semantic", "error"),
+    "--color-warning": ("color.semantic", "warning"),
+    "--color-success": ("color.semantic", "success"),
+    "--color-info": ("color.semantic", "info"),
 }
 
 # Copies this gate reads but does not hold to the rule, with the reason.
@@ -98,6 +124,42 @@ def first_definition(css: str, token: str) -> str | None:
     return m.group(1).strip().lower() if m else None
 
 
+def light_block(css: str) -> str | None:
+    """The `[data-theme="light"]` rule body, when the copy has one."""
+    m = re.search(r'\[data-theme="light"\]\s*\{(.*?)\n\}', css, re.S)
+    return m.group(1) if m else None
+
+
+def check_light(path: Path, css: str, want: dict[tuple[str, str], str]) -> list[str]:
+    """Every token the light block DOES name must be the light theme's.
+
+    A block that names none of a token's siblings is not a finding: inheriting
+    from the dark block is a legitimate choice for anything the light theme does
+    not move. What is a finding is naming one and getting it wrong, and naming
+    part of a set whose other members then read as the dark theme's - which is
+    how the errors ended up crimson-on-white."""
+    rel = path.relative_to(ROOT)
+    block = light_block(css)
+    if block is None:
+        return []
+    problems = []
+    semantic = ["--color-error", "--color-warning", "--color-success", "--color-info"]
+    named = [t for t in semantic if re.search(r"^\s*%s:" % re.escape(t), block, re.M)]
+    for token, key in LIGHT_TOKENS.items():
+        expected = want.get(key)
+        got = first_definition(block, token)
+        if got is None:
+            if token in semantic and named and token not in named:
+                problems.append(
+                    f"{rel}: the light block names {', '.join(named)} and not {token}, "
+                    f"so it draws the dark theme's; light.toml says {expected}"
+                )
+            continue
+        if expected and got.startswith("#") and got != expected:
+            problems.append(f"{rel}: light {token} is {got}, light.toml says {expected}")
+    return problems
+
+
 def check(path: Path, css: str, want: dict[tuple[str, str], str]) -> list[str]:
     rel = path.relative_to(ROOT)
     problems = []
@@ -129,6 +191,13 @@ def main() -> int:
     if not want:
         print(f"!! NOTHING TO COMPARE AGAINST: {THEME} holds no key/value pairs", file=sys.stderr)
         return 2
+    if not LIGHT_THEME.is_file():
+        print(f"!! NOTHING WAS READ: no light theme at {LIGHT_THEME}", file=sys.stderr)
+        return 2
+    want_light = theme_values(LIGHT_THEME.read_text(encoding="utf-8", errors="replace"))
+    if not want_light:
+        print(f"!! NOTHING TO COMPARE AGAINST: {LIGHT_THEME} holds no key/value pairs", file=sys.stderr)
+        return 2
 
     copies = sorted(ROOT.glob("apps/*/src/app.css")) + [ROOT / "sdk/ui-kit/src/app.css"]
     copies = [p for p in copies if p.is_file()]
@@ -142,7 +211,9 @@ def main() -> int:
         if rel in CARRIED:
             carried += 1
             continue
-        problems += check(path, path.read_text(encoding="utf-8", errors="replace"), want)
+        css = path.read_text(encoding="utf-8", errors="replace")
+        problems += check(path, css, want)
+        problems += check_light(path, css, want_light)
 
     if problems:
         print("A first-paint fallback disagrees with the theme it says it mirrors:", file=sys.stderr)
@@ -156,7 +227,7 @@ def main() -> int:
         return 1
 
     print(
-        f"{len(copies) - carried} app.css fallback block(s) agree with the shipped dark theme"
+        f"{len(copies) - carried} app.css fallback block(s) agree with the shipped themes"
         f"{f', {carried} carried' if carried else ''}."
     )
     return 0
