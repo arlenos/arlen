@@ -265,11 +265,11 @@ check-crates:
 # the hundred behind it were unmeasured for as long as that took to notice. A
 # gate that shows you one thing at a time is a gate nobody finishes.
 #
-# `daemons/knowledge` is the one that still fails, and not for a lint anybody can
-# fix in place: it builds a lib AND a bin over the same module tree, 31 of its 33
-# modules are declared twice, and the bin target reports ~480 unused imports as a
-# result. Making the bin a thin wrapper over the lib is the fix and it is a day's
-# work on the daemon that owns the graph, so this names it rather than hiding it.
+# Green across all 106 crates as of 15 September, and the last one to get there
+# was `daemons/knowledge`: it built a lib AND a bin over the same module tree,
+# 31 of its 33 modules declared twice, and the bin target reported ~480 unused
+# imports because the lib's consumers were not in it. `main.rs` is a thin
+# `fn main()` over the library now.
 lint: check-crates
     #!/usr/bin/env bash
     set -uo pipefail
