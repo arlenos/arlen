@@ -148,6 +148,17 @@
   let listRef = $state<HTMLElement | null>(null);
   let commandValue = $state("");
 
+  // The clipboard entry under the selection, if the selection is on one. Removing
+  // an entry used to be a button INSIDE the row, which a listbox forbids (an
+  // `option` may not contain a control) and which the keyboard could not reach at
+  // all: the launcher keeps focus in its input and the arrow keys move the
+  // selection, so Tab never landed on it. The action is in the footer now, on
+  // whichever entry is highlighted, where the same key that walks the list decides
+  // what it acts on.
+  const highlightedClip = $derived(
+    $clipboardResults.find((e) => `clip-item-${e.id}` === commandValue) ?? null,
+  );
+
   // Projects sorted by recent access, limited to 3 without query.
   // In "p:" prefix mode, show all matching with no limit.
   const filteredProjects = $derived((() => {
@@ -1204,17 +1215,7 @@
                   emphasis={60}
                   title={entry.title}
                   description={entry.description}
-                >
-                  {#snippet trailing()}
-                    <button
-                      class="wp-inline-btn"
-                      aria-label={$t("sh.wp.removeFromHistory")}
-                      onclick={(e) => { e.stopPropagation(); deleteClipboardEntry(entry); }}
-                    >
-                      <Trash2 size={12} strokeWidth={1.5} />
-                    </button>
-                  {/snippet}
-                </WaypointerResult>
+                />
               </CommandItem>
             {/each}
             {#if $clipboardEnabled && $clipboardResults.length >= 2}
@@ -1410,6 +1411,19 @@
           <span>{$t("sh.wp.killEnter")}</span>
           <span>{$t("sh.wp.killShiftEnter")}</span>
         </div>
+      {:else if highlightedClip}
+        <div class="wp-footer">
+          <span>{$t("sh.wp.clipEnter")}</span>
+          <button
+            class="wp-foot-btn"
+            aria-label={$t("sh.wp.removeFromHistory")}
+            onmousedown={(e) => e.preventDefault()}
+            onclick={() => deleteClipboardEntry(highlightedClip)}
+          >
+            <Trash2 size={12} strokeWidth={1.5} />
+            <span>{$t("sh.wp.removeFromHistory")}</span>
+          </button>
+        </div>
       {:else if query.trim().length === 0}
         <div class="wp-footer">
           <span>{$t("sh.wp.hintCommand")}</span>
@@ -1536,27 +1550,24 @@
     pointer-events: none;
   }
 
-  /* Small inline action button (used by clipboard entries for per-row
-     delete). Sits at the right edge of the command item; clicks don't
-     bubble to the item's onSelect. */
-  .wp-inline-btn {
+  /* The one action in the footer, opposite the hint that shares the row. It is a
+     real control rather than the hint text beside it, so it carries the launcher's
+     full foreground instead of the 50% the hints use. */
+  .wp-foot-btn {
     margin-inline-start: auto;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    flex-shrink: 0;
+    gap: 6px;
+    padding: 2px 8px;
     background: transparent;
     border: 0;
     border-radius: var(--radius-chip);
+    font-size: var(--text-2xs);
     color: var(--color-fg-shell);
-    opacity: 0.35;
-    transition: background 80ms ease, opacity 80ms ease;
+    transition: background 80ms ease;
   }
-  .wp-inline-btn:hover {
+  .wp-foot-btn:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
-    opacity: 0.9;
   }
 
   /* The last frame drops the transform rather than setting it to the identity.
