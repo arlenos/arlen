@@ -1,7 +1,13 @@
-# Starting permission profile for Kompare (a diff viewer). Compares files under Home; no network.
+# Starting permission profile for Kompare (a file comparison viewer). It compares
+# files the user opens, which live in Documents; no network and no Knowledge
+# Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id granted the whole
+# Home. Same repair and same reason as KDiff3 beside it: a diff viewer is handed
+# its files, and the file portal is what hands them over.
 [info]
 app_id = "org.kde.kompare"
 tier = "third-party"
 
 [filesystem]
-home = true
+documents = true

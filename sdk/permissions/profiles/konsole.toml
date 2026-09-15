@@ -1,9 +1,24 @@
-# Starting permission profile for a terminal emulator. It runs the user's shell
-# and tools over their files, so it gets Home; no network of its own (the tools
-# it launches carry their own grants). No Knowledge Graph.
+# Starting permission profile for Konsole (a terminal emulator). A terminal runs
+# the user's shell, so its reach IS the user's reach: Home, and the network the
+# commands they type need. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no network, which
+# leaves `ssh`, `curl` and every package manager refused inside a window whose
+# purpose is running them. Written down for the same reason as the Ghostty group:
+# this is the rare profile where the wide grant is the honest one, because
+# narrowing a terminal narrows the user rather than the app.
 [info]
 app_id = "konsole"
 tier = "third-party"
 
 [filesystem]
 home = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true

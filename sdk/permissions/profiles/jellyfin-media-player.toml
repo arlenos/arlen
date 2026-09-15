@@ -1,6 +1,11 @@
-# Starting permission profile for Jellyfin Media Player.
-# Streams media from a Jellyfin server over the network; plays local media from
-# Videos and Music. No Knowledge Graph access.
+# Starting permission profile for Jellyfin Media Player (a client for a Jellyfin
+# server). Streams from the server over the network, which is its function, plays
+# local media from Videos and Music, and keeps a download for offline in
+# Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR ALL THREE PACKAGING IDS (15 Sep): two had the media directories
+# and no Downloads, one had Downloads and no media - so depending on where you
+# installed it, either offline downloads or local playback was missing.
 [info]
 app_id = "jellyfin-media-player"
 tier = "third-party"
@@ -8,6 +13,7 @@ tier = "third-party"
 [filesystem]
 videos = true
 music = true
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
@@ -17,7 +23,3 @@ music = true
 # when that lands: most of these want a host list, and the list is the easy half.
 [network]
 allow_all = true
-
-# This said "no network by default (its server streaming is refined later)",
-# copied from the generic media-player template - for a client whose entire
-# function is talking to a Jellyfin server. Both dotted ids already granted it.

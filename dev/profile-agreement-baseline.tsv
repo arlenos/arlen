@@ -3,10 +3,6 @@
 # decide what the app should get, make every id say it, drop the row.
 #
 # app	the ids that disagree
-jellyfin-media-player	com.github.iwalton3.jellyfin-media-player io.github.iwalton3.jellyfin-media-player jellyfin-media-player
-kdeconnect	kdeconnect org.kde.kdeconnect
-kompare	kompare org.kde.kompare
-konsole	konsole org.kde.konsole
 konversation	konversation org.kde.konversation
 korganizer	korganizer org.kde.korganizer
 kstars	kstars org.kde.kstars

@@ -1,11 +1,18 @@
-# Starting permission profile for Jellyfin Media Player (a media streaming client).
-# Streaming is its function, so it gets network; downloads save to Downloads.
-# No Knowledge Graph access.
+# Starting permission profile for Jellyfin Media Player (a client for a Jellyfin
+# server). Streams from the server over the network, which is its function, plays
+# local media from Videos and Music, and keeps a download for offline in
+# Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR ALL THREE PACKAGING IDS (15 Sep): two had the media directories
+# and no Downloads, one had Downloads and no media - so depending on where you
+# installed it, either offline downloads or local playback was missing.
 [info]
 app_id = "io.github.iwalton3.jellyfin-media-player"
 tier = "third-party"
 
 [filesystem]
+videos = true
+music = true
 downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
