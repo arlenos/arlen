@@ -225,6 +225,16 @@
   );
   const visibleAgenda = $derived($agenda ? { ...$agenda, events: visibleEvents } : null);
 
+  /// Whether to draw the calendar at all.
+  ///
+  /// Once the read has ANSWERED - with an agenda or with a refusal - the grid is
+  /// drawable, because a week's columns and hours are a property of the calendar
+  /// rather than of its contents. Only the moment before the first answer draws
+  /// nothing. Written as its own name rather than inline: the condition is about
+  /// whether there is a calendar to show, not about the refusal, and a branch
+  /// whose test mentions the failure flag reads as the refusal's own message.
+  const showGrid = $derived($agenda !== null || failure !== null);
+
   const weekDays = $derived.by(() => {
     const monday = startOfWeek(focus);
     return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
@@ -447,10 +457,18 @@
       {#if kept?.problem}
         <div class="note"><Notice tone="error" text={keepText} /></div>
       {/if}
+      <!-- The refusal is a NOTE, not the whole pane. It used to be the `if` half
+           of this branch, so a calendar that could not be read showed the banner
+           and an empty rectangle: no week, no day columns, no hour grid. The
+           grid is the app, not the data - withholding it says "this is broken"
+           where the sentence says "your events are missing", and only one of
+           those is true. The agenda branch below still needs real data, because
+           an agenda IS its events. -->
       {#if failure}
         <div class="note"><Notice tone="error" text={failureText} /></div>
-      {:else if $agenda}
-        {#if launched}
+      {/if}
+      {#if showGrid}
+        {#if launched && $agenda}
           <!-- The only way a calendar gets onto this machine today. Opening a
                file reads it where it lies, deliberately; an action rather than
                an automatic copy, so the merge stays the person's. -->
@@ -459,7 +477,7 @@
           </p>
         {/if}
 
-        {#if launched || view === "agenda"}
+        {#if (launched || view === "agenda") && visibleAgenda}
           <!-- A scrolling box a keyboard cannot reach is a list a keyboard
                cannot read: the agenda's rows are not focusable, so without a tab
                stop here the only way to scroll it is a mouse. `tabindex=0` with
