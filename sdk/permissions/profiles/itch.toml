@@ -1,12 +1,16 @@
-# Starting permission profile for a game launcher / Wine frontend. Installs and
-# manages games and Wine prefixes under Home, and needs network to fetch them. No
-# Knowledge Graph access.
+# Starting permission profile for itch (an indie game store and launcher). It
+# fetches over the network, which is its function, and downloads games to
+# Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted the whole Home,
+# written as a category template for a game launcher. Installed games are the
+# app's own data rather than the user's files.
 [info]
 app_id = "itch"
 tier = "third-party"
 
 [filesystem]
-home = true
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

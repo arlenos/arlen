@@ -1,7 +1,16 @@
-# Starting permission profile for a note-taking app with Nextcloud Notes sync. It
-# stores notes as local files under Documents, matching the other notes apps here
-# (obsidian, joplin, zim, logseq), and syncs them to a server over the network. No
-# Knowledge Graph.
+# Starting permission profile for Iotas (a notes app with Nextcloud Notes sync).
+# It stores notes as local files under Documents, matching the other notes apps
+# here (obsidian, joplin, zim, logseq), and syncs them to a server over the
+# network. No Knowledge Graph.
+#
+# ONE ANSWER FOR ALL THREE PACKAGING IDS (15 Sep), and the two sides had opposite
+# reasoning rather than a typo. The reverse-DNS ids said "sync is a refinement an
+# observe pass can add, never a blanket network grant up front", which is the
+# right instinct and the wrong app: Iotas IS a Nextcloud client, and the ask that
+# would let a scoped app request a host does not exist yet (see the note below).
+# Withholding the grant today does not narrow the app, it removes the feature
+# with no way to turn it back on. Narrow it to the user's own server when the ask
+# lands.
 [info]
 app_id = "iotas"
 tier = "third-party"

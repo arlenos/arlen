@@ -1,5 +1,10 @@
-# Starting permission profile for the itch.io app (a game store / launcher). Network (online play / downloads) is its
-# function and content lands in Downloads; no Knowledge Graph access.
+# Starting permission profile for itch (an indie game store and launcher). It
+# fetches over the network, which is its function, and downloads games to
+# Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted the whole Home,
+# written as a category template for a game launcher. Installed games are the
+# app's own data rather than the user's files.
 [info]
 app_id = "io.itch.itch"
 tier = "third-party"

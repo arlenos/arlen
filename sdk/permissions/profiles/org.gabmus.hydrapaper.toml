@@ -1,5 +1,9 @@
-# Starting permission profile for HydraPaper (a per-monitor wallpaper setter). It
-# reads images and sets the desktop background; pictures, no network, no graph.
+# Starting permission profile for HydraPaper (a multi-monitor wallpaper setter).
+# It picks images from Pictures and stitches them; no network and no Knowledge
+# Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): one of them granted nothing, which
+# leaves a wallpaper picker with no pictures to pick.
 [info]
 app_id = "org.gabmus.hydrapaper"
 tier = "third-party"
