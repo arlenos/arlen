@@ -1,0 +1,30 @@
+# Starting permission profile for Zoom (a video conferencing client). Joins
+# meetings over the network, which is its function; a recording or a received
+# file lands in Downloads and a shared document is opened from Documents. No
+# Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep), and each had half: one could open a
+# document to share and not keep a recording, the other the reverse.
+#
+# CAPITAL Z, and that is the whole reason this file exists beside `zoom.toml`. A
+# foreign app's id is its `.desktop` basename verbatim, and the vendor ships
+# `Zoom.desktop`, so the lowercase profile was written, correct, and invisible to
+# the only entry that asks for it - the launch would meet "profile not found"
+# rather than a narrower grant. Both spellings are carried because distributions
+# disagree about which one they install.
+[info]
+app_id = "Zoom"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true
