@@ -1,0 +1,8 @@
+# Starting permission profile for a load generator. Its stressors work inside the
+# process and in temporary space; the ones that touch the filesystem write under the
+# directory the run is given, which is that invocation's choice rather than a
+# standing grant. No network - a stress test that could reach the network by default
+# is a different tool than the one a person means to run.
+[info]
+app_id = "stress-ng"
+tier = "third-party"

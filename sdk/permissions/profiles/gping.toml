@@ -1,0 +1,15 @@
+# Starting permission profile for ping with a graph. Reaching the host named on the
+# command line is the entire program, so network is the one grant it needs; no file
+# access at all.
+[info]
+app_id = "gping"
+tier = "third-party"
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true

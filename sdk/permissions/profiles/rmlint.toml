@@ -1,0 +1,11 @@
+# Starting permission profile for a duplicate and lint remover. It walks the trees
+# it is given and writes a script that removes what it found, so Home covers both
+# halves. Deliberately not wider than Home: rmlint is often pointed at a whole
+# filesystem, and a profile is the place to say that the user's own tree is the part
+# it is trusted with. No network, no Knowledge Graph.
+[info]
+app_id = "rmlint"
+tier = "third-party"
+
+[filesystem]
+home = true

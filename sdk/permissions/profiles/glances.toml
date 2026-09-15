@@ -1,0 +1,9 @@
+# Starting permission profile for a system monitor. Its default run reads the kernel
+# (/proc, /sys), which is not a permission-profile field, so it gets nothing here.
+# Glances can also serve its readings over HTTP or to a central client, but that is
+# a mode the user starts on purpose rather than what launching it does, and a
+# monitor that holds a standing network grant it never uses is the wrong default.
+# Observe-mode will show it if the server half is actually used.
+[info]
+app_id = "glances"
+tier = "third-party"

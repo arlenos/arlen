@@ -1,0 +1,8 @@
+# Starting permission profile for an I/O monitor. Its readings come from the
+# kernel's taskstats over netlink, not from files it opens, so no filesystem grant
+# applies; netlink to the kernel is not the outbound network a profile scopes
+# either. Nothing to grant here, which is the honest answer rather than an empty
+# file with no explanation.
+[info]
+app_id = "iotop-c"
+tier = "third-party"

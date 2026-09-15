@@ -1,0 +1,11 @@
+# Starting permission profile for a duplicate finder. The user points it at folders
+# and it compares their contents, so it needs Home the way the disk-usage analysers
+# do (baobab, ncdu, filelight) - with the difference that this one also DELETES what
+# it matches, which is a reason to keep it at Home rather than widen it further. No
+# network, no Knowledge Graph.
+[info]
+app_id = "dupeguru"
+tier = "third-party"
+
+[filesystem]
+home = true

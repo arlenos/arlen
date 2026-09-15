@@ -1,0 +1,9 @@
+# Starting permission profile for a disk-usage reader (a du with a tree view). It
+# walks the path it is given to measure it, so it gets Home like ncdu and gdu. Reads
+# only; no network, no Knowledge Graph.
+[info]
+app_id = "dust"
+tier = "third-party"
+
+[filesystem]
+home = true
