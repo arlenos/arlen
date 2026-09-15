@@ -257,6 +257,11 @@
 
 @layer base {
   * {
+    /* `outline-ring/50` sets `outline-color`, and on its own that has never
+       reached a pixel: WebKitGTK leaves `outline-style` at `auto` and an `auto`
+       outline is engine-drawn, colour ignored. The ring you actually see comes
+       from the `*:focus-visible` rule in lib/motion.css, which states a style
+       and so overrides `auto`. This line stays for `border-border`. */
     @apply border-border outline-ring/50;
   }
   body {

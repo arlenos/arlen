@@ -82,6 +82,30 @@
   --destructive-on-tint: color-mix(in srgb, var(--color-error) 72%, var(--foreground));
 }
 
+/* ------------------------------------------------------------
+   THE FOCUS RING, and why it is written out rather than tokenised.
+
+   `sdk/ui-kit/src/app.css` carries `* { @apply border-border outline-ring/50 }`,
+   which sets `outline-color` from the ring token - and MEASURED ON 16 SEPTEMBER
+   IN THE ENGINE THIS DESKTOP RUNS, that does nothing at all. WebKitGTK leaves
+   `outline-style` at `auto`, and an `auto` outline is drawn by the engine, which
+   ignores `outline-color`. The computed value said `#fafafa`; the pixels on the
+   screen were `#833636`, a dark red from nowhere in any Arlen theme. Every
+   focused control in every app has been showing the engine's ring.
+
+   An explicit style overrides `auto`, and that is the whole fix: with the rule
+   below the same probe reads `#fafafa` in the drawn pixels.
+
+   `*:focus-visible` is one specificity step, so any component with its own
+   `.class:focus-visible` treatment still wins - and a component that does NOT
+   opt out was already getting the engine's ring on top of its own, so this
+   recolours a ring that was there rather than adding one.
+   ------------------------------------------------------------ */
+*:focus-visible {
+  outline: 2px solid var(--ring, var(--color-accent, currentColor));
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     /* BOTH names. The theme reaches a page as a `:root` block appended to the
