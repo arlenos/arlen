@@ -69,18 +69,21 @@ NOT_YET_DEPLOYED: dict[str, str] = {
         "none-configured, with a test for it"
     ),
     "arlen-connectionsd.service": (
-        "packaging it was attempted on 16 September and BACKED OUT, because two "
-        "gates caught what it would have shipped: `check-peer-identity-sandbox` "
-        "says the unit's own hardening (ProtectSystem, PrivateTmp, the rest) puts "
-        "the daemon in its own mount namespace while `dbus.rs` identifies its "
-        "caller by reading `/proc/<pid>/exe`, which that namespace refuses - so on "
-        "the image it would misidentify or REFUSE EVERY CALLER, the same shape as "
-        "capsuled on 14 September. NOT for want of a caller and NOT for key "
-        "custody, which is the reviewed generate-or-load the undo-signer ships "
-        "with: ai-proxy fetches a keyed provider's credential here at egress time "
-        "and fails the forward closed without it, so today every AI provider that "
-        "needs an API key is unreachable on the image. Shipping it as it stands "
-        "would change the refusal's reason, not remove it"
+        "the IDENTITY blocker is fixed and the BOOT is what is missing (16 "
+        "September). Packaging was attempted and backed out earlier the same day "
+        "because `dbus.rs` identified its D-Bus callers by reading "
+        "`/proc/<pid>/exe`, which the unit's own mount namespace refuses - it "
+        "would have refused every caller on the image, the capsuled shape of 14 "
+        "September. It now asks the identity broker first, keyed on a pidfd over "
+        "SCM_RIGHTS, which is a pid-namespace operation and works inside the "
+        "fence; the exe read stays as the fallback for an unstamped dev process, "
+        "which is not behind one. What is missing is a BOOT showing it resolve a "
+        "real caller: `check-peer-identity-sandbox`'s own note says this chain has "
+        "looked complete three times and the measurement disagreed each time, so "
+        "this entry outlives the fix on purpose. The live consequence meanwhile: "
+        "ai-proxy fetches a keyed provider's credential here at egress time and "
+        "fails the forward closed without it, so every AI provider that needs an "
+        "API key is unreachable on the image"
     ),
     "arlen-transferd.service": "transfer daemon is not part of the image scope yet (15 Aug, no shipped caller)",
     "arlen-trash-cleanup.service": "trash retention timer, unreviewed for deployment (15 Aug)",

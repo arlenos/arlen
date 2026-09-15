@@ -279,6 +279,44 @@ fn classify_source_with(
     }
 }
 
+/// The launcher-stamped app_id of a process named by pid, or `None`.
+///
+/// For a D-BUS service, which is handed a sender's pid by the bus and has no
+/// connected socket to pin. `pidfd_open` pins the process (so the pid cannot be
+/// recycled under the lookup) without touching `/proc`, which is what makes this
+/// usable from a unit with `ProtectSystem`, `ProtectHome` and a private `/tmp` -
+/// the exact hardening under which `app_id_from_pid` cannot read a single caller's
+/// exe link and a credential daemon ends up refusing everyone.
+///
+/// ADDITIVE, exactly like the Tier-1 lookup inside [`app_id_from_connection`]: a
+/// `None` here means "not launcher-stamped, or no broker", never "denied". The
+/// caller falls through to whatever it did before, so a dev process (cargo target,
+/// never stamped, and not under a mount namespace either) resolves by exe the way
+/// it always has. Nothing that works today stops working because this was added.
+///
+/// The uid is this process's own, not a parameter: the broker's expected service
+/// uid is derived from whoever is asking, and for a D-Bus service that is always
+/// the daemon itself. A parameter here would only be a way to pass the wrong one.
+#[must_use]
+pub fn stamped_app_id_for_pid(pid: u32) -> Option<String> {
+    stamped_app_id_for_pid_at(pid, &crate::identity_wire::identity_broker_connect_path())
+}
+
+/// [`stamped_app_id_for_pid`] with an explicit broker socket, so the pid route is
+/// testable against an in-process broker without an env global - the same seam
+/// [`app_id_from_connection_at`] has for the socket route.
+pub(crate) fn stamped_app_id_for_pid_at(pid: u32, broker_socket: &std::path::Path) -> Option<String> {
+    // SAFETY: getuid never fails.
+    let caller_uid = unsafe { libc::getuid() };
+    let pidfd = crate::peer_pidfd::pidfd_open(pid)?;
+    broker_lookup_pidfd(
+        std::os::fd::AsFd::as_fd(&pidfd),
+        pid,
+        broker_socket,
+        caller_uid,
+    )
+}
+
 /// Ask the launcher-stamped identity broker for the pinned peer's app_id.
 ///
 /// `Some(app_id)` is an authoritative Tier-1 stamp (only `arlen-run` may register,
@@ -296,12 +334,36 @@ fn classify_source_with(
 /// acceptable is an enforce-mode POLICY decision in `ConnectionAuth`, not this
 /// lookup's. A broker error is logged for the shadow-rollout audit, then dropped.
 fn broker_lookup(peer: &PeerPidfd, broker_socket: &std::path::Path, caller_uid: u32) -> Option<String> {
+    broker_lookup_pidfd(peer.pidfd(), peer.pid(), broker_socket, caller_uid)
+}
+
+/// [`broker_lookup`] over a pidfd the caller opened itself, for a principal that is
+/// NOT a socket peer.
+///
+/// A D-Bus service has no connected socket to read `SO_PEERPIDFD` from: the bus
+/// attests the sender's pid and the service resolves an identity from it. Doing
+/// that through `/proc/{pid}/exe` is exactly the read a hardened unit's own mount
+/// namespace refuses - measured on `capsuled` on 14 September, where a fenced
+/// process can read one exe link out of 242, its own - so a daemon that identifies
+/// D-Bus callers that way refuses everyone the moment it is packaged. `pidfd_open`
+/// is a pid-namespace operation and goes nowhere near the mount table, and the
+/// broker's `Lookup` is keyed on the pidfd itself over `SCM_RIGHTS` rather than on
+/// a path, so this whole route works under the fence.
+///
+/// The pid is passed alongside only so a refused stamp names the process it was
+/// refused for; the pidfd is what the broker answers about.
+fn broker_lookup_pidfd(
+    pidfd: std::os::fd::BorrowedFd<'_>,
+    pid: u32,
+    broker_socket: &std::path::Path,
+    caller_uid: u32,
+) -> Option<String> {
     // Authenticate the broker before trusting a reply: its SO_PEERCRED uid must be
     // the expected service uid, so a same-uid squatter at the session-owned socket
     // path cannot mint a stamp (an Unauthenticated result falls through, like any
     // other broker error). See `broker_expected_uid` for the fail-safe default.
     let expected = crate::identity_wire::broker_expected_uid(caller_uid);
-    match crate::identity_wire::lookup_identity_authenticated(broker_socket, peer.pidfd(), expected) {
+    match crate::identity_wire::lookup_identity_authenticated(broker_socket, pidfd, expected) {
         Ok(Some(app_id)) => {
             // Defense-in-depth: a `Stamped` result must be provably no weaker than
             // the /proc rule-4 path it replaces, so a malformed id is refused
@@ -338,7 +400,7 @@ fn broker_lookup(peer: &PeerPidfd, broker_socket: &std::path::Path, caller_uid: 
                 tracing::warn!(
                     target: "audit",
                     event = "identity.broker_returned_reserved_or_invalid",
-                    pid = peer.pid(),
+                    pid,
                     app_id = %app_id,
                     "identity broker returned a reserved or malformed app_id; refusing the stamp and falling through to /proc"
                 );
@@ -374,7 +436,7 @@ fn broker_lookup(peer: &PeerPidfd, broker_socket: &std::path::Path, caller_uid: 
             tracing::debug!(
                 target: "audit",
                 event = "identity.broker_lookup_failed",
-                pid = peer.pid(),
+                pid,
                 error = %e,
                 "identity broker unreachable; falling back to /proc-based tiers"
             );
@@ -489,6 +551,51 @@ mod tests {
             assert!(fd.is_some(), "the resolver must pass the peer pidfd over SCM_RIGHTS");
             write_response(&mut conn, &reply).unwrap();
         })
+    }
+
+    /// The pid route, which is the one a D-Bus service takes: no socket to pin, a
+    /// pid the bus attested, and a stamp that comes back without a single `/proc`
+    /// read - the property that lets a daemon inside a mount namespace identify
+    /// anybody at all.
+    #[test]
+    fn a_broker_hit_names_a_process_by_pid_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("identity.sock");
+        let srv = spawn_test_broker(
+            sock.clone(),
+            crate::identity_wire::IdentityResponse::Resolved {
+                app_id: "com.example.stamped".into(),
+            },
+        );
+
+        let got = stamped_app_id_for_pid_at(std::process::id(), &sock);
+        assert_eq!(got.as_deref(), Some("com.example.stamped"));
+        srv.join().unwrap();
+    }
+
+    /// A miss on the pid route is `None`, never a fabricated id: the caller falls
+    /// through to whatever it resolved by before, so adding this tier can deny
+    /// nothing that worked without it.
+    #[test]
+    fn the_pid_route_answers_none_rather_than_guessing() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("identity.sock");
+        let srv = spawn_test_broker(sock.clone(), crate::identity_wire::IdentityResponse::NotFound);
+        assert_eq!(stamped_app_id_for_pid_at(std::process::id(), &sock), None);
+        srv.join().unwrap();
+
+        // And with no broker at all, which is every developer's machine.
+        let gone = std::path::Path::new("/nonexistent/arlen/config-broker-identity.sock");
+        assert_eq!(stamped_app_id_for_pid_at(std::process::id(), gone), None);
+    }
+
+    /// A pid nothing is running under cannot be pinned, so there is nothing to ask
+    /// the broker about. `None` again, and notably NOT a lookup against a pid that
+    /// might be recycled a moment later.
+    #[test]
+    fn a_dead_pid_is_not_looked_up_at_all() {
+        // A pid above the configured maximum can never name a live process.
+        assert_eq!(stamped_app_id_for_pid_at(u32::MAX, std::path::Path::new("/nonexistent")), None);
     }
 
     /// A broker HIT is authoritative: the resolver returns the stamped app_id with

@@ -22,9 +22,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // named because only `main.rs` logs; the `connections` library is silent
         // today, and naming a crate that says nothing adds a directive nobody can
         // read the effect of.
+        //
+        // `audit` is a TARGET, not a crate, so it needs its own directive: the
+        // identity resolution this daemon does on every caller files its lines
+        // under it, and the one that matters most - "the broker is not
+        // authenticated, so every caller falls back to a /proc read this unit's
+        // namespace refuses" - is a once-per-process warn that would otherwise be
+        // the only sign of a daemon refusing everybody.
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                tracing_subscriber::EnvFilter::new("warn,arlen_connectionsd=info")
+                tracing_subscriber::EnvFilter::new("warn,arlen_connectionsd=info,audit=info")
             }),
         )
         .init();
