@@ -1,9 +1,22 @@
-# Starting permission profile for an ISO/USB writer. Reads the disk image from
-# Downloads; the write to the USB device is privileged and elevates via polkit.
-# No network and no Knowledge Graph.
+# Starting permission profile for Fedora Media Writer (a USB image writer). It
+# downloads an image over the network, which is half of what it does, and reads a
+# local one from Downloads. Writing the stick itself is a device grant, not a
+# file one. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no network, which
+# leaves a writer that can only use an image somebody else fetched.
 [info]
 app_id = "mediawriter"
 tier = "third-party"
 
 [filesystem]
 downloads = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true

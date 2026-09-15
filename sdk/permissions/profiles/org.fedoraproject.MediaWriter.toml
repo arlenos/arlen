@@ -1,5 +1,10 @@
-# Starting permission profile for Fedora Media Writer.
-# It downloads OS images over the network and writes them to removable media by function. It gets network and Downloads. No Knowledge Graph access.
+# Starting permission profile for Fedora Media Writer (a USB image writer). It
+# downloads an image over the network, which is half of what it does, and reads a
+# local one from Downloads. Writing the stick itself is a device grant, not a
+# file one. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no network, which
+# leaves a writer that can only use an image somebody else fetched.
 [info]
 app_id = "org.fedoraproject.MediaWriter"
 tier = "third-party"

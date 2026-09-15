@@ -1,7 +1,9 @@
-# Starting permission profile for io.mgba.mGBA (a game-console emulator).
-# It loads game images from local files by function, so it gets Documents and
-# Downloads (where ROMs are kept) and no network; netplay is opt-in. No
-# Knowledge Graph access.
+# Starting permission profile for mGBA (a Game Boy Advance emulator). ROMs, BIOS
+# images and saves live in Documents and Downloads; no network and no Knowledge
+# Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, the
+# same gap as the melonDS group beside it.
 [info]
 app_id = "io.mgba.mGBA"
 tier = "third-party"

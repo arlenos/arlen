@@ -1,6 +1,13 @@
-# Starting permission profile for a self-contained emulator. No file access, no
-# network and no Knowledge Graph by default; its data lives in its own app dir
-# (ROM/BIOS paths are granted explicitly).
+# Starting permission profile for melonDS (a Nintendo DS emulator). ROMs, BIOS
+# images and saves live in Documents and Downloads; no network and no Knowledge
+# Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, so the
+# emulator could not reach a ROM the user had put anywhere.
 [info]
 app_id = "melonds"
 tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

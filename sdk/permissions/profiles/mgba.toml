@@ -1,6 +1,13 @@
-# Starting permission profile for a self-contained emulator. No file access, no
-# network and no Knowledge Graph by default; its data lives in its own app dir
-# (ROM/BIOS paths are granted explicitly).
+# Starting permission profile for mGBA (a Game Boy Advance emulator). ROMs, BIOS
+# images and saves live in Documents and Downloads; no network and no Knowledge
+# Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, the
+# same gap as the melonDS group beside it.
 [info]
 app_id = "mgba"
 tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

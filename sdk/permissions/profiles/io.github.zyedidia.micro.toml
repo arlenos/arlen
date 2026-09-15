@@ -1,5 +1,11 @@
-# Starting permission profile for micro (a text editor).
-# It edits text documents the user opens by function, so it gets Documents and no network. No Knowledge Graph access.
+# Starting permission profile for micro (a terminal text editor). It edits the
+# files it is handed, which live in Documents; no network and no Knowledge Graph
+# access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted the whole Home.
+# A terminal editor is usually launched ON a path by a shell that already has
+# it - the grant that matters there is the terminal's, not the editor's - and a
+# file outside Documents opened from the desktop arrives through the file portal.
 [info]
 app_id = "io.github.zyedidia.micro"
 tier = "third-party"
