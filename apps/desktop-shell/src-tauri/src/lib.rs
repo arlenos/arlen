@@ -46,7 +46,6 @@ mod power;
 mod knowledge;
 mod quicksettings;
 mod notifications;
-mod permissions;
 mod projects;
 mod recent_files;
 mod sni;
@@ -493,8 +492,6 @@ pub fn run() {
             layout::set_layout_gaps,
             layout::set_layout_smart_gaps,
             layout::set_layout_tiled_headers,
-            permissions::get_app_permissions,
-            permissions::get_app_permission_detail,
             waypointer_system::waypointer_execute,
             waypointer_system::waypointer_search_plugin,
             waypointer_system::waypointer_search_modules,
