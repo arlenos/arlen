@@ -18,7 +18,7 @@
  * the wash a touch toward the error colour - the one place colour carries
  * meaning. Never eats pointer events, so a selection over the grid still works. */
 .arlen-block-hover {
-  background: color-mix(in srgb, var(--foreground, #e4e5ea) 5%, transparent);
+  background: color-mix(in srgb, var(--foreground, #fafafa) 5%, transparent);
   pointer-events: none;
 }
 .arlen-block-hover.is-error {

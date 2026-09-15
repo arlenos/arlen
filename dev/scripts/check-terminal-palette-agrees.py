@@ -26,6 +26,20 @@ true.
 
     drifted    a slot whose value differs from the theme file's
     missing    a slot the theme authors and a copy does not name
+
+**The sixteen were not the whole palette.** `fg`, `bg` and `cursor` are the three
+the theme does NOT author: `resolve_terminal` synthesises them from `fg.primary`,
+`bg.app` and `accent`, which is what the emitted kitty, foot, Alacritty and
+Xresources configs carry. The in-app grid is a copy of those too, and on 15
+September it had drifted on two of the three - its text was `#e4e5ea` against the
+theme's `#fafafa`, its cursor the `accent_pressed` grey against the accent - so
+the Arlen terminal painted dimmer text than every other terminal on the same
+machine, and the sixteen-slot check said the palette agreed. A gate that covers
+most of a thing is read as covering the thing.
+
+These three are compared against their SOURCE tokens, and an authored
+`[terminal]` block wins over the synthesis exactly as the resolver lets it, so
+authoring one there stays the way to move all five surfaces at once.
 """
 
 import re
@@ -75,6 +89,60 @@ def settings_slots(text: str) -> dict[str, str]:
     return {slot: by_index[i] for i, slot in enumerate(SLOTS) if i in by_index}
 
 
+#: The three the resolver synthesises, and the token each comes from.
+#: `sdk/theme` `resolve_terminal`: fg <- fg.primary, bg <- bg.app, cursor <- accent.
+SYNTHESISED = {
+    "fg": ("color.fg", "primary"),
+    "bg": ("color.bg", "app"),
+    "cursor": ("color.semantic", "accent"),
+}
+
+#: What each copy calls them. A copy that does not hold a slot simply omits it -
+#: the Settings floor has no cursor field, and inventing one to satisfy a gate
+#: would be the gate changing the code rather than checking it.
+COPY_KEYS = {
+    "apps/terminal/src/lib/terminal-theme.ts": {
+        "fg": "foreground",
+        "bg": "background",
+        "cursor": "cursor",
+    },
+    "apps/settings/src/lib/stores/themeSystem.ts": {
+        "fg": "termFg",
+        "bg": "termBg",
+    },
+}
+
+
+def token(text: str, table: str, key: str) -> str | None:
+    """One `[table] key = "#hex"` value out of the theme file."""
+    block = re.search(rf"\[{re.escape(table)}\]\n(.*?)(?=\n\[|\Z)", text, re.S)
+    if not block:
+        return None
+    found = re.search(r'\b' + re.escape(key) + r'\s*=\s*"(#[0-9a-fA-F]+)"', block.group(1))
+    return found.group(1).lower() if found else None
+
+
+def synthesised_sources(text: str) -> dict[str, str]:
+    """What fg/bg/cursor resolve to: an authored `[terminal]` value, else the token."""
+    authored = {}
+    block = re.search(r"\[terminal\]\n(.*?)(?=\n\[|\Z)", text, re.S)
+    if block:
+        pairs = re.findall(r'(\w+)\s*=\s*"(#[0-9a-fA-F]+)"', block.group(1))
+        authored = {k: v.lower() for k, v in pairs}
+    out = {}
+    for slot, (table, key) in SYNTHESISED.items():
+        value = authored.get(slot) or token(text, table, key)
+        if value:
+            out[slot] = value
+    return out
+
+
+def copy_value(text: str, key: str) -> str | None:
+    """A `key: "#hex"` entry in one of the TypeScript copies."""
+    found = re.search(r'\b' + re.escape(key) + r'\s*:\s*"(#[0-9a-fA-F]+)"', text)
+    return found.group(1).lower() if found else None
+
+
 def main() -> int:
     if not THEME.is_file():
         print(f"!! NOTHING WAS READ: no theme file at {THEME}", file=sys.stderr)
@@ -89,6 +157,17 @@ def main() -> int:
         )
         return 2
 
+    theme_text = THEME.read_text(encoding="utf-8", errors="replace")
+    synthesised = synthesised_sources(theme_text)
+    if len(synthesised) < len(SYNTHESISED):
+        absent = [s for s in SYNTHESISED if s not in synthesised]
+        print(
+            "!! NOTHING TO COMPARE AGAINST: the theme resolves no source for "
+            f"{', '.join(absent)}, so the copies have nothing to agree with",
+            file=sys.stderr,
+        )
+        return 2
+
     copies = []
     for path, reader, what in [
         (TERMINAL_APP, terminal_app_slots, "the xterm grid"),
@@ -97,10 +176,12 @@ def main() -> int:
         if not path.is_file():
             print(f"!! NOTHING WAS READ: no copy at {path}", file=sys.stderr)
             return 2
-        copies.append((path, reader(path.read_text(encoding="utf-8", errors="replace")), what))
+        text = path.read_text(encoding="utf-8", errors="replace")
+        copies.append((path, reader(text), what, text))
 
     problems = []
-    for path, got, what in copies:
+    checked_synth = 0
+    for path, got, what, text in copies:
         rel = path.relative_to(ROOT)
         for slot in SLOTS:
             want = authored[slot]
@@ -108,6 +189,20 @@ def main() -> int:
                 problems.append(f"{rel}: {what} names no {slot}; the theme authors it as {want}")
             elif got[slot] != want:
                 problems.append(f"{rel}: {slot} is {got[slot]}, the theme says {want}")
+        for slot, key in COPY_KEYS.get(str(rel), {}).items():
+            want = synthesised[slot]
+            have = copy_value(text, key)
+            checked_synth += 1
+            if have is None:
+                problems.append(
+                    f"{rel}: {what} names no `{key}`; the resolver gives every other "
+                    f"terminal {want} for {slot}"
+                )
+            elif have != want:
+                problems.append(
+                    f"{rel}: `{key}` is {have}, the resolver synthesises {slot} as {want} "
+                    f"from {'.'.join(SYNTHESISED[slot])}"
+                )
 
     if problems:
         print("The terminal palette disagrees with itself:", file=sys.stderr)
@@ -122,7 +217,8 @@ def main() -> int:
 
     print(
         f"{len(SLOTS)} ANSI slot(s) authored in the theme and matched by "
-        f"{len(copies)} copy(ies) downstream."
+        f"{len(copies)} copy(ies) downstream, plus {checked_synth} synthesised "
+        "value(s) agreeing with the tokens they come from."
     )
     return 0
 
