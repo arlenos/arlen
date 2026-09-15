@@ -18,6 +18,12 @@ use arlen_file_browser_core::remote::{remote_places_from_listings, RemotePlace};
 /// Shipping the daemon is not the fix (three daemons and a subsystem, put in front of
 /// people looking functional while incomplete); saying so is. A caller must match on
 /// the state, so it cannot render an absence as a result by accident.
+///
+/// "Installed by nothing" is measured, not assumed: `dev/mkosi` builds twenty-one
+/// daemons and this is not one of them, so neither the binary nor the unit in
+/// `daemons/online-accounts/dist/` reaches the image. The day it is added, the other
+/// two arms start happening to people and this doc comment should stop saying the
+/// first is the only one.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "state", rename_all = "kebab-case")]
 pub enum NetworkPlaces {
@@ -159,19 +165,21 @@ mod tests {
     #[test]
     fn a_refusal_is_not_an_absence_either() {
         // The third state, and it stopped being hypothetical: `daemons/online-accounts`
-        // owns `org.arlen.Accounts1` and ships `arlen-accountsd.service` plus its
-        // D-Bus activation file, so a real refusal - the per-app capability gate
-        // declining - is now reachable on a machine where it runs rather than only
-        // here. The comment said "once the daemon exists" for as long as it took
-        // that to happen.
+        // owns `org.arlen.Accounts1` and carries `arlen-accountsd.service` plus its
+        // D-Bus activation file in its own `dist/`, so a real refusal - the per-app
+        // capability gate declining - is reachable on a machine that runs it. The
+        // comment said "once the daemon exists" for as long as it took that to
+        // happen.
         //
-        // What is still missing is the CONSUMER: `network_places` is registered
-        // and nothing in the frontend calls it, so the sidebar shows no network
-        // places at all. That is honest - it claims nothing - but it means this
-        // arm's value is still the contract rather than a screen. Telling a person
-        // "not available on this system" about accounts they can see in Settings
-        // would send them to install something already installed, which is why the
-        // distinction is kept whether or not anything renders it yet.
+        // THE CONSUMER EXISTS NOW, which the previous version of this comment
+        // denied: `loadPlaces` in `src/lib/stores/places.ts` invokes
+        // `network_places` and renders the three states separately. What is still
+        // true is one level down - the image builds neither the daemon nor its
+        // unit, so on a shipped machine the answer is always `Unavailable`, and
+        // that is a deliberate call recorded at the top of this file rather than an
+        // oversight. Telling a person "not available on this system" about accounts
+        // they can see in Settings would send them to install something already
+        // installed, which is why the distinction is kept.
         let denied = classify(Err(zbus::Error::MethodError(
             "org.freedesktop.DBus.Error.AccessDenied"
                 .try_into()
