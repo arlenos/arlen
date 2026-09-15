@@ -551,6 +551,8 @@ jobs:
           node dev/scripts/test-check-nested-interactive.mjs
           python3 dev/scripts/check-source-is-text.py
           node dev/scripts/test-check-source-is-text.mjs
+          python3 dev/scripts/check-unit-has-a-binary.py
+          node dev/scripts/test-check-unit-has-a-binary.mjs
           python3 dev/scripts/check-dialog-named.py
           node dev/scripts/test-check-dialog-named.mjs
           python3 dev/scripts/check-child-props-order.py

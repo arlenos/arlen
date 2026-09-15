@@ -1,6 +1,16 @@
 [Unit]
 Description=Arlen Connections daemon (user service)
 Documentation=https://github.com/arlenos/arlen
+# NOT ON THE IMAGE: the identity path is fixed and the BOOT is what is missing
+# (16 Sep). Packaging was attempted and backed out earlier the same day because
+# this daemon identified its D-Bus callers by reading /proc/<pid>/exe, which the
+# hardening below puts out of reach - it would have refused every caller on the
+# image. It asks the identity broker first now, keyed on a pidfd over SCM_RIGHTS,
+# which works inside the fence. What is missing is somebody watching it resolve a
+# real caller on a boot: check-peer-identity-sandbox records that this chain has
+# looked complete three times and the measurement disagreed each time. Live cost
+# meanwhile: ai-proxy fetches a keyed provider's credential here at egress time,
+# so every AI provider that needs an API key is unreachable on the image.
 # arlen-connectionsd owns org.arlen.Connections1 on the session bus and is the
 # single capability-gated credential authority: every credential handout is
 # checked against a per-app grant (the caller's Arlen identity resolved from the

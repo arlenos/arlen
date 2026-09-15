@@ -1,6 +1,9 @@
 [Unit]
 Description=Arlen transfer daemon (the sole cross-profile broker)
 Documentation=https://github.com/arlenos/arlen
+# NOT ON THE IMAGE: the transfer daemon is not in the image's scope yet (15 Aug)
+# and has no shipped caller. Its own accept loop waits on PR-R1's per-uid sockets,
+# which is the condition that would change this.
 # arlen-transferd is the only process with simultaneous access to two profile
 # namespaces. All cross-profile flow goes through it; nothing bypasses it. Every
 # transfer passes a default-deny, first-match, DIRECTIONAL policy keyed on
