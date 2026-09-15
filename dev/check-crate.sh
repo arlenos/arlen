@@ -63,11 +63,23 @@ case "$mode" in
     fi
     ;;
   test)
-    # installd and knowledge tests mutate process-global state (env vars, a
-    # single on-disk graph) and must run serially to avoid races.
+    # installd's tests mutate process-global state (env vars) and run serially.
+    #
+    # KNOWLEDGE CAME OFF THIS LIST ON 15 SEPTEMBER, because the cause was found
+    # rather than worked around: every graph a test opens reserved its
+    # `max_db_size` as one mmap, and the engine's default is 8 TiB. Two dozen of
+    # those at once is what `Buffer manager exception: Mmap for size
+    # 8796093022208 failed` was, forty-two times. Test builds now open with a
+    # 1 GiB ceiling (`graph::system_config`), which no test in that crate comes
+    # near, and the suite runs parallel: 629 lib tests in 3 seconds where the
+    # serial run took 35.
+    #
+    # The line mattered beyond CI time. A bare `cargo test` in that crate failed
+    # for anybody who had not read this file, which is a poor place to keep a
+    # requirement.
     extra=()
     case "$crate" in
-      daemons/installd|daemons/knowledge) extra=(-- --test-threads=1) ;;
+      daemons/installd) extra=(-- --test-threads=1) ;;
     esac
     # `cargo test`, not nextest: it is what gates merges, it passes a crate with
     # no tests instead of exiting 4, and it runs the doc tests itself rather
