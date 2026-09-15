@@ -951,20 +951,16 @@ jobs:
           done
       - name: clippy (sdk, ai)
         run: |
-          # The sdk workspace carries 26 warnings today, so it stays advisory
-          # until someone sweeps the rest. `|| true` is honest here only because
-          # the number is written down; a check nobody can fail and nobody has
-          # counted is not advisory, it is decoration.
+          # GATING as of 15 September. It was advisory with `|| true` and a count
+          # of 26 written beside it, on the argument that an unmeasured `|| true`
+          # is decoration rather than advice. The 26 are gone - async-fn sugar the
+          # trait's `+ Send` bound actually requires, a derivable impl, enum
+          # prefixes on generated prost code - so the argument for the escape
+          # hatch went with them.
           #
-          # It said 39 until 17 August and was 47 by the time anyone re-read it,
-          # which is what an unchecked count does. The 20 it attributed to "one
-          # mechanical class" turned out not to be mechanical at all: they were
-          # module docs written with `///` instead of `//!`, so rustdoc attached
-          # each one to whatever item happened to follow. `arlen-config` listed
-          # its `events` module as "TOML configuration loader for Arlen OS." All
-          # 20 fixed; the remaining 26 are genuinely cosmetic (async-fn sugar,
-          # derivable impls, enum prefixes).
-          cargo clippy --manifest-path sdk/Cargo.toml --workspace || true
+          # The history is worth keeping: the count said 39 in August and was 47
+          # by the time anyone re-read it, which is what an unchecked count does.
+          cargo clippy --manifest-path sdk/Cargo.toml --workspace -- -D warnings
           # The ai workspace is clean, so this one FAILS. It went advisory when it
           # had warnings and stayed that way after they were fixed, which meant the
           # whole AI layer could grow new ones with nothing to say so.
