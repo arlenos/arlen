@@ -1,10 +1,12 @@
-# Starting permission profile for a QR-code scanner/generator (Decoder). Camera
-# capture is granted through the portal, not a profile category, and a generated
-# code is saved through the file picker, which is a per-file grant. So it needs no
-# standing scope: no network, no user files and no Knowledge Graph access.
+# Starting permission profile for Decoder (a QR and barcode reader). It reads a
+# code from the camera or a picture and copies the result to the clipboard, so
+# clipboard write is its function; no network and no Knowledge Graph access.
 #
-# This granted Pictures, having already reasoned that both its camera and its save
-# go through a portal. Both sibling ids grant nothing for the same program.
+# ONE ANSWER FOR ALL THREE PACKAGING IDS (15 Sep): two of them had no clipboard
+# grant, which leaves the app able to decode a code and not to hand it over.
 [info]
 app_id = "gnome-decoder"
 tier = "third-party"
+
+[clipboard]
+write = true

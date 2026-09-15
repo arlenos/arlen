@@ -1,10 +1,10 @@
-# Starting permission profile for a game library manager. It organizes and
-# launches the user's games under Home (launched games carry their own grants);
-# no network by default (its optional cover-art fetch is refined later). No
-# Knowledge Graph.
+# Starting permission profile for Cartridges (a game launcher). It lists and
+# launches already-installed games through its own grant; no network, no user
+# files and no Knowledge Graph access.
+#
+# ONE ANSWER FOR ALL THREE PACKAGING IDS (15 Sep): the bare id granted the whole
+# Home, written as a category template. Cartridges launches what other
+# installers put on the machine; the games are not the user's documents.
 [info]
 app_id = "cartridges"
 tier = "third-party"
-
-[filesystem]
-home = true

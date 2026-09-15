@@ -1,6 +1,10 @@
-# Starting permission profile for CLion (a C/C++ IDE). Projects live in Documents; the IDE
-# fetches packages, plugins and language servers over the network (its function,
-# matching the PyCharm sibling). No graph, no media dirs.
+# Starting permission profile for CLion (a C/C++ IDE). Projects live in
+# Documents; it fetches plugins, toolchains and indexes over the network. No
+# Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no network at all,
+# which leaves an IDE unable to fetch a plugin or a toolchain - the thing it
+# spends its first run doing.
 [info]
 app_id = "com.jetbrains.CLion"
 tier = "third-party"

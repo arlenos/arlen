@@ -1,9 +1,21 @@
-# Starting permission profile for a documents/IDE app. Opens files under
-# Documents; no network and no Knowledge Graph by default (projects elsewhere,
-# plugins, SDKs or store fetches need an explicit grant). Observe-mode refines it.
+# Starting permission profile for DataGrip (a database IDE). Scripts and exports
+# live in Documents; it reaches database servers over the network, which is its
+# function. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no network, which
+# leaves a database client unable to reach a database.
 [info]
 app_id = "datagrip"
 tier = "third-party"
 
 [filesystem]
 documents = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true

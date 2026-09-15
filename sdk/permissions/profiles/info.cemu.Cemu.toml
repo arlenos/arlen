@@ -1,9 +1,9 @@
-# Starting permission profile for Cemu (a console/computer
-# emulator). It runs local game images; no network or Knowledge Graph access by
-# default. Game files live under Documents.
+# Starting permission profile for Cemu (a console emulator). No file access, no
+# network and no Knowledge Graph by default; its data lives in its own app dir
+# and a ROM elsewhere is opened through the file portal.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id granted
+# Documents, which is neither where ROMs live nor needed to reach one.
 [info]
 app_id = "info.cemu.Cemu"
 tier = "third-party"
-
-[filesystem]
-documents = true

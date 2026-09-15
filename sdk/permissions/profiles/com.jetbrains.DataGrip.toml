@@ -1,6 +1,9 @@
-# Starting permission profile for DataGrip (a database IDE). Connects to
-# databases over the network (its function); SQL scripts and dumps live in
-# Documents. No graph, no media dirs.
+# Starting permission profile for DataGrip (a database IDE). Scripts and exports
+# live in Documents; it reaches database servers over the network, which is its
+# function. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had no network, which
+# leaves a database client unable to reach a database.
 [info]
 app_id = "com.jetbrains.DataGrip"
 tier = "third-party"
