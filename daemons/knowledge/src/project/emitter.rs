@@ -16,6 +16,12 @@ pub struct ProjectEmitter {
     socket_path: PathBuf,
 }
 
+impl Default for ProjectEmitter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProjectEmitter {
     /// Create a new emitter. Does not connect immediately.
     pub fn new() -> Self {

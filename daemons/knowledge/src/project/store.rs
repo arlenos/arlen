@@ -61,6 +61,11 @@ impl ProjectStatus {
     }
 
     /// Parse status from graph value.
+    //
+    // Deliberately not `FromStr`: that trait is fallible and this cannot fail -
+    // an unknown value from the graph reads as Active rather than an error,
+    // because a project whose status column drifted is still a project.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "archived" => Self::Archived,

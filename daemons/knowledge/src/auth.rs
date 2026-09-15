@@ -44,6 +44,12 @@ pub struct Authenticator {
 // minted from the identity the connection was authenticated with.
 
 
+impl Default for Authenticator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Authenticator {
     /// Create a new authenticator with a fresh HMAC key.
     pub fn new() -> Self {

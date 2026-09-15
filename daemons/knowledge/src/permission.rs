@@ -72,13 +72,20 @@ fn parse_scope_entries(entries: &[String]) -> Vec<EntityScope> {
 
     // Full-type entries (fields: None).
     for entity_type in full_types {
-        // If we also have field-level entries for this type, the full grant wins.
-        let base = if entity_type.ends_with(".*") {
-            entity_type.clone()
-        } else {
-            entity_type.clone()
-        };
-        type_fields.remove(&base);
+        // If we also have field-level entries for THIS EXACT type, the full grant
+        // wins and the field entries go.
+        //
+        // A wildcard never matches here, and that is correct rather than an
+        // oversight: `com.anki.*` covers the types UNDER the prefix, while a
+        // `com.anki.Note` field entry is a field of the prefix type itself - the
+        // ambiguity the doc above describes. They are different grants, so one
+        // does not displace the other.
+        //
+        // This used to compute a `base` through an `if` whose two branches were
+        // identical, so the condition decided nothing; somebody meant to strip the
+        // `.*` and never did. Stripping it would have dropped a field grant the
+        // wildcard does not cover.
+        type_fields.remove(&entity_type);
         scopes.push(EntityScope {
             entity_type,
             fields: None,

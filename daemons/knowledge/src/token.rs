@@ -191,6 +191,12 @@ pub struct TokenSigner {
     key: [u8; 32],
 }
 
+impl Default for TokenSigner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TokenSigner {
     /// Create a new signer with a random 256-bit HMAC key.
     pub fn new() -> Self {

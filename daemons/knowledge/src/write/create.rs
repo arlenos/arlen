@@ -207,6 +207,10 @@ pub fn create_relation(
 /// Deletion is idempotent: persisting a retract that matches no edge (already
 /// gone, or never existed) is a successful no-op, not an error. The returned
 /// [`RelationResult`] is exactly what to persist under that contract.
+// Eight arguments, and each one is a distinct half of the edge being named:
+// registry, from type + id, to type + id, relation, caller, op. A struct would
+// move the same list one file away.
+#[allow(clippy::too_many_arguments)]
 pub fn retract_relation(
     registry: &SchemaRegistry,
     from_type: &str,

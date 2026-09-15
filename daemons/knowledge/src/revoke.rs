@@ -1294,10 +1294,6 @@ instance_scope = "all"
         s.parse().unwrap()
     }
 
-    fn profile(s: &str) -> PermissionProfile {
-        toml::from_str(s).unwrap()
-    }
-
     #[test]
     fn revoke_read_removes_only_that_pattern_and_preserves_the_rest() {
         let mut d = doc(SAMPLE);
