@@ -1,9 +1,14 @@
-# Starting permission profile for an archive manager, disc burner or file manager.
-# Reading and writing the user's files across Home is its function; no network and
-# no Knowledge Graph.
+# Starting permission profile for Ark (an archive manager). Archives live in
+# Documents and Downloads; no network, no graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted the whole Home,
+# written as a category template for "an archive manager, disc burner or file
+# manager". Ark is an archive manager, the two directories are where archives
+# are, and an archive anywhere else opens through the file portal.
 [info]
 app_id = "ark"
 tier = "third-party"
 
 [filesystem]
-home = true
+documents = true
+downloads = true

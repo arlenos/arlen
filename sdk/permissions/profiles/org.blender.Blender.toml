@@ -1,5 +1,8 @@
 # Starting permission profile for Blender (3D creation). Saves projects under
 # Documents; renders to Pictures. No network (offline by function).
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id had Documents alone and
+# nowhere to put a render.
 [info]
 app_id = "org.blender.Blender"
 tier = "third-party"

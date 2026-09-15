@@ -1,5 +1,11 @@
 # Starting permission profile for FileZilla (an FTP/SFTP client). Needs network
 # to transfer; saves to Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id granted the whole
+# Home, reasoning that it "uploads/downloads arbitrary local files". Uploading an
+# arbitrary file is exactly what the file portal is for - the user picks it and
+# the app receives it - so the Home grant bought the app nothing and gave it
+# everything.
 [info]
 app_id = "filezilla"
 tier = "third-party"
