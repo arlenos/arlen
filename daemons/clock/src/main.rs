@@ -445,34 +445,18 @@ fn require_full(reach: Reach) -> zbus::fdo::Result<()> {
 
 /// The caller's attested app id, or why it could not be established.
 ///
-/// The bus attests the sender and turns it into a pid the caller cannot forge;
-/// the start time is read either side of the resolve so a pid recycled underneath
-/// it is refused rather than mistaken for the app. Duplicated from the power
-/// daemon rather than shared: it is twenty lines, the crates are separate
-/// workspaces, and a shared crate for this is a change to make once across all of
-/// them rather than incidentally here.
+/// Shared rather than copied, as the comment that used to stand here asked for:
+/// "a shared crate for this is a change to make once across all of them rather
+/// than incidentally here". The resolution is in `arlen-dbus-identity` now, which
+/// is where its two tiers and the mount-namespace reason for them are written
+/// down. The objection the calendar recorded against sharing - that a helper would
+/// put a bus dependency in the permissions crate every confined app links - is
+/// answered by the helper being its own crate.
 async fn resolve_caller_app_id(
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
 ) -> Result<String, String> {
-    use arlen_permissions::identity::{app_id_from_pid, pid_start_time};
-    let sender = header
-        .sender()
-        .ok_or_else(|| "no sender in message".to_string())?;
-    let proxy = zbus::fdo::DBusProxy::new(connection)
-        .await
-        .map_err(|e| format!("DBusProxy: {e}"))?;
-    let pid = proxy
-        .get_connection_unix_process_id(sender.clone().into())
-        .await
-        .map_err(|e| format!("get caller pid: {e}"))?;
-    let start_before = pid_start_time(pid).map_err(|e| format!("pid start time: {e}"))?;
-    let app_id = app_id_from_pid(pid).map_err(|e| format!("resolve app id: {e}"))?;
-    let start_after = pid_start_time(pid).map_err(|e| format!("pid start time: {e}"))?;
-    if start_before != start_after {
-        return Err("pid recycled during resolution".to_string());
-    }
-    Ok(app_id)
+    arlen_dbus_identity::resolve_caller(header, connection).await
 }
 
 /// Refuse a caller the clock does not know.
@@ -777,7 +761,10 @@ async fn main() {
         // that did not ring is read from these lines, so neither half may be mute.
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                tracing_subscriber::EnvFilter::new("warn,arlen_clockd=info,arlen_clock=info")
+                // `audit` is a TARGET, not a crate: the caller identity this daemon resolves on
+                // every gated method files its lines under it, and a directive for the crate does
+                // not reach them.
+                tracing_subscriber::EnvFilter::new("warn,arlen_clockd=info,arlen_clock=info,audit=info")
             }),
         )
         .init();

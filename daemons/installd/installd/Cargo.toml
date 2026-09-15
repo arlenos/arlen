@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 arlen-modules = { path = "../../../sdk/modules" }
 arlen-permissions = { path = "../../../sdk/permissions" }
+arlen-dbus-identity = { path = "../../../sdk/dbus-identity" }
 # Capability-diff consent gate on upgrade (E6): reuse the recipe capability
 # vocabulary + the built diff rather than re-implementing it.
 arlen-forage-recipe = { path = "../../../contracts/forage-recipe" }

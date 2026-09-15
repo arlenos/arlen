@@ -202,6 +202,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-dbus-identity"
+version = "0.1.0"
+dependencies = [
+ "arlen-permissions",
+ "zbus",
+]
+
+[[package]]
 name = "arlen-forage-recipe"
 version = "0.1.0"
 dependencies = [
@@ -264,6 +272,7 @@ dependencies = [
  "arlen-ai-undo-core",
  "arlen-ai-undo-proto",
  "arlen-config-format",
+ "arlen-dbus-identity",
  "arlen-freedesktop-trash",
  "arlen-permissions",
  "async-trait",

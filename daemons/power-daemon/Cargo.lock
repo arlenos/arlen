@@ -35,6 +35,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-dbus-identity"
+version = "0.1.0"
+dependencies = [
+ "arlen-permissions",
+ "zbus",
+]
+
+[[package]]
 name = "arlen-forage-recipe"
 version = "0.1.0"
 dependencies = [
@@ -61,6 +69,7 @@ dependencies = [
 name = "arlen-powerd"
 version = "0.1.0"
 dependencies = [
+ "arlen-dbus-identity",
  "arlen-permissions",
  "futures-util",
  "libc",

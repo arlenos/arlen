@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 arlen-permissions = { path = "../../sdk/permissions" }
+arlen-dbus-identity = { path = "../../sdk/dbus-identity" }
 arlen-ai-undo-core = { path = "../../ai/ai-undo-core" }
 async-trait = "0.1"
 libc = "0.2"

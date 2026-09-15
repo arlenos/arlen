@@ -31,6 +31,7 @@ name = "arlen-calendar"
 version = "0.1.0"
 dependencies = [
  "arlen-calendar-core",
+ "arlen-dbus-identity",
  "arlen-permissions",
  "chrono",
  "chrono-tz",
@@ -60,6 +61,14 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "arlen-dbus-identity"
+version = "0.1.0"
+dependencies = [
+ "arlen-permissions",
+ "zbus",
 ]
 
 [[package]]

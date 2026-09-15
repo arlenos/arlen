@@ -200,8 +200,20 @@ EXPLICIT_TARGET = re.compile(
 # reachable from it. One entry today: the `audit` target belongs to
 # `arlen-permissions`' peer authentication, so a component that never calls it
 # cannot emit that line and does not need the directive.
+#
+# `arlen_dbus_identity` is the second door to the same room: it resolves a D-Bus
+# caller through the identity broker, which files its lines under `audit` exactly
+# as the socket path does. It is named here rather than left to the symbols above
+# because a component that uses it mentions NONE of them - that is the point of a
+# shared resolver - and the first daemon to move onto it lost its directive
+# silently.
 TARGET_ENTRYPOINTS: dict[str, tuple[str, ...]] = {
-    "audit": ("ConnectionAuth", "StampedIdentity", "stamped_identity"),
+    "audit": (
+        "ConnectionAuth",
+        "StampedIdentity",
+        "stamped_identity",
+        "arlen_dbus_identity",
+    ),
 }
 
 

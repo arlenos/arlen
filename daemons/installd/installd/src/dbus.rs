@@ -113,25 +113,17 @@ fn caller_may_mutate(app_id: &str) -> bool {
     INSTALL_CALLERS.contains(&app_id)
 }
 
-/// Resolve the calling program's app id from its connection's pid.
+/// The caller's attested app id, from `arlen-dbus-identity`.
 ///
-/// Fails closed: no sender, an unreachable bus daemon, a dead pid or a binary the
-/// resolver does not recognise all yield an error, and the caller refuses.
+/// It gains a pid-reuse guard by moving here, which the copy that used to stand in
+/// this file did not have. This resolver decides who may install, remove and
+/// enrol software, so a pid that named one process when the bus answered and
+/// another by the time it was resolved must deny rather than resolve.
 async fn caller_app_id(
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
 ) -> Result<String, String> {
-    let sender = header
-        .sender()
-        .ok_or_else(|| "no sender in message".to_string())?;
-    let proxy = zbus::fdo::DBusProxy::new(connection)
-        .await
-        .map_err(|e| format!("DBusProxy: {e}"))?;
-    let pid = proxy
-        .get_connection_unix_process_id(sender.clone().into())
-        .await
-        .map_err(|e| format!("get pid: {e}"))?;
-    arlen_permissions::identity::app_id_from_pid(pid).map_err(|e| format!("resolve caller: {e}"))
+    arlen_dbus_identity::resolve_caller(header, connection).await
 }
 
 /// Resolve and authorise the caller of a reading method.

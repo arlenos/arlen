@@ -40,7 +40,10 @@ async fn main() {
         // target root.
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,arlen_powerd=info")),
+                // `audit` is a TARGET, not a crate: the caller identity this daemon resolves on
+                // every gated method files its lines under it, and a directive for the crate does
+                // not reach them.
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,arlen_powerd=info,audit=info")),
         )
         .init();
 

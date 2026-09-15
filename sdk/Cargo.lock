@@ -102,6 +102,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-dbus-identity"
+version = "0.1.0"
+dependencies = [
+ "arlen-permissions",
+ "tokio",
+ "zbus",
+]
+
+[[package]]
 name = "arlen-forage-recipe"
 version = "0.1.0"
 dependencies = [

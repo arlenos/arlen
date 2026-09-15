@@ -298,49 +298,19 @@ async fn resolve_caller_app_id_guarded(
 
 /// The same resolution, also yielding the attested caller pid, for the paths that
 /// have to remember WHICH process a capability was minted for.
+///
+/// The two tiers and the reason for their order live in `arlen-dbus-identity`;
+/// this daemon is the reason that crate exists, because its own unit's hardening
+/// is what makes the exe read unusable.
 async fn resolve_caller_guarded(
     header: &Header<'_>,
     connection: &Connection,
 ) -> Result<(String, i32), String> {
-    use arlen_permissions::identity::{app_id_from_pid, pid_start_time};
-    use arlen_permissions::stamped_identity::stamped_app_id_for_pid;
-    let sender = header.sender().ok_or_else(|| "no sender".to_string())?;
-    let proxy = zbus::fdo::DBusProxy::new(connection)
-        .await
-        .map_err(|e| format!("DBusProxy: {e}"))?;
-    let pid = proxy
-        .get_connection_unix_process_id(sender.clone().into())
-        .await
-        .map_err(|e| format!("caller pid: {e}"))?;
-    let pid_i32 = i32::try_from(pid).map_err(|_| "pid out of range".to_string())?;
-
-    // TIER 1 FIRST, AND THE REASON IS THE UNIT ABOVE THIS FILE. The `/proc/{pid}/exe`
-    // read below is the one a hardened unit's own mount namespace refuses - a fenced
-    // process can read exactly one exe link, its own - so a credential daemon that
-    // identifies its callers that way refuses EVERY caller the moment it is packaged,
-    // and the refusal reads as a permissions decision rather than a mount table.
-    // Measured on capsuled on 14 September and caught here by the gate that came out
-    // of it, before this daemon shipped.
-    //
-    // `pidfd_open` is a pid-namespace operation and the broker's `Lookup` is keyed on
-    // the pidfd over `SCM_RIGHTS`, so this route never touches a path. It also pins
-    // the process, which is the same guarantee the start-time guard below buys for
-    // the fallback.
-    if let Some(app_id) = stamped_app_id_for_pid(pid) {
-        return Ok((app_id, pid_i32));
-    }
-
-    // Tier 2: the exe read, for a caller no launcher stamped - a dev process from a
-    // cargo target, which is also not behind the fence. Guarded against pid reuse by
-    // the start time either side, because unlike the pidfd above this holds nothing
-    // open while it reads.
-    let before = pid_start_time(pid).map_err(|e| format!("pid start: {e}"))?;
-    let app_id = app_id_from_pid(pid).map_err(|e| format!("app id: {e}"))?;
-    let after = pid_start_time(pid).map_err(|e| format!("pid start: {e}"))?;
-    if before != after {
-        return Err("pid recycled during resolution".to_string());
-    }
-    Ok((app_id, pid_i32))
+    let (app_id, pid) = arlen_dbus_identity::resolve_caller_with_pid(header, connection).await?;
+    Ok((
+        app_id,
+        i32::try_from(pid).map_err(|_| "pid out of range".to_string())?,
+    ))
 }
 
 #[cfg(test)]
