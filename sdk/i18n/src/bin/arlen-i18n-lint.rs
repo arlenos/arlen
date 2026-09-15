@@ -497,6 +497,67 @@ fn is_displayed_attr(name: &str) -> bool {
 ///
 /// Only the string bodies: what is around them (a ternary, a call, an object)
 /// decides nothing here, because the attribute name has already said this
+
+/// Whether the `/` at `i` opens a REGEX literal rather than being division.
+///
+/// A regex may hold a quote - `/^['"]|['"]$/g` is the ordinary way to strip
+/// them - and a scanner that walks characters looking for `'` opens a string
+/// there that never closes where it should. Everything after it in the file is
+/// then read at the wrong offset: on 15 September one such regex in a Settings
+/// store made this lint report seven findings whose line numbers were all
+/// downstream of the real cause, and the same desync silently HIDES whatever
+/// comes after, which is the half that does not announce itself.
+///
+/// The test is the standard one: a `/` is a regex start when the last
+/// meaningful character cannot end an expression. After a name, a number, a
+/// closing bracket or a `.`, it is division.
+fn is_regex_start(chars: &[char], i: usize) -> bool {
+    let mut j = i;
+    while j > 0 {
+        let c = chars[j - 1];
+        if c.is_whitespace() {
+            j -= 1;
+            continue;
+        }
+        return !(c.is_alphanumeric() || c == '_' || c == '$' || c == ')' || c == ']' || c == '.');
+    }
+    true
+}
+
+/// Skip a regex literal starting at the `/` at `i`, returning the index after
+/// its closing slash and flags. A `/` inside a character class is literal, so
+/// the class has to be tracked; an escaped one is literal anywhere.
+fn skip_regex(chars: &[char], i: usize) -> usize {
+    let n = chars.len();
+    let mut j = i + 1;
+    let mut in_class = false;
+    while j < n {
+        let c = chars[j];
+        if c == '\\' {
+            j += 2;
+            continue;
+        }
+        if c == '\n' {
+            // An unterminated regex is not a regex; leave the caller where it
+            // was rather than swallowing the rest of the file.
+            return i + 1;
+        }
+        if c == '[' {
+            in_class = true;
+        } else if c == ']' {
+            in_class = false;
+        } else if c == '/' && !in_class {
+            j += 1;
+            while j < n && chars[j].is_ascii_alphabetic() {
+                j += 1;
+            }
+            return j;
+        }
+        j += 1;
+    }
+    i + 1
+}
+
 /// position is displayed.
 fn expr_literals(src: &str) -> Vec<String> {
     let chars: Vec<char> = src.chars().collect();
@@ -504,6 +565,10 @@ fn expr_literals(src: &str) -> Vec<String> {
     let mut i = 0usize;
     while i < chars.len() {
         let c = chars[i];
+        if c == '/' && is_regex_start(&chars, i) {
+            i = skip_regex(&chars, i);
+            continue;
+        }
         if c == '"' || c == '\'' {
             i += 1;
             let mut lit = String::new();
@@ -739,6 +804,13 @@ fn scan_script(src: &str) -> Vec<Finding> {
                     out.push(Finding { line: start_line, text: t });
                 }
             }
+            prefix.clear();
+            continue;
+        }
+        if c == '/' && is_regex_start(&chars, i) {
+            let skipped = skip_regex(&chars, i);
+            line += chars[i..skipped].iter().filter(|c| **c == '\n').count();
+            i = skipped;
             prefix.clear();
             continue;
         }
@@ -1419,6 +1491,48 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+
+    /// A regex may hold a quote, and a scanner that does not know that reads
+    /// the rest of the file at the wrong offset. The real case: a Settings
+    /// store stripping quotes with `/^['"]|['"]$/g`, after which this lint
+    /// reported seven findings whose line numbers all pointed downstream of the
+    /// cause - and would equally have hidden anything real after it.
+    #[test]
+    fn a_quote_inside_a_regex_does_not_desynchronise_the_scan() {
+        let src = r#"
+function head(stack) {
+  return stack.replace(/^['"]|['"]$/g, "");
+}
+function label() {
+  return "Close the window";
+}
+"#;
+        let found = scan_script(src);
+        let texts: Vec<&str> = found.iter().map(|f| f.text.as_str()).collect();
+        assert!(
+            texts.iter().any(|t| t.contains("Close the window")),
+            "the sentence after the regex must still be seen, got {texts:?}"
+        );
+    }
+
+    /// And the opposite mistake: division must not be read as a regex, which
+    /// would swallow the code after it up to the next slash.
+    #[test]
+    fn division_is_not_read_as_a_regex() {
+        let src = r#"
+function ratio(a, b) {
+  const x = a / b;
+  const y = (a) / 2;
+  return "Half of it";
+}
+"#;
+        let texts: Vec<String> = scan_script(src).into_iter().map(|f| f.text).collect();
+        assert!(
+            texts.iter().any(|t| t.contains("Half of it")),
+            "a sentence after two divisions must still be seen, got {texts:?}"
+        );
+    }
+
     use super::*;
 
     fn texts(src: &str) -> Vec<String> {
