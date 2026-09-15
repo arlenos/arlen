@@ -244,7 +244,7 @@ impl TimelineFs {
         self.query_string_column(cypher)
     }
 
-    /// List active projects as (id, name, root_path).
+    /// List active projects as (id, name, `root_path`).
     fn query_active_projects_full(&self) -> Vec<(String, String, String)> {
         let cypher =
             "MATCH (p:Project) WHERE p.status = 'active' RETURN p.id, p.name, p.root_path ORDER BY p.root_path"
@@ -273,7 +273,7 @@ impl TimelineFs {
 
     /// Compute relative paths for projects under /projects/.
     ///
-    /// Finds the common ancestor of all root_paths and strips it,
+    /// Finds the common ancestor of all `root_paths` and strips it,
     /// producing paths like `arlenos/desktop-shell`.
     /// Projects not sharing a common prefix keep their directory name.
     fn project_relative_paths(&self) -> Vec<(String, String, String)> {

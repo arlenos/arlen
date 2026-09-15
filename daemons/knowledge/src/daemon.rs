@@ -2,7 +2,7 @@
 //!
 //! Phase 1A: Read-only queries, no authentication.
 //! Phase 3.2: Token-based authentication added. Clients receive a
-//!   CapabilityToken at connection time; each query must pass token
+//!   `CapabilityToken` at connection time; each query must pass token
 //!   verification and scope checks.
 //!
 //! Protocol:
@@ -87,7 +87,7 @@ impl RateLimitEmitter {
         }
     }
 
-    /// Emit `graph.rate_limited`; the payload is the offending app_id.
+    /// Emit `graph.rate_limited`; the payload is the offending `app_id`.
     /// Consumed by the Anomaly Detector (foundation §8.4). Best-effort.
     fn emit(&self, app_id: &str) {
         let event = Event {
@@ -530,7 +530,7 @@ enum WriteRequest {
     },
     /// Create a node of a bounded built-in type at a caller-supplied id, guarded
     /// so it can only ever create, never overwrite (bitemporal-knowledge-graph.md
-    /// §5.3). The id is the caller's own (e.g. a deterministic UUIDv5), checked
+    /// §5.3). The id is the caller's own (e.g. a deterministic `UUIDv5`), checked
     /// label-agnostically so a foreign-label id collision is refused. The only
     /// creatable types are the consolidation node types ([`CREATABLE_NODES`]);
     /// node fields and the transaction-time stamp are a later increment.
@@ -688,7 +688,7 @@ const CREATABLE_NODES: &[&str] = &["system.Summary"];
 /// check stays zero-false-positive: an honest node id can never contain it, so an
 /// operand (or an embedded read-query id) that does is provably injected. The
 /// `CreateNode` op is the only node-create path that takes a caller-supplied id
-/// (promotion ids are derived paths, entity ids are server-minted UUIDv7), so the
+/// (promotion ids are derived paths, entity ids are server-minted `UUIDv7`), so the
 /// reservation lives at its persistence primitive. With the native agent retired
 /// (pi is the loop now), this ingestion boundary is the sole canary authority: the
 /// reservation here refuses the write AND fires the content-free trip audit (see
@@ -844,10 +844,10 @@ const CODE_ANALYSIS_DENIED: &str = "ERROR: code analysis is not permitted for th
 ///
 /// Unlike the caller-scoped grant/provenance reads, this is an AGGREGATE over
 /// the entire code index, so it is gated to **system-anchored** callers (a
-/// resolved, non-`unknown` app id whose quota tier is above ThirdParty — the
+/// resolved, non-`unknown` app id whose quota tier is above `ThirdParty` — the
 /// agent, the Knowledge app, Settings). That is the conservative default: a
 /// whole-codebase structural view (symbol ids are file paths) exceeds a
-/// ThirdParty app's per-label read scope, and denying it is always safe while
+/// `ThirdParty` app's per-label read scope, and denying it is always safe while
 /// widening later is the reversible direction. The result is the serialised
 /// [`crate::code_analysis::CodeAnalysis`]; every failure is the uniform denial.
 async fn handle_code_analysis(app_id: &str, graph: &GraphHandle) -> String {
@@ -887,7 +887,7 @@ struct CodeSymbolRequest {
 /// project that file belongs to (bitemporal, optionally as-of a timestamp), and
 /// the apps that accessed it. Gated to **system-anchored** callers like the
 /// whole-codebase analysis (the file/project/provenance join over symbol ids
-/// that are file paths exceeds a ThirdParty's per-label read scope, so denying
+/// that are file paths exceeds a `ThirdParty`'s per-label read scope, so denying
 /// is the safe default); uniform denial on every failure.
 async fn handle_code_symbol_context(app_id: &str, graph: &GraphHandle, body: &[u8]) -> String {
     let system_anchored = app_id != "unknown"
@@ -1136,7 +1136,7 @@ const ACCESS_GRANTS_ROW_CAP: usize = 5000;
 /// (false for every caller until F3) and the canonical Settings management principal
 /// (`is_settings_principal`, the Settings app that also owns revoke) so the App-access
 /// capability browser can render every app's grants. Every other caller sees only its
-/// own grants (keyed on the attested app_id), so no ordinary app can enumerate
+/// own grants (keyed on the attested `app_id`), so no ordinary app can enumerate
 /// another's authority through this op (the §5 leak the dedicated reader exists to
 /// prevent). Settings reaches authority data only through this curated projection and
 /// `revoke`; the general read path's `Grant`-label deny still holds for it.
@@ -1341,7 +1341,7 @@ fn revoke_caller_admitted(app_id: &str) -> bool {
 /// Only the knowledge app, which is the surface that owns the timeline and its
 /// Delete control. This is the most destructive thing the write socket can do -
 /// it is the one operation that permanently removes graph nodes - so the gate is
-/// an exact match on one principal rather than a tier check: FirstParty is a
+/// an exact match on one principal rather than a tier check: `FirstParty` is a
 /// dozen binaries, and none of the others has any business clearing someone's
 /// history.
 ///
@@ -1366,7 +1366,7 @@ fn activity_delete_caller_admitted(app_id: &str) -> bool {
 
 /// The canonical Settings management principal: the only app trusted to browse
 /// the whole-system grant list (`access_grants`) and to issue revokes (`revoke`),
-/// living-capability-graph.md §6.2. Root-anchored app_id `settings` (identity.rs
+/// living-capability-graph.md §6.2. Root-anchored `app_id` `settings` (identity.rs
 /// resolves `/usr/lib/arlen/apps/settings/bin/arlen-settings` to it); in debug the
 /// exact cargo-run id `dev.arlen-settings` (and the harness extra-admit) are also
 /// accepted. The match is exact, never a broad `dev.` prefix, which would let any
@@ -1647,7 +1647,7 @@ async fn handle_restore(app_id: &str, body: &[u8], audit: &Arc<dyn AuditSink>) -
 /// This used to end "Cross-uid peers are already rejected at connection", which
 /// promises more than the connection does and would let a reader of this function
 /// assume every caller here shares its uid. What `cross_uid_admitted` actually
-/// does: a cross-uid peer below FirstParty is refused, and above it the answer
+/// does: a cross-uid peer below `FirstParty` is refused, and above it the answer
 /// turns on configuration - with `ARLEN_OWNER_UID`/`ARLEN_OWNER_USER` set, only
 /// that owner; with neither set, ANY local uid at first-party or system tier. The
 /// image sets `ARLEN_OWNER_USER=arlen`, so the admitted cross-uid peer there is
@@ -2433,11 +2433,11 @@ async fn persist_relation(graph: &GraphHandle, rel: &RelationResult, op_id: &str
     }
 }
 
-/// Persist a FILE_PART_OF membership as a single-statement **close-then-append**
+/// Persist a `FILE_PART_OF` membership as a single-statement **close-then-append**
 /// (bitemporal-knowledge-graph.md §4.5).
 ///
 /// Because a file has a single live membership, this closes any currently-live
-/// FILE_PART_OF to a *different* project (the single-membership contradiction),
+/// `FILE_PART_OF` to a *different* project (the single-membership contradiction),
 /// then appends a freshly stamped edge — but only if no live edge for this exact
 /// `(from, to)` pair already exists (the idempotent re-assert). It is one Cypher
 /// statement, dispatched as one request the serial graph thread runs
@@ -2549,10 +2549,10 @@ async fn persist_create_node(graph: &GraphHandle, label: &str, id: &str) -> Stri
 /// fail-closed (there is no precise key). The `op_id` non-emptiness was already
 /// enforced by `retract_relation`; it is re-checked and length-bounded here.
 ///
-/// Closing is **idempotent**: a match-nothing run (no live edge with this op_id,
+/// Closing is **idempotent**: a match-nothing run (no live edge with this `op_id`,
 /// already closed or never existed) is `OK: absent`, a successful no-op; a run
 /// that closed the edge is `OK: retracted`. Both guarantee the same post-state
-/// (no *live* edge with this op_id), which is what compensation needs, and the
+/// (no *live* edge with this `op_id`), which is what compensation needs, and the
 /// closed edge is retained for audit (bitemporal-knowledge-graph.md §4.7). The
 /// single statement runs on the serial graph thread, so a concurrent retract of
 /// the same edge cannot double-close: the second sees no live edge and reports
@@ -2699,7 +2699,7 @@ enum SocketExposure {
     /// single-user model the per-user runtime dir already scopes by being 0700.
     Shared,
     /// An owner is named: only that uid may connect. Root still can, having
-    /// CAP_DAC_OVERRIDE, which is what lets the root-run timeline client keep
+    /// `CAP_DAC_OVERRIDE`, which is what lets the root-run timeline client keep
     /// working.
     OwnerOnly(u32),
 }
@@ -2754,7 +2754,7 @@ fn apply_socket_exposure(socket_path: &str, exposure: SocketExposure) -> Result<
 
 /// Whether a CROSS-uid peer (uid `peer_uid`, resolved to `tier`) may be served.
 /// It must be a first-party/system client (a canonical /usr binary another user
-/// cannot plant), AND - when `owner_uid` is configured (ARLEN_OWNER_UID, the
+/// cannot plant), AND - when `owner_uid` is configured (`ARLEN_OWNER_UID`, the
 /// desktop session user) - it must be that owner. With no owner configured the
 /// gate is single-user: any first-party/system cross-uid peer (the local user's
 /// AI layer) is served. Same-uid peers do not consult this (always served).
@@ -2762,7 +2762,7 @@ fn apply_socket_exposure(socket_path: &str, exposure: SocketExposure) -> Result<
 /// The owner restriction is what makes a MULTI-user host safe: without it, the
 /// FirstParty/System tier only blocks PLANTING a privileged binary, not running
 /// code under that identity (the canonical binaries are world-executable +
-/// non-setuid, so any uid can LD_PRELOAD one - see `handle_client`); pinning the
+/// non-setuid, so any uid can `LD_PRELOAD` one - see `handle_client`); pinning the
 /// owner uid means only the data owner can do so, which is not an escalation.
 fn cross_uid_admitted(peer_uid: u32, owner_uid: Option<u32>, tier: AppTier) -> bool {
     if !matches!(tier, AppTier::FirstParty | AppTier::System) {
@@ -4808,7 +4808,7 @@ async fn record_capability_uses(
 
 #[cfg(test)]
 mod tests {
-    /// The app_id the connection resolver would carry for this test process.
+    /// The `app_id` the connection resolver would carry for this test process.
     ///
     /// `WritePeer` gained the resolved name so per-request token issuance stops
     /// re-reading `/proc`, and a test peer has to carry the same thing a real one

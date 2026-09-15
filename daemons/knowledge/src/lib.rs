@@ -11,8 +11,15 @@
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::must_use_candidate)]
 
-// NOT `#![warn(clippy::pedantic)]`, and the absence is a decision rather than an
-// oversight. `main.rs` carried that line while it declared the whole module tree;
+// One pedantic lint IS on: `doc_markdown`, so an identifier in a doc comment is
+// in code font. It needed `clippy.toml`'s `doc-valid-idents` first - without that
+// list the lint asks for backticks around SQLite and Ladybug too, which reads as
+// "a symbol you could type" about a product you cannot. The list is beside this
+// file and says the rest.
+#![warn(clippy::doc_markdown)]
+
+// The REST of `#![warn(clippy::pedantic)]` is still off, and the absence is a
+// decision rather than an oversight. `main.rs` carried that line while it declared the whole module tree;
 // now it is eight lines of glue, so moving the attribute here would not preserve
 // a standard, it would impose one on thirty-three modules that never met it.
 // Measured on 15 September: 450 findings, of which 130 are "item in documentation

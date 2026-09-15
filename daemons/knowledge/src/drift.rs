@@ -189,7 +189,7 @@ fn is_valid_device_id(s: &str) -> bool {
 /// device id").
 ///
 /// The id is the intended breaker for a genuine same-HLC cross-device clash:
-/// resolve_membership tie-breaks on a content field until an edge carries this
+/// `resolve_membership` tie-breaks on a content field until an edge carries this
 /// id, at which point it slots in ahead of that content tiebreak. It is a
 /// per-replica identity (it lives beside the store, one per KG), stable across
 /// restarts and distinct per device. It is an identifier, not a secret, so it is

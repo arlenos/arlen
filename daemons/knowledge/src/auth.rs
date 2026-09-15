@@ -72,8 +72,8 @@ impl Authenticator {
     // attested identity. `WritePeer` now carries the resolved `app_id` and every
     // mint goes through `issue_token_for_app` with it.
 
-    /// Issue a token for a known app_id and PID (skips identity resolution).
-    /// Useful for testing and for cases where app_id is already known.
+    /// Issue a token for a known `app_id` and PID (skips identity resolution).
+    /// Useful for testing and for cases where `app_id` is already known.
     pub fn issue_token_for_app(
         &mut self,
         uid: u32,
@@ -191,7 +191,7 @@ instance_scope = "own"
 
     /// The shipped `ai-agent` profile is the executor go-live grant: it must
     /// authorise exactly the one relation the auto-tag workflow writes
-    /// (File -[FILE_PART_OF]-> Project) and nothing more. This loads the real
+    /// (File -[`FILE_PART_OF`]-> Project) and nothing more. This loads the real
     /// deployed artifact and asserts its normalized scopes whole, not by a few
     /// `can_*` spot checks: a spot check would miss an added relation, an extra
     /// read, or a stray write scope, and since the grant carries the token-wide

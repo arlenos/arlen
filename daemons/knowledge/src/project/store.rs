@@ -1,4 +1,4 @@
-//! Project CRUD and PART_OF edge operations against the Ladybug graph.
+//! Project CRUD and `PART_OF` edge operations against the Ladybug graph.
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
@@ -25,15 +25,15 @@ pub enum ProjectStatus {
 /// Outcome of a prune-or-archive validation pass on a single project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PruneOutcome {
-    /// Project root_path exists on disk; nothing changed.
+    /// Project `root_path` exists on disk; nothing changed.
     Alive,
     /// Project was already archived before this pass; nothing changed.
     /// Treated as `Alive` for counting purposes — it is not a fresh
     /// transition.
     AlreadyArchived,
-    /// Inferred project's root_path was missing; node was DETACH-DELETEd.
+    /// Inferred project's `root_path` was missing; node was DETACH-DELETEd.
     Pruned,
-    /// Explicit project's root_path was missing; status flipped to
+    /// Explicit project's `root_path` was missing; status flipped to
     /// archived, history preserved.
     Archived,
 }
@@ -41,11 +41,11 @@ pub enum PruneOutcome {
 /// Counts from a bulk prune pass over all active projects.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PruneStats {
-    /// Projects whose root_path was found on disk (kept untouched).
+    /// Projects whose `root_path` was found on disk (kept untouched).
     pub alive: usize,
-    /// Inferred projects whose root_path vanished (deleted from graph).
+    /// Inferred projects whose `root_path` vanished (deleted from graph).
     pub pruned: usize,
-    /// Explicit projects whose root_path vanished (archived).
+    /// Explicit projects whose `root_path` vanished (archived).
     pub archived: usize,
     /// Per-project failures during validation (logged, sweep continues).
     pub errors: usize,
@@ -140,7 +140,7 @@ impl Project {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-/// Parse a Project from a RowSet where columns match the SELECT order.
+/// Parse a Project from a `RowSet` where columns match the SELECT order.
 fn parse_project(rs: &RowSet, row_idx: usize) -> Option<Project> {
     let row = rs.rows.get(row_idx)?;
     if row.len() < 14 {
@@ -195,7 +195,7 @@ const PROJECT_COLUMNS: &str = "p.id, p.name, p.description, p.root_path, \
 
 // ── ProjectStore ────────────────────────────────────────────────────────
 
-/// Store for Project CRUD and PART_OF edge operations.
+/// Store for Project CRUD and `PART_OF` edge operations.
 pub struct ProjectStore {
     graph: GraphHandle,
     /// The device-wide merge clock. When set, `link_file` stamps the HLC and
@@ -207,7 +207,7 @@ pub struct ProjectStore {
 }
 
 impl ProjectStore {
-    /// Create a new ProjectStore with no merge clock (unstamped writes).
+    /// Create a new `ProjectStore` with no merge clock (unstamped writes).
     pub fn new(graph: GraphHandle) -> Self {
         Self { graph, clock: None }
     }
@@ -285,7 +285,7 @@ impl ProjectStore {
         Ok(parse_project(&rs, 0))
     }
 
-    /// Get a project by its exact root_path.
+    /// Get a project by its exact `root_path`.
     pub async fn get_by_root_path(&self, path: &str) -> Result<Option<Project>> {
         let path_esc = escape_cypher(path);
         let rs = self
@@ -300,7 +300,7 @@ impl ProjectStore {
         Ok(parse_project(&rs, 0))
     }
 
-    /// Find the project whose root_path is the longest prefix of `file_path`.
+    /// Find the project whose `root_path` is the longest prefix of `file_path`.
     ///
     /// This implements the "nearest ancestor" rule: if a file lives inside
     /// nested projects, the innermost (longest path) project wins.
@@ -437,7 +437,7 @@ impl ProjectStore {
         Ok(())
     }
 
-    /// Update the last_accessed timestamp.
+    /// Update the `last_accessed` timestamp.
     pub async fn touch(&self, id: Uuid) -> Result<()> {
         let id_esc = escape_cypher(&id.to_string());
         let now = crate::time::now().0;
@@ -449,7 +449,7 @@ impl ProjectStore {
         Ok(())
     }
 
-    /// Check if the project's root_path still exists on disk.
+    /// Check if the project's `root_path` still exists on disk.
     pub async fn validate_path(&self, id: Uuid) -> Result<bool> {
         if let Some(project) = self.get_by_id(id).await? {
             Ok(std::path::Path::new(&project.root_path).exists())
@@ -458,13 +458,13 @@ impl ProjectStore {
         }
     }
 
-    /// Validate a project's root_path on disk and prune (inferred) or
+    /// Validate a project's `root_path` on disk and prune (inferred) or
     /// archive (explicit) when the directory is gone.
     ///
     /// Per `docs/architecture/project-system.md` §Validation on Access —
     /// the spec says no periodic polling; instead we validate when a
     /// project is touched (Waypointer list, Focus Mode activation,
-    /// daemon startup). One stat() per project is cheap.
+    /// daemon startup). One `stat()` per project is cheap.
     ///
     /// Inferred projects are deleted outright because their existence
     /// was a heuristic guess — keeping a graveyard of dead inferences
@@ -521,7 +521,7 @@ impl ProjectStore {
 
     // ── PART_OF Edge Operations ─────────────────────────────────────────
 
-    /// Create a FILE_PART_OF edge from a File node to a Project node.
+    /// Create a `FILE_PART_OF` edge from a File node to a Project node.
     pub async fn link_file(&self, file_id: &str, project_id: Uuid) -> Result<()> {
         let pid_str = project_id.to_string();
         let fid = escape_cypher(file_id);
@@ -648,7 +648,7 @@ impl ProjectStore {
             .collect())
     }
 
-    /// Remove all FILE_PART_OF edges pointing to a project.
+    /// Remove all `FILE_PART_OF` edges pointing to a project.
     pub async fn unlink_all_files(&self, project_id: Uuid) -> Result<()> {
         let pid = escape_cypher(&project_id.to_string());
         self.graph

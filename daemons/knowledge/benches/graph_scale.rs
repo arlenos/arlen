@@ -101,7 +101,7 @@ fn bench_write_batch_steady_state(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark duplicate detection in write_batch.
+/// Benchmark duplicate detection in `write_batch`.
 ///
 /// INSERT OR IGNORE is the mechanism that handles duplicates. This measures
 /// whether duplicate-heavy workloads (e.g. same file opened repeatedly) are

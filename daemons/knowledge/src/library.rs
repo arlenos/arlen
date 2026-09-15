@@ -109,7 +109,7 @@ fn namespace_of(qualified_type: &str) -> &str {
 
 /// A display field name that is safe to interpolate into the read.
 ///
-/// The schema validator already refuses a field name that is not snake_case and
+/// The schema validator already refuses a field name that is not `snake_case` and
 /// one that names nothing the type declares, so this is the second wall rather
 /// than the only one: a declaration that reached the registry by some other route
 /// still cannot put text into a query.

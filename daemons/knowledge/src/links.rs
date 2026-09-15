@@ -265,7 +265,7 @@ mod tests {
         assert!(extract_markdown_links(c, "/p").is_empty());
     }
 
-    /// LINKS_TO edges are created only to files that already exist, never to an
+    /// `LINKS_TO` edges are created only to files that already exist, never to an
     /// unobserved target, are idempotent, and skip a self-link.
     #[tokio::test]
     async fn persist_links_only_to_existing_files_idempotently() {

@@ -107,7 +107,7 @@ impl MigrationFile {
     }
 }
 
-/// Extract (from_version, to_version) from a filename like `1.0.0_to_1.1.0.toml`.
+/// Extract (`from_version`, `to_version`) from a filename like `1.0.0_to_1.1.0.toml`.
 pub fn parse_migration_filename(filename: &str) -> Option<(String, String)> {
     let name = filename.strip_suffix(".toml")?;
     let (from, to) = name.split_once("_to_")?;

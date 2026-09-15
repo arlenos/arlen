@@ -17,7 +17,7 @@ use std::time::Duration;
 use tokio::time;
 use tracing::{debug, error, info, warn};
 
-/// Fixed UUIDv5 namespace for deriving deterministic annotation ids
+/// Fixed `UUIDv5` namespace for deriving deterministic annotation ids
 /// from the `(target_type, target_id, namespace)` triple. The exact
 /// bytes are arbitrary but must stay stable forever — they are baked
 /// into every Annotation node ever written. Changing this would
@@ -27,7 +27,7 @@ const ANNOTATION_UUID_NAMESPACE: uuid::Uuid = uuid::Uuid::from_bytes([
 ]);
 
 /// Derive the deterministic Annotation node id from the spec's
-/// composite identity (target_type, target_id, namespace). UUIDv5 so
+/// composite identity (`target_type`, `target_id`, namespace). `UUIDv5` so
 /// the same triple always maps to the same id, enabling MERGE-based
 /// dedup in promotion without a separate lookup query.
 pub(crate) fn annotation_id(target_type: &str, target_id: &str, namespace: &str) -> uuid::Uuid {
@@ -1290,7 +1290,7 @@ async fn promote_code_indexed(graph: &GraphHandle, payload: &[u8]) -> Result<()>
     Ok(())
 }
 
-/// Check if a file belongs to a known project and create a FILE_PART_OF
+/// Check if a file belongs to a known project and create a `FILE_PART_OF`
 /// edge. Also updates the project's `last_accessed` timestamp and checks
 /// the auto-promotion threshold.
 async fn link_file_to_project(
@@ -1328,8 +1328,8 @@ async fn link_file_to_project(
     Ok(())
 }
 
-/// Promote an `app.presence.set` event into a UserAction node with
-/// `category = "presence"`. The metadata map and auto_clear hint stay in
+/// Promote an `app.presence.set` event into a `UserAction` node with
+/// `category = "presence"`. The metadata map and `auto_clear` hint stay in
 /// the SQLite event row — the graph node is intentionally lightweight so
 /// presence queries (e.g. "what was I editing yesterday at 14:00") stay
 /// fast and the per-app metadata schemas don't pollute the graph schema.
@@ -1373,7 +1373,7 @@ async fn promote_presence_set(
 /// Promote an `app.presence.clear` event. Apps emit this when their
 /// previous presence state is no longer accurate — explicit clear, or
 /// auto-clear from the SDK's window-blur listener. We record the clear
-/// as its own UserAction so a query can reconstruct presence intervals
+/// as its own `UserAction` so a query can reconstruct presence intervals
 /// (set timestamp .. clear timestamp).
 async fn promote_presence_clear(
     graph: &GraphHandle,
@@ -1401,7 +1401,7 @@ async fn promote_presence_clear(
     Ok(())
 }
 
-/// Promote an `app.timeline.record` event into a UserAction node with
+/// Promote an `app.timeline.record` event into a `UserAction` node with
 /// `category = "timeline"`. Persistent semantic record — distinct from
 /// presence which is ephemeral. Started/ended timestamps and metadata
 /// remain in the SQLite event row; the graph node carries the type as
@@ -1494,7 +1494,7 @@ async fn promote_command_finished(
 }
 
 /// Promote an `app.annotation.set` event into an Annotation node
-/// keyed by the deterministic UUIDv5 of (target_type, target_id,
+/// keyed by the deterministic `UUIDv5` of (`target_type`, `target_id`,
 /// namespace). MERGE-style upsert: re-setting on the same triple
 /// updates `data` and `last_modified` while preserving `created_at`.
 ///
@@ -1583,13 +1583,13 @@ async fn promote_annotation_cleared(graph: &GraphHandle, payload: &[u8]) -> Resu
     Ok(())
 }
 
-/// Promote an `app.badge.set` event into a UserAction node —
+/// Promote an `app.badge.set` event into a `UserAction` node —
 /// but only for `error` / `warning` status. Foundation §6.4
 /// Listing 14: "Error and warning badges are recorded in the
 /// Knowledge Graph; count-only badges are not."
 ///
 /// `category = "badge"`, `action = "error" | "warning"`,
-/// `subject = app_id`. Reuses the existing UserAction schema;
+/// `subject = app_id`. Reuses the existing `UserAction` schema;
 /// no new node type. AI queries can correlate badge spikes
 /// with build / test failures over time.
 async fn promote_badge_set(
@@ -1637,7 +1637,7 @@ async fn promote_badge_set(
 }
 
 /// Promote a `*.action_invoked` event (toolbar / shortcut / menu) into a
-/// UserAction node, so a user's interactions become KG-native history (the
+/// `UserAction` node, so a user's interactions become KG-native history (the
 /// "what did I export last Tuesday" query). `category` is the surface, `action`
 /// the app-defined dispatch id, `subject` the app id. Content-free per S13: only
 /// the structural action label, never a payload body. The three surfaces share
@@ -3351,7 +3351,7 @@ mod project_tests {
         (graph, store, tmp)
     }
 
-    /// Create a File node (simulates what promote_file_opened does).
+    /// Create a File node (simulates what `promote_file_opened` does).
     async fn create_file_node(graph: &GraphHandle, path: &str) {
         let p = escape_cypher(path);
         graph
@@ -3362,7 +3362,7 @@ mod project_tests {
             .unwrap();
     }
 
-    /// Create File + App + Session + edges (for count_session_files).
+    /// Create File + App + Session + edges (for `count_session_files`).
     async fn create_file_with_session(
         graph: &GraphHandle,
         store: &ProjectStore,

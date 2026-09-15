@@ -41,7 +41,7 @@ fn system_entity_types() -> Vec<String> {
 
 /// Central registry of all loaded entity schemas.
 pub struct SchemaRegistry {
-    /// Loaded schemas keyed by namespace (app_id).
+    /// Loaded schemas keyed by namespace (`app_id`).
     schemas: HashMap<String, SchemaFile>,
     /// Validator instance (tracks known types for relation checks).
     validator: SchemaValidator,

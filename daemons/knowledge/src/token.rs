@@ -76,7 +76,7 @@ pub struct RelationScope {
     pub from: String,
     /// Target entity type.
     pub to: String,
-    /// Relation type (e.g. "MENTIONS", "BELONGS_TO").
+    /// Relation type (e.g. "MENTIONS", "`BELONGS_TO`").
     pub relation_type: String,
 }
 
