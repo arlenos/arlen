@@ -3,10 +3,6 @@
 # decide what the app should get, make every id say it, drop the row.
 #
 # app	the ids that disagree
-mediawriter	mediawriter org.fedoraproject.MediaWriter
-melonds	melonds net.kuribo64.melonDS
-mgba	io.mgba.mGBA mgba
-micro	io.github.zyedidia.micro micro
 musescore	musescore org.musescore.MuseScore
 neochat	neochat org.kde.neochat
 nextcloud	com.nextcloud.desktopclient.nextcloud nextcloud
