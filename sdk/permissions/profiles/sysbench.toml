@@ -1,0 +1,9 @@
+# Starting permission profile for a benchmark. The CPU, memory and thread tests
+# touch nothing outside the process. The fileio test writes its scratch files in the
+# working directory the user starts it from, which is that run's own choice, not a
+# standing grant. The database tests reach a server, but only when the user names
+# one, so the network grant waits for observe-mode rather than being handed over for
+# a benchmark that usually never leaves the machine.
+[info]
+app_id = "sysbench"
+tier = "third-party"

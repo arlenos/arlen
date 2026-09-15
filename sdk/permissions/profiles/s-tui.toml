@@ -1,0 +1,6 @@
+# Starting permission profile for a terminal stress-and-monitor UI. It reads
+# frequency, temperature and power from /sys and runs a load generator in its own
+# processes, so there is no file, network or Knowledge Graph grant to make.
+[info]
+app_id = "s-tui"
+tier = "third-party"

@@ -1,0 +1,17 @@
+# Starting permission profile for a terminal bookmark manager. Its database is its
+# own state, so no standing file grant; an import or export names a path on the
+# command line and that path is the user's own act, not a permission the tool holds
+# between runs. Network because buku fetches the title and tags of a URL as it is
+# added, which is the whole difference between it and a text file of links.
+[info]
+app_id = "buku"
+tier = "third-party"
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true

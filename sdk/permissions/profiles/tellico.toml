@@ -1,0 +1,12 @@
+# Starting permission profile for a collection manager (books, films, wine, coins).
+# The collection file is a document the user saves and opens like any other, so it
+# gets Documents; the cover images it caches are its own state. NO standing network
+# grant, matching org.kde.tellico next door: filling a record from an ISBN is a
+# thing the user asks for a record at a time, not something the app does by being
+# open, so it is an opt-in rather than a grant it holds while it sits idle.
+[info]
+app_id = "tellico"
+tier = "third-party"
+
+[filesystem]
+documents = true

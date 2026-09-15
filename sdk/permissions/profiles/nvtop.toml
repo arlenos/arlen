@@ -1,0 +1,6 @@
+# Starting permission profile for a GPU process monitor. It reads driver state
+# through /sys and the device nodes, neither of which is a permission-profile field,
+# so no file, network or Knowledge Graph grant belongs here.
+[info]
+app_id = "nvtop"
+tier = "third-party"
