@@ -2301,6 +2301,13 @@ mod tests {
         assert!(!info.original_path.is_absolute(), "not absolutised behind the caller's back");
     }
 
+    /// NB this had no `#[test]` and had therefore never run, between two
+    /// neighbours that do. Found on 15 September, the same way as the one in
+    /// `arlen-run`: clippy reports an attribute-less function in a test module
+    /// as never used, and that is the ONLY way a missing attribute announces
+    /// itself - `cargo test` reports what it ran and says nothing about what it
+    /// did not.
+    #[test]
     fn parse_trashinfo_missing_path_fails_closed() {
         let err = parse_trashinfo(b"[Trash Info]\nDeletionDate=2026-01-02T03:04:05\n");
         assert!(matches!(err, Err(OpError::Io(_))), "missing Path is refused");
