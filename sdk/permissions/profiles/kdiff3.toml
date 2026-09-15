@@ -1,5 +1,10 @@
-# Starting permission profile for kdiff3 (a diff and merge tool). Opens and saves files under
-# Documents; no network and no Knowledge Graph by default. Observe-mode refines it.
+# Starting permission profile for KDiff3 (a file comparison and merge tool). It
+# compares files the user opens, which live in Documents; no network and no
+# Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id granted the whole
+# Home. A diff tool is handed its two files, and a file outside Documents arrives
+# through the file portal - which is how it is handed one in the first place.
 [info]
 app_id = "kdiff3"
 tier = "third-party"

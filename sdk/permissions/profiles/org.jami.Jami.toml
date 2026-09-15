@@ -1,8 +1,15 @@
-# Starting permission profile for Jami (a peer-to-peer messenger and calls). Network is its function; no user files, no
-# Knowledge Graph access.
+# Starting permission profile for Jami (a peer-to-peer messenger and caller).
+# Talks to peers over the network, which is its function, and saves a received
+# file to Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id had no file
+# grant, which leaves "save the file somebody sent you" with nowhere to put it.
 [info]
 app_id = "org.jami.Jami"
 tier = "third-party"
+
+[filesystem]
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

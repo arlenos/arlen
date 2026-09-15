@@ -1,4 +1,8 @@
-# Starting permission profile for KAddressBook (a contacts manager). Local address books in Documents; CardDAV sync is an opt-in network grant.
+# Starting permission profile for KAddressBook (a contacts manager). Imports and
+# exports vCards through Documents; no network and no Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted nothing, so a
+# vCard could be neither imported nor exported.
 [info]
 app_id = "org.kde.kaddressbook"
 tier = "third-party"
