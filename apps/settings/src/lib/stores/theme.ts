@@ -288,23 +288,6 @@ theme.subscribe((state) => {
   }
 });
 
-/// Preset accent swatches shown in the UI. Value = hex, matches defaults
-/// used by the desktop-shell built-in themes.
-/// `nameKey` rather than a name: these are the swatches' accessible names and
-/// tooltips, so they are read aloud and hovered, and a colour is one of the few
-/// things every language has its own word for. Unlike a font or an icon theme,
-/// "Indigo" is not the thing's own name.
-export const ACCENT_PRESETS: { value: string; nameKey: string }[] = [
-  { value: "#6366f1", nameKey: "s.accent.indigo" },
-  { value: "#3b82f6", nameKey: "s.accent.blue" },
-  { value: "#06b6d4", nameKey: "s.accent.cyan" },
-  { value: "#10b981", nameKey: "s.accent.green" },
-  { value: "#f59e0b", nameKey: "s.accent.amber" },
-  { value: "#ef4444", nameKey: "s.accent.red" },
-  { value: "#ec4899", nameKey: "s.accent.pink" },
-  { value: "#a855f7", nameKey: "s.accent.purple" },
-];
-
 export const FONT_OPTIONS = [
   { value: "Inter Variable", label: "Inter" },
   { value: "system-ui", labelKey: "s.type.systemDefault" },

@@ -11,16 +11,18 @@ sweep in this tree renders zero pixels of it - so nothing measures it and nothin
 notices when the thing it was written for changes underneath it. It reads, from
 inside the repository, exactly like a feature.
 
-Three of them stand today and all three are real work: the shell's read-only
-permissions panel (Settings grew its own privacy page), and the Settings
-appearance pickers for the accent and the window border colour. `ACCENT_PRESETS`
-is exported for one of them and consumed by nothing else, so the dead chain is two
-deep.
+THE CARRY LIST IS EMPTY, and the check finally asserts the thing it is for. Three
+stood here until 16 September - the shell's read-only permissions panel, and the
+Settings pickers for the accent and the window border colour - each with its own
+settled reason, and each is now deleted rather than carried. The ruling: deleting
+a surface nobody can reach is not a product decision, because nobody loses
+something they never had. `ACCENT_PRESETS` went with the accent picker, being
+exported for it and consumed by nothing else, and the strings only those three
+named left the catalogues.
 
-Whether they come back or come out is Tim's call and it has been open since the
-count was seven. What this stops is the count going up again without anybody
-seeing it: a new orphan fails, and adding it to the list below means writing down
-why it is there.
+So a finding here is now always a finding. Adding something to the list below
+means writing down why it is there, and the list existing at all is what stops the
+count climbing back to seven unnoticed.
 
     unmounted   a `.svelte` file no other source imports or tags
 
@@ -38,20 +40,8 @@ ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).reso
 SKIP_DIRS = {"node_modules", ".svelte-kit", "build", "target", ".git", "dist"}
 
 # Components that are deliberately unmounted, with why. MAY SHRINK, MAY NOT GROW.
-CARRIED = {
-    "apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte": (
-        "a read-only permission list from before Settings had its own privacy and "
-        "apps pages; superseded rather than broken, and whether it comes out is a "
-        "product call recorded in coder-reports"
-    ),
-    "apps/settings/src/lib/components/appearance/AccentPicker.svelte": (
-        "the compact accent swatch row; the colours page draws accents another way "
-        "now. `ACCENT_PRESETS` exists for this component and nothing else"
-    ),
-    "apps/settings/src/lib/components/appearance/BorderColorPicker.svelte": (
-        "the window-border colour picker, same story as the accent one beside it"
-    ),
-}
+# Empty since 16 September, which is the state this check was written to reach.
+CARRIED: dict[str, str] = {}
 
 
 def sources():

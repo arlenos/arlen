@@ -45,22 +45,15 @@ KNOWN: dict[str, str] = {
     # retires it: when that surface exists and renders the component, the walk
     # reaches it and the entry has to go. An exception with no condition is just a
     # place to park a file.
-    "apps/desktop-shell/src/lib/components/settings/PermissionScope.svelte": (
-        "a part of the capability browser (LCG-R7), planned and unbuilt. Retires "
-        "when that surface renders it"
-    ),
-    "apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte": (
-        "a part of the capability browser (LCG-R7), planned and unbuilt. Retires "
-        "when that surface renders it"
-    ),
-    "apps/settings/src/lib/components/appearance/AccentPicker.svelte": (
-        "ahead of the appearance surface (`appearance-surface.md`, deferred but "
-        "decided). Retires when that page renders it"
-    ),
-    "apps/settings/src/lib/components/appearance/BorderColorPicker.svelte": (
-        "ahead of the appearance surface (`appearance-surface.md`, deferred but "
-        "decided). Retires when that page renders it"
-    ),
+    # FOUR ENTRIES LEFT HERE ON 16 SEPTEMBER, and the way they left is the point.
+    # Two waited for a capability browser and two for an appearance surface, each
+    # with an honest retiring condition - and each was also a component no route
+    # reached, which the sibling check reported for as long. The ruling: deleting a
+    # surface nobody can reach is not a product decision, because nobody loses
+    # something they never had. So the files went, and with them a helper component,
+    # a preset table, two Tauri commands, a 243-line Rust module and the strings
+    # only they named. An entry that waits for a surface nobody is building is a
+    # file parked with a sentence in front of it.
     "sdk/ui-kit/src/lib/components/a11y-kitchen.svelte": (
         "the kit's accessibility demo: rendered by ui-kit's own `_a11y` harness "
         "route and asserted by `a11y.test.ts`. Deliberately not exported, because "
