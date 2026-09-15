@@ -4,11 +4,18 @@
 //
 // Controls for check-tests-run.
 //
-// The planted defect is the state `apps/desktop-shell` was in for months: test
+// Two rungs, two planted defects. The component one is the state
+// `apps/desktop-shell` was in for months: test
 // files present, no script, CI green and silent about it. The near-misses matter
 // as much - a component with no tests must not be nagged (several are thin enough
 // that tests would be ceremony), and a component using a runner other than vitest
 // must be accepted, which the first draft of the gate got wrong.
+//
+// The Rust one is `apps/files/core` on 15 September: a function in `mod tests`,
+// full of assertions, with no `#[test]`, between two neighbours that had it. Its
+// near-misses are the ones that make the rung usable rather than noisy - a helper
+// that asserts but IS called, and a test that carries a harness attribute rather
+// than the plain one.
 //
 // Run: node dev/scripts/test-check-tests-run.mjs
 
@@ -78,10 +85,97 @@ r = run(d);
 check("a component with no tests is not nagged", r.code === 0, `exit=${r.code} out=${r.out}`);
 cleanup(d);
 
+// --- the Rust rung -------------------------------------------------------
+
+function rustTree(body) {
+  const dir = mint("arlen-testsrun-rs-");
+  mkdirSync(join(dir, "crate/src"), { recursive: true });
+  writeFileSync(join(dir, "crate/src/lib.rs"), body);
+  return dir;
+}
+
+const ORPHAN = `pub fn thing() -> u8 { 1 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_test_that_runs() {
+        assert_eq!(thing(), 1);
+    }
+
+    fn an_assertion_nobody_runs() {
+        assert_eq!(thing(), 1, "this has never been checked");
+    }
+}
+`;
+
+d = rustTree(ORPHAN);
+r = run(d);
+check(
+  "an assertion with no attribute is caught",
+  r.code === 1 && /an_assertion_nobody_runs/.test(r.out) && !/a_test_that_runs/.test(r.out),
+  `exit=${r.code} out=${r.out}`,
+);
+cleanup(d);
+
+// A helper asserts too. Being called is what makes it a helper, and it is the
+// only signal that separates the two without reading intent.
+d = rustTree(`pub fn thing() -> u8 { 1 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn a_called_helper(n: u8) -> u8 {
+        assert!(n > 0, "the helper guards its own input");
+        n
+    }
+
+    #[test]
+    fn uses_the_helper() {
+        assert_eq!(a_called_helper(thing()), 1);
+    }
+}
+`);
+r = run(d);
+check("a helper that asserts but is called is left alone", r.code === 0, `exit=${r.code} out=${r.out}`);
+cleanup(d);
+
+// `#[tokio::test(flavor = "multi_thread")]` runs the function as surely as
+// `#[test]` does. A gate that only knows the plain spelling reports every async
+// test in the tree.
+d = rustTree(`pub fn thing() -> u8 { 1 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_async_test_runs() {
+        assert_eq!(thing(), 1);
+    }
+}
+`);
+r = run(d);
+check("a harness attribute counts as running it", r.code === 0, `exit=${r.code} out=${r.out}`);
+cleanup(d);
+
+// A function outside a test module is ordinary code, whatever it asserts.
+d = rustTree(`pub fn guarded(n: u8) -> u8 {
+    assert!(n > 0, "a debug assertion in shipping code is not a test");
+    n
+}
+`);
+r = run(d);
+check("an assertion in shipping code is not a test", r.code === 0, `exit=${r.code} out=${r.out}`);
+cleanup(d);
+
 d = mint("arlen-testsrun-empty-");
 r = run(d);
 check(
-  "a tree with no tests at all refuses rather than passing",
+  "a tree with neither tests nor Rust refuses rather than passing",
   r.code === 2 && /NOTHING WAS READ/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
@@ -89,4 +183,4 @@ cleanup(d);
 
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
 if (failures.length) process.exit(1);
-console.log("a directory of tests nobody runs is caught, and a thin component is left alone");
+console.log("tests nothing runs are caught at both rungs, and helpers are left alone");

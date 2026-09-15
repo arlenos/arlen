@@ -29,10 +29,27 @@ have tests - that is a judgement about each one, and several are thin enough tha
 tests would be ceremony. It asks only that a component which HAS them runs them,
 which is not a judgement at all.
 
+The same invariant has a second rung, one layer down, and 15 September found two
+live instances of it: a Rust function inside `#[cfg(test)] mod tests`, full of
+assertions, carrying no `#[test]` attribute. Nothing runs it. **And nothing says
+so**, which is the whole reason it survives - `cargo test` reports what it ran and
+is silent about what it did not, so the only tool that ever mentions such a
+function is clippy, calling it dead code, and only when nothing else in the file
+happens to reference it. `apps/files/core` had one sitting between two neighbours
+that both carry the attribute; it had never run once.
+
+The rung is deliberately narrow, because a `mod tests` block also holds helpers
+and a scan cannot tell a helper from a test by name (a tree-wide sweep that day
+returned three candidates and two were helpers). So it asks for the actual
+invariant - an assertion nobody runs - and clears everything else by
+construction: the function must contain an `assert`, and nothing in its own file
+may call it. A helper is called; that is what makes it a helper.
+
 Run: dev/scripts/check-tests-run.py [tree]
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -60,6 +77,83 @@ def runs_tests(component: Path) -> bool:
     return bool(str(scripts.get("test", "")).strip())
 
 
+#: A function declaration, with whatever qualifiers Rust allows before `fn`.
+FN = re.compile(
+    r"^(\s*)(?:pub(?:\([^)]*\))?\s+)?(?:const\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+([A-Za-z_]\w*)"
+)
+#: An attribute line, the thing that would make the function run.
+ATTR = re.compile(r"^\s*#\[")
+#: The opening line of a module block.
+MOD = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{")
+#: Directories that hold code nobody wrote here.
+SKIP_PARTS = {"target", "node_modules", ".git", "vendor"}
+
+
+def test_module_ranges(lines: list[str]) -> list[tuple[int, int]]:
+    """Line ranges of every `#[cfg(test)] mod ... { ... }` block in a file."""
+    ranges = []
+    for i, line in enumerate(lines):
+        if "#[cfg(test)]" not in line:
+            continue
+        j = i + 1
+        while j < len(lines) and (ATTR.match(lines[j]) or not lines[j].strip()):
+            j += 1
+        if j >= len(lines) or not MOD.match(lines[j]):
+            continue
+        depth, k = 0, j
+        while k < len(lines):
+            depth += lines[k].count("{") - lines[k].count("}")
+            if depth <= 0 and k > j:
+                break
+            k += 1
+        ranges.append((j, min(k, len(lines) - 1)))
+    return ranges
+
+
+def orphaned_assertions(path: Path) -> list[tuple[int, str]]:
+    """Functions in a test module that assert, carry no attribute and nobody calls."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lines = text.split("\n")
+    found = []
+    for start, end in test_module_ranges(lines):
+        i = start + 1
+        while i <= end:
+            declaration = FN.match(lines[i])
+            if not declaration:
+                i += 1
+                continue
+            name = declaration.group(2)
+            attrs, j = [], i - 1
+            while j > start and (
+                ATTR.match(lines[j]) or lines[j].lstrip().startswith("//") or not lines[j].strip()
+            ):
+                if ATTR.match(lines[j]):
+                    attrs.append(lines[j])
+                j -= 1
+            # `test]` covers `#[test]`, `test(` covers `#[tokio::test(flavor = ..)]`
+            # and every harness attribute that reads the same way.
+            runs = any("test]" in a or "test(" in a for a in attrs)
+            depth, k, body = 0, i, []
+            while k <= end:
+                body.append(lines[k])
+                depth += lines[k].count("{") - lines[k].count("}")
+                if depth <= 0 and "{" in "".join(body):
+                    break
+                k += 1
+            if not runs and "assert" in "\n".join(body):
+                # A helper is called. That is what makes it a helper, and it is the
+                # one signal that separates the two without reading intent.
+                if len(re.findall(r"\b" + re.escape(name) + r"\b", text)) == 1:
+                    found.append((i + 1, name))
+            i = k + 1
+    return found
+
+
+def rust_sources(root: Path) -> list[Path]:
+    """Every Rust file in the tree that somebody here wrote."""
+    return [p for p in root.rglob("*.rs") if not SKIP_PARTS & set(p.parts)]
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
     components = sorted(
@@ -79,8 +173,14 @@ def main() -> int:
             rel = c.relative_to(root)
             silent.append(f"{rel}: {len(tests)} test file(s) and no `test` script to run them")
 
-    if checked == 0:
-        print("NOTHING WAS READ: no component with test files was found", file=sys.stderr)
+    sources = rust_sources(root)
+    orphans: list[str] = []
+    for src in sources:
+        for line, name in orphaned_assertions(src):
+            orphans.append(f"{src.relative_to(root)}:{line}: `{name}` asserts and has no `#[test]`")
+
+    if checked == 0 and not sources:
+        print("NOTHING WAS READ: no component with test files and no Rust source", file=sys.stderr)
         return 2
 
     if silent:
@@ -92,9 +192,25 @@ def main() -> int:
             "\napp, whatever the component already uses otherwise. CI runs it either way.",
             file=sys.stderr,
         )
+
+    if orphans:
+        print("assertions that nothing runs:", file=sys.stderr)
+        for o in orphans:
+            print(f"  {o}", file=sys.stderr)
+        print(
+            "\nAdd the attribute, then run it - the assertion has never been checked,"
+            "\nso it may be stating something that stopped being true. If it is a helper"
+            "\nrather than a test, it is one nothing calls, and it should go.",
+            file=sys.stderr,
+        )
+
+    if silent or orphans:
         return 1
 
-    print(f"check-tests-run: {checked} component(s) with tests all declare a script to run them")
+    print(
+        f"check-tests-run: {checked} component(s) with tests declare a script,"
+        f" {len(sources)} Rust file(s) hold no assertion nothing runs"
+    )
     return 0
 
 
