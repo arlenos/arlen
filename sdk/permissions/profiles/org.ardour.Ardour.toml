@@ -1,6 +1,11 @@
 # Starting permission profile for Ardour (digital audio workstation). Records,
 # edits and exports audio; Music holds its sessions and renders. No network, no
 # graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id also granted Documents
+# "for projects". A session is a folder the user places, and a folder outside
+# Music is reachable through the file portal - so the wider grant bought nothing
+# the portal does not already give and cost the least-privilege default.
 [info]
 app_id = "org.ardour.Ardour"
 tier = "third-party"

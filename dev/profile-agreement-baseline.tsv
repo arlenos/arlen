@@ -3,21 +3,13 @@
 # decide what the app should get, make every id say it, drop the row.
 #
 # app	the ids that disagree
-ardour	ardour org.ardour.Ardour
-ark	ark org.kde.ark
-blender	blender org.blender.Blender
-bottles	bottles com.usebottles.bottles
 cartridges	cartridges hu.kramo.Cartridges page.kramo.Cartridges
-celluloid	celluloid io.github.celluloid_player.Celluloid
 cemu	cemu info.cemu.Cemu
 clion	clion com.jetbrains.CLion
-collision	collision dev.geopjr.Collision
 czkawka	com.github.qarmin.czkawka czkawka
 datagrip	com.jetbrains.DataGrip datagrip
 decoder	com.belmoussaoui.Decoder com.vixalien.decoder gnome-decoder
 duckstation	duckstation org.duckstation.DuckStation
-eyedropper	com.github.finefindus.eyedropper eyedropper io.github.finefindus.eyedropper
-filezilla	filezilla org.filezillaproject.Filezilla
 firmware	gnome-firmware org.gnome.Firmware
 fluffychat	fluffychat im.fluffychat.Fluffychat
 flycast	flycast org.flycast.Flycast

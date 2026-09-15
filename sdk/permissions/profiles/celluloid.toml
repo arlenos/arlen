@@ -1,5 +1,10 @@
-# Starting permission profile for a video player. Plays the user's local video and
-# music; no network (streaming refined later) and no Knowledge Graph.
+# Starting permission profile for Celluloid (a video player). Plays the user's
+# local video and music; no network (streaming refined later) and no Knowledge
+# Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id had Videos alone.
+# Celluloid is an mpv frontend and opens an audio file as readily as a video one,
+# so Music is function rather than convenience.
 [info]
 app_id = "celluloid"
 tier = "third-party"

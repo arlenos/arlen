@@ -1,10 +1,14 @@
-# Starting permission profile for Collision (a file hash / checksum checker).
-# It reads a chosen file to compute its hash, so it gets Documents and Downloads
-# (where files to verify live) and no network. No Knowledge Graph access.
+# Starting permission profile for Collision (a checksum/hash verifier). Reads a
+# file from Downloads to hash it; no network and no Knowledge Graph. Observe-mode
+# refines it.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id added Documents.
+# The thing you check a hash against is a thing you just downloaded, and a file
+# anywhere else arrives through the file portal, which is how a hash checker gets
+# handed a file in the first place.
 [info]
 app_id = "dev.geopjr.Collision"
 tier = "third-party"
 
 [filesystem]
-documents = true
 downloads = true

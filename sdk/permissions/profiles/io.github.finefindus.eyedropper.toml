@@ -2,6 +2,9 @@
 # screen colour through the portal and copies the colour code to the clipboard,
 # so clipboard write is its function; no network, no user files and no Knowledge
 # Graph access.
+#
+# ONE ANSWER FOR ALL THREE PACKAGING IDS (15 Sep): two of them had no clipboard
+# grant, which leaves the app able to show you a colour and not to hand it over.
 [info]
 app_id = "io.github.finefindus.eyedropper"
 tier = "third-party"

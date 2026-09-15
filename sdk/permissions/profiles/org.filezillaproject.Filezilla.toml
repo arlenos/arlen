@@ -1,12 +1,17 @@
-# Starting permission profile for FileZilla (an FTP/SFTP client). Transfers files
-# over the network (its function); it uploads/downloads arbitrary local files, so
-# it gets Home. No graph.
+# Starting permission profile for FileZilla (an FTP/SFTP client). Needs network
+# to transfer; saves to Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id granted the whole
+# Home, reasoning that it "uploads/downloads arbitrary local files". Uploading an
+# arbitrary file is exactly what the file portal is for - the user picks it and
+# the app receives it - so the Home grant bought the app nothing and gave it
+# everything.
 [info]
 app_id = "org.filezillaproject.Filezilla"
 tier = "third-party"
 
 [filesystem]
-home = true
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

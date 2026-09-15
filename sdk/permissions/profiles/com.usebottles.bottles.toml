@@ -1,6 +1,11 @@
 # Starting permission profile for Bottles (a Wine prefix manager).
 # Downloads runtime components over the network; prefixes live in its own data
 # dir (a launcher grant). No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the bare id granted the whole Home,
+# written as a category template for "a game launcher / Wine frontend". The
+# prefixes are the app's own data rather than the user's files, and that is a
+# launcher grant, not a Home one.
 [info]
 app_id = "com.usebottles.bottles"
 tier = "third-party"
