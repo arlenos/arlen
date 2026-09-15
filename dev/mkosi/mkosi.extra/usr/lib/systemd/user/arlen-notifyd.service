@@ -23,7 +23,7 @@ BusName=org.freedesktop.Notifications
 # at /run/arlen because the bus was a system unit, and a user service that did not
 # pin them dialled a path nothing bound - silently, forever. Keeping them now would
 # recreate that defect pointing the other way.
-Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
+Environment=ARLEN_KNOWLEDGE_SOCKET=/run/user/%U/arlen/knowledge.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-notifyd
 
 # Restart on crash.

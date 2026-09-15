@@ -19,8 +19,8 @@ RestartSec=2
 # System-daemon sockets (knowledge + event-bus, bound under /run/arlen). The
 # engine reads ARLEN_DAEMON_SOCKET (knowledge) with an XDG-runtime fallback, so
 # point it at the system path; the audit ingest socket is per-user (its default).
-Environment=ARLEN_DAEMON_SOCKET=/run/arlen/knowledge.sock
-Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
+Environment=ARLEN_DAEMON_SOCKET=/run/user/%U/arlen/knowledge.sock
+Environment=ARLEN_KNOWLEDGE_SOCKET=/run/user/%U/arlen/knowledge.sock
 # NO SOCKET PINS since 15 Aug: the bus is a per-user service, so the SDK's default
 # of $XDG_RUNTIME_DIR/arlen/ is where it actually binds. These lines used to point
 # at /run/arlen because the bus was a system unit, and a user service that did not

@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""A user service that talks to the event bus must be told where the bus is.
+"""A user service that talks to a per-user daemon must not pin the system path.
 
 INVERTED ON 15 AUG, when the bus moved per-user. What follows is the defect it was
 written for, kept because the shape is the same and only the direction changed.
@@ -35,6 +35,21 @@ the producer if it publishes, the consumer if it subscribes, both if both - or s
 why not. The unit-to-source mapping is derived from the
 ExecStart basename against the Cargo package that builds it, so a renamed daemon
 does not quietly fall out of the check.
+
+WIDENED 15 SEP TO THE KNOWLEDGE SOCKET, because the check was written for the
+shape and then applied to one socket. `arlen-graph.service` binds
+`/run/user/%U/arlen/knowledge.sock` and four user units pinned
+`/run/arlen/knowledge.sock`: the AI engine, the notification daemon, the consent
+broker and the code indexer, in both their image copy and their `dist/` canonical.
+Every one of them dialled a path nothing binds.
+
+The code indexer is the one that shows why a check beats a fix. Its unit carries a
+comment saying, in as many words, that the socket pins were removed on 15 August
+because the bus went per-user and "keeping them now would recreate that defect
+pointing the other way" - and the line directly beneath that comment pinned the
+knowledge socket at `/run/arlen`. The person who removed the bus pins was looking
+at the bus. Three siblings had the same line and nothing was looking at any of
+them.
 """
 
 import pathlib
@@ -60,6 +75,17 @@ PINS = ("ARLEN_PRODUCER_SOCKET", "ARLEN_CONSUMER_SOCKET")
 # opens the socket.
 PRODUCES = ("ARLEN_PRODUCER_SOCKET", "UnixEventEmitter", "EventEmitter")
 CONSUMES = ("ARLEN_CONSUMER_SOCKET", "EventConsumer", "consumer_socket")
+
+# The knowledge daemon's read socket, the same shape one daemon over. Two env
+# names reach it - the daemon's own bind variable and the client one - and both
+# have to be checked, because `ai-engine-daemon` pinned BOTH at the system path.
+READS_GRAPH = (
+    "ARLEN_KNOWLEDGE_SOCKET",
+    "ARLEN_DAEMON_SOCKET",
+    "UnixGraphClient",
+    "UnixGraph::",
+)
+GRAPH_PINS = ("ARLEN_KNOWLEDGE_SOCKET", "ARLEN_DAEMON_SOCKET")
 
 # unit stem -> why it needs no pin despite touching the bus.
 UNPINNED: dict[str, str] = {}
@@ -123,6 +149,8 @@ def bus_use(crate: pathlib.Path) -> set[str]:
                 needed.add("ARLEN_PRODUCER_SOCKET")
             if any(m in text for m in CONSUMES):
                 needed.add("ARLEN_CONSUMER_SOCKET")
+            if any(m in text for m in READS_GRAPH):
+                needed.update(GRAPH_PINS)
     return needed
 
 
@@ -130,6 +158,11 @@ def main() -> int:
     if not UNITS.is_dir():
         print(f"NOTHING WAS READ: no user units under {UNITS}", file=sys.stderr)
         return 2
+    # The image units only. A `dist/` canonical that drifts from its packaged
+    # copy is `check-packaged-units.sh`'s question and it compares them byte for
+    # byte, so reading both trees here would report the same line twice and drag
+    # in dist units the image does not ship (a `busctl` ExecStart, the permission
+    # helper) as unresolved binaries.
     units = sorted(UNITS.glob("*.service"))
     if not units:
         print(f"NOTHING WAS READ: no user units in {UNITS}", file=sys.stderr)
@@ -162,11 +195,12 @@ def main() -> int:
         ]
         if pinned:
             problems.append(
-                f"{stem} runs {binary} ({crate.relative_to(ROOT)}), whose source talks "
-                f"to the event bus, and pins {', '.join(pinned)} at /run/arlen. The bus "
-                f"is a per-user service now, so that path is the one nothing binds - "
-                f"this unit would dial into nothing and retry forever, which is the "
-                f"same defect this check was written for, pointing the other way."
+                f"{stem} runs {binary} ({crate.relative_to(ROOT)}), whose source opens "
+                f"a per-user socket, and pins {', '.join(pinned)} at /run/arlen. Those "
+                f"daemons bind under /run/user/%U/arlen now, so that path is the one "
+                f"nothing binds - this unit would dial into nothing and retry forever, "
+                f"which is the same defect this check was written for, pointing the "
+                f"other way."
             )
 
     # A binary whose crate cannot be found is not a pass: it is a unit this check
@@ -190,8 +224,8 @@ def main() -> int:
         return 1
 
     print(
-        f"{checked} user unit(s) whose daemon opens a bus socket; none pins the "
-        f"system path the per-user bus replaced ({len(UNPINNED)} excused)"
+        f"{checked} user unit(s) whose daemon opens a per-user socket; none pins the "
+        f"system path those daemons moved away from ({len(UNPINNED)} excused)"
     )
     return 0
 

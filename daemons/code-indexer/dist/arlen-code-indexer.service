@@ -21,12 +21,19 @@ Type=notify
 #
 # `arlen-ai-engine-daemon.service` already pins its sockets this way; this is that
 # pattern, applied where a boot log showed it was missing.
-# NO SOCKET PINS since 15 Aug: the bus is a per-user service, so the SDK's default
-# of $XDG_RUNTIME_DIR/arlen/ is where it actually binds. These lines used to point
-# at /run/arlen because the bus was a system unit, and a user service that did not
-# pin them dialled a path nothing bound - silently, forever. Keeping them now would
-# recreate that defect pointing the other way.
-Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
+# NO BUS PINS since 15 Aug: the bus is a per-user service, so the SDK's default of
+# $XDG_RUNTIME_DIR/arlen/ is where it actually binds. Those lines used to point at
+# /run/arlen because the bus was a system unit, and a user service that did not pin
+# them dialled a path nothing bound - silently, forever.
+#
+# THE KNOWLEDGE PIN BELOW SURVIVED THAT CHANGE POINTING AT /run/arlen, which is the
+# exact defect the paragraph above says was removed, on the line under it. The graph
+# daemon binds /run/user/%U/arlen/knowledge.sock (see arlen-graph.service), so this
+# unit dialled nothing until 15 Sep. It is pinned rather than left to the default
+# for the reason the bus pins existed at all: a unit wanted by default.target is
+# already running when `arlen-session` imports the environment, so $XDG_RUNTIME_DIR
+# is not reliably set for it. `check-bus-socket-pins.py` reads this socket now too.
+Environment=ARLEN_KNOWLEDGE_SOCKET=/run/user/%U/arlen/knowledge.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-code-indexer
 Restart=on-failure
 RestartSec=2
