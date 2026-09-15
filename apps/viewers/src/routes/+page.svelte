@@ -80,6 +80,9 @@
   // a waveform and a playhead at 1:13 of 3:40, none of which exists and none of
   // which says so. Found on 9 August in the first desktop-width sweep.
   let noFile = $state(false);
+  /// The backend could not say which file this window was opened for. Distinct
+  /// from a file that failed to open, and from no file at all.
+  let askFailed = $state(false);
 
   /// Whether a failure message is machinery talking rather than something for a
   /// person. A decoder's own words are worth showing - "unsupported JPEG
@@ -154,6 +157,7 @@
         ? $t("v.couldNotOpenNamed", { name: failedName, reason })
         : $t("v.couldNotOpenNamedUnknown", { name: failedName });
     }
+    if (askFailed) return $t("v.couldNotAsk");
     return reason ? $t("v.couldNotOpen", { reason }) : $t("v.couldNotOpenUnknown");
   });
 
@@ -221,6 +225,12 @@
       // survived that fix because only the `!path` case was covered.
       // `readsAsInternal` keeps a runtime error from being quoted at a person.
       const raw = String(e);
+      // NOT `could not open this file`: no file was ever named. What failed is
+      // the ASK - the backend could not say which document this window was
+      // opened for - and a sentence about "this file" points at something the
+      // person was never shown. The PDF reader already says the right shape of
+      // thing for the same case.
+      askFailed = true;
       failed(whyOf(raw), raw);
       return;
     }
