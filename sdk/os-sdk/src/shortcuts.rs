@@ -84,57 +84,55 @@ impl<E: EventEmitter> Shortcuts<E> {
     /// # Errors
     /// [`EmitError::SerializationFailed`] if any shortcut has
     /// an empty or oversized `action` string.
-    pub fn register(
+    pub async fn register(
         &self,
         shortcuts: Vec<Shortcut>,
-    ) -> impl Future<Output = Result<(), EmitError>> + Send + '_ {
-        async move {
-            // Per-call uniqueness check on `action` strings. The
-            // `set_state()` API addresses entries by `action`,
-            // so duplicates would make state mutations
-            // ambiguous and potentially silent. Foundation
-            // §6.4 Listing 13 implicitly assumes uniqueness
-            // (each shortcut has its own action label).
-            //
-            // Duplicates open a silent misroute window where
-            // `set_state("save")` lands on whichever one the
-            // shell happened to look up first.
-            let mut seen = std::collections::HashSet::new();
-            for s in &shortcuts {
-                if s.action.is_empty() {
-                    return Err(EmitError::SerializationFailed(
-                        "Shortcut.action must not be empty".into(),
-                    ));
-                }
-                if s.action.len() > 256 {
-                    return Err(EmitError::SerializationFailed(
-                        "Shortcut.action must be <= 256 chars".into(),
-                    ));
-                }
-                if s.label.is_empty() {
-                    return Err(EmitError::SerializationFailed(
-                        "Shortcut.label must not be empty".into(),
-                    ));
-                }
-                if !seen.insert(s.action.clone()) {
-                    return Err(EmitError::SerializationFailed(format!(
-                        "duplicate Shortcut.action '{}' in register() — \
-                         action strings must be unique within one list",
-                        s.action
-                    )));
-                }
+    ) -> Result<(), EmitError> {
+        // Per-call uniqueness check on `action` strings. The
+        // `set_state()` API addresses entries by `action`,
+        // so duplicates would make state mutations
+        // ambiguous and potentially silent. Foundation
+        // §6.4 Listing 13 implicitly assumes uniqueness
+        // (each shortcut has its own action label).
+        //
+        // Duplicates open a silent misroute window where
+        // `set_state("save")` lands on whichever one the
+        // shell happened to look up first.
+        let mut seen = std::collections::HashSet::new();
+        for s in &shortcuts {
+            if s.action.is_empty() {
+                return Err(EmitError::SerializationFailed(
+                    "Shortcut.action must not be empty".into(),
+                ));
             }
-
-            let payload = ShortcutRegisterPayload {
-                app_id: self.app_id.clone(),
-                shortcuts: shortcuts.into_iter().map(shortcut_to_proto).collect(),
-            };
-            let mut buf = Vec::with_capacity(payload.encoded_len());
-            payload
-                .encode(&mut buf)
-                .expect("ShortcutRegisterPayload encode is infallible");
-            self.emitter.emit("app.shortcut.register", buf).await
+            if s.action.len() > 256 {
+                return Err(EmitError::SerializationFailed(
+                    "Shortcut.action must be <= 256 chars".into(),
+                ));
+            }
+            if s.label.is_empty() {
+                return Err(EmitError::SerializationFailed(
+                    "Shortcut.label must not be empty".into(),
+                ));
+            }
+            if !seen.insert(s.action.clone()) {
+                return Err(EmitError::SerializationFailed(format!(
+                    "duplicate Shortcut.action '{}' in register() — \
+                     action strings must be unique within one list",
+                    s.action
+                )));
+            }
         }
+
+        let payload = ShortcutRegisterPayload {
+            app_id: self.app_id.clone(),
+            shortcuts: shortcuts.into_iter().map(shortcut_to_proto).collect(),
+        };
+        let mut buf = Vec::with_capacity(payload.encoded_len());
+        payload
+            .encode(&mut buf)
+            .expect("ShortcutRegisterPayload encode is infallible");
+        self.emitter.emit("app.shortcut.register", buf).await
     }
 
     /// Diff-update one shortcut's per-instance state. Action

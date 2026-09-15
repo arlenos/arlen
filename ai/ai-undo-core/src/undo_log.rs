@@ -589,7 +589,6 @@ mod tests {
         assert_eq!(ops, vec!["good".to_string()]);
     }
 
-    use super::*;
     use UndoState::*;
 
     #[test]

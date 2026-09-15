@@ -425,34 +425,28 @@ mod tests {
         let token = mint_read_consent(&root, "t1", 3, false, false, now + 60).expect("mint");
 
         // The exact reading it was minted for.
-        assert_eq!(
-            verify_read_consent(&token, &pubkey, "t1", 3, false, false, now).expect("the token verifies without fault"),
-            true
+        assert!(
+            verify_read_consent(&token, &pubkey, "t1", 3, false, false, now).expect("the token verifies without fault")
         );
         // More blocks than consented.
-        assert_eq!(
-            verify_read_consent(&token, &pubkey, "t1", 20, false, false, now).expect("the token verifies without fault"),
-            false
+        assert!(
+            !verify_read_consent(&token, &pubkey, "t1", 20, false, false, now).expect("the token verifies without fault")
         );
         // The user's own commands, which the consent excluded.
-        assert_eq!(
-            verify_read_consent(&token, &pubkey, "t1", 3, true, false, now).expect("the token verifies without fault"),
-            false
+        assert!(
+            !verify_read_consent(&token, &pubkey, "t1", 3, true, false, now).expect("the token verifies without fault")
         );
         // Running blocks, likewise.
-        assert_eq!(
-            verify_read_consent(&token, &pubkey, "t1", 3, false, true, now).expect("the token verifies without fault"),
-            false
+        assert!(
+            !verify_read_consent(&token, &pubkey, "t1", 3, false, true, now).expect("the token verifies without fault")
         );
         // A different terminal.
-        assert_eq!(
-            verify_read_consent(&token, &pubkey, "t2", 3, false, false, now).expect("the token verifies without fault"),
-            false
+        assert!(
+            !verify_read_consent(&token, &pubkey, "t2", 3, false, false, now).expect("the token verifies without fault")
         );
         // After it expires.
-        assert_eq!(
-            verify_read_consent(&token, &pubkey, "t1", 3, false, false, now + 61).expect("the token verifies without fault"),
-            false
+        assert!(
+            !verify_read_consent(&token, &pubkey, "t1", 3, false, false, now + 61).expect("the token verifies without fault")
         );
     }
 
@@ -465,16 +459,14 @@ mod tests {
         let now = 1_000;
 
         let run = mint_run_consent(&root, "ls", &args(&["-l"]), now + 60).expect("mint run");
-        assert_eq!(
-            verify_read_consent(&run, &pubkey, "t1", 3, false, false, now).expect("the token verifies without fault"),
-            false,
+        assert!(
+            !verify_read_consent(&run, &pubkey, "t1", 3, false, false, now).expect("the token verifies without fault"),
             "a run token must not authorize a read",
         );
 
         let read = mint_read_consent(&root, "t1", 3, false, false, now + 60).expect("mint read");
-        assert_eq!(
-            verify_run_consent(&read, &pubkey, "ls", &args(&["-l"]), now).expect("the token verifies without fault"),
-            false,
+        assert!(
+            !verify_run_consent(&read, &pubkey, "ls", &args(&["-l"]), now).expect("the token verifies without fault"),
             "a read token must not authorize a run",
         );
     }

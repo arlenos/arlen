@@ -120,6 +120,10 @@ impl UnixEventConsumer {
 }
 
 impl EventConsumer for UnixEventConsumer {
+    // The trait declares `-> impl Future<..> + Send + 'a`, and an `async fn` in an
+    // impl cannot state that bound, so the manual form is what satisfies the
+    // signature rather than a style choice.
+    #[allow(clippy::manual_async_fn)]
     fn subscribe<'a>(
         &'a self,
         subscribed_types: Vec<String>,

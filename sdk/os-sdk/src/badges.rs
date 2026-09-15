@@ -74,18 +74,16 @@ impl<E: EventEmitter> Badges<E> {
     /// # Errors
     /// [`EmitError::SerializationFailed`] for non-finite
     /// `value` on a `Progress` status.
-    pub fn set(
+    pub async fn set(
         &self,
         badge: BadgeKind,
-    ) -> impl Future<Output = Result<(), EmitError>> + Send + '_ {
-        async move {
-            let payload = badge_to_proto(self.app_id.clone(), badge)?;
-            let mut buf = Vec::with_capacity(payload.encoded_len());
-            payload
-                .encode(&mut buf)
-                .expect("BadgeSetPayload encode is infallible");
-            self.emitter.emit("app.badge.set", buf).await
-        }
+    ) -> Result<(), EmitError> {
+        let payload = badge_to_proto(self.app_id.clone(), badge)?;
+        let mut buf = Vec::with_capacity(payload.encoded_len());
+        payload
+            .encode(&mut buf)
+            .expect("BadgeSetPayload encode is infallible");
+        self.emitter.emit("app.badge.set", buf).await
     }
 
     /// Clear any active badge for this app.

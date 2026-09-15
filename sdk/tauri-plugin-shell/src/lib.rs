@@ -286,21 +286,21 @@ pub(crate) fn relay_for(topic: &str, payload: &[u8], app_id: &str) -> Option<Rel
     match topic {
         "app.menu.action_invoked" => {
             let v = decode_shortcut_invoked(payload)?;
-            (v.app_id == app_id).then(|| Relay::MenuAction {
+            (v.app_id == app_id).then_some(Relay::MenuAction {
                 app_id: v.app_id,
                 action: v.action,
             })
         }
         "app.toolbar.action_invoked" => {
             let v = decode_action_invoked(payload)?;
-            (v.app_id == app_id).then(|| Relay::AppAction {
+            (v.app_id == app_id).then_some(Relay::AppAction {
                 action: v.action,
                 window_id: v.window_id,
             })
         }
         "app.shortcut.action_invoked" => {
             let v = decode_shortcut_invoked(payload)?;
-            (v.app_id == app_id).then(|| Relay::AppAction {
+            (v.app_id == app_id).then_some(Relay::AppAction {
                 action: v.action,
                 window_id: v.window_id,
             })

@@ -703,14 +703,17 @@ async fn handle_consumer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
 
     let claimed_filter = UidFilter::parse(&uid_line).map_err(|e| anyhow::anyhow!(e))?;
     // Fail closed: an unreadable peer cred is not a reason to serve everything.
-    let Some(consumer_uid) = peer_uid(&stream) else {
+    // `attested_uid`, the word `clamp_uid_filter` uses for the same value one
+    // function up, so the call reads the same on both sides. The log field keeps
+    // its name: that is what somebody greps for.
+    let Some(attested_uid) = peer_uid(&stream) else {
         warn!("event-bus: refusing a consumer whose peer credentials cannot be read");
         return Ok(());
     };
-    let uid_filter = clamp_uid_filter(claimed_filter.clone(), consumer_uid);
+    let uid_filter = clamp_uid_filter(claimed_filter.clone(), attested_uid);
     if uid_filter != claimed_filter {
         debug!(
-            consumer_uid,
+            consumer_uid = attested_uid,
             claimed = ?claimed_filter,
             effective = ?uid_filter,
             "event-bus: consumer uid filter narrowed to its attested uid"
@@ -740,7 +743,7 @@ async fn handle_consumer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     let declares_subscribe = peer
         .scope
         .event_bus()
-        .is_some_and(|s| s.declares_subscribe());
+        .is_some_and(arlen_permissions::EventBusPermissions::declares_subscribe);
     let exempt = peer.is_system() && !declares_subscribe;
     let subscribed_types = if exempt {
         subscribed_types
@@ -979,7 +982,7 @@ mod tests {
         }
     }
 
-    use super::*;
+    
 
     #[tokio::test]
     async fn test_uid_from_peercred() {

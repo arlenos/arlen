@@ -177,13 +177,10 @@ fn run_watcher<T, F>(
 
     for path in [defaults_path, user_path].into_iter().flatten() {
         if let Some(parent) = path.parent() {
-            if parent.exists() {
-                if watcher
-                    .watch(parent, RecursiveMode::NonRecursive)
-                    .is_ok()
-                {
-                    watched_dirs.push(parent.to_path_buf());
-                }
+            if parent.exists()
+                && watcher.watch(parent, RecursiveMode::NonRecursive).is_ok()
+            {
+                watched_dirs.push(parent.to_path_buf());
             }
         }
     }

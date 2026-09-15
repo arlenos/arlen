@@ -45,16 +45,13 @@ const SOCKET_NAME: &str = "clipboard.sock";
 /// `clipboard.read.sensitive`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ClipboardLabel {
+    #[default]
     Normal,
     Sensitive,
 }
 
-impl Default for ClipboardLabel {
-    fn default() -> Self {
-        ClipboardLabel::Normal
-    }
-}
 
 /// One clipboard entry as the shell reports it.
 #[derive(Debug, Clone, Serialize, Deserialize)]

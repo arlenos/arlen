@@ -19,21 +19,13 @@ use crate::protocol::{arlen_titlebar_manager_v1, arlen_titlebar_v1};
 ///
 /// Commands write requests via this handle. The Wayland event loop
 /// thread reads events and emits Tauri events.
+#[derive(Default)]
 pub struct TitlebarConnection {
     pub titlebar: Option<arlen_titlebar_v1::ArlenTitlebarV1>,
     pub manager: Option<arlen_titlebar_manager_v1::ArlenTitlebarManagerV1>,
     pub conn: Option<Connection>,
 }
 
-impl Default for TitlebarConnection {
-    fn default() -> Self {
-        Self {
-            titlebar: None,
-            manager: None,
-            conn: None,
-        }
-    }
-}
 
 /// Plugin-managed shared state.
 pub type SharedConnection = Arc<Mutex<TitlebarConnection>>;

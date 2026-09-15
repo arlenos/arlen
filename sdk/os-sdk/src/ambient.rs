@@ -89,40 +89,38 @@ impl<E: EventEmitter> Ambient<E> {
     /// [`EmitError::SerializationFailed`] if `intensity` is
     /// non-finite or > [`MAX_INTENSITY`]. Negative values
     /// clamp to 0.0 silently.
-    pub fn set(
+    pub async fn set(
         &self,
         params: AmbientParams,
-    ) -> impl Future<Output = Result<(), EmitError>> + Send + '_ {
-        async move {
-            if !params.intensity.is_finite() {
-                return Err(EmitError::SerializationFailed(format!(
-                    "AmbientParams.intensity must be finite, got {}",
-                    params.intensity
-                )));
-            }
-            if params.intensity > MAX_INTENSITY {
-                return Err(EmitError::SerializationFailed(format!(
-                    "AmbientParams.intensity must be <= {MAX_INTENSITY}, got {}",
-                    params.intensity
-                )));
-            }
-            let intensity = params.intensity.max(0.0);
-
-            let payload = AmbientSetPayload {
-                app_id: self.app_id.clone(),
-                effect: effect_to_proto(params.effect) as i32,
-                color: color_to_proto(params.color) as i32,
-                intensity,
-                speed: speed_to_proto(params.speed) as i32,
-                reason: params.reason,
-                auto_clear_ms: params.auto_clear_ms.unwrap_or(0),
-            };
-            let mut buf = Vec::with_capacity(payload.encoded_len());
-            payload
-                .encode(&mut buf)
-                .expect("AmbientSetPayload encode is infallible");
-            self.emitter.emit("app.ambient.set", buf).await
+    ) -> Result<(), EmitError> {
+        if !params.intensity.is_finite() {
+            return Err(EmitError::SerializationFailed(format!(
+                "AmbientParams.intensity must be finite, got {}",
+                params.intensity
+            )));
         }
+        if params.intensity > MAX_INTENSITY {
+            return Err(EmitError::SerializationFailed(format!(
+                "AmbientParams.intensity must be <= {MAX_INTENSITY}, got {}",
+                params.intensity
+            )));
+        }
+        let intensity = params.intensity.max(0.0);
+
+        let payload = AmbientSetPayload {
+            app_id: self.app_id.clone(),
+            effect: effect_to_proto(params.effect) as i32,
+            color: color_to_proto(params.color) as i32,
+            intensity,
+            speed: speed_to_proto(params.speed) as i32,
+            reason: params.reason,
+            auto_clear_ms: params.auto_clear_ms.unwrap_or(0),
+        };
+        let mut buf = Vec::with_capacity(payload.encoded_len());
+        payload
+            .encode(&mut buf)
+            .expect("AmbientSetPayload encode is infallible");
+        self.emitter.emit("app.ambient.set", buf).await
     }
 
     /// Clear the active ambient effect for this app
