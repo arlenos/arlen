@@ -63,6 +63,47 @@ const UNIT = (extra = "") =>
 
 console.log("packaged units:");
 
+// THE REVERSE DIRECTION, which prints rather than fails: a finished unit in a
+// crate's `dist/` that no mkosi phase builds or installs. Seven daemons were in
+// that state on 15 September, one of them - the settings broker - with a
+// consequence anybody could hit.
+{
+  const dir = mint("arlen-unbuilt-");
+  try {
+    const dist = path.join(dir, "daemons", "lonely", "dist");
+    const shipped = path.join(dir, "daemons", "probe", "dist");
+    const extra = path.join(dir, "dev", "mkosi", "mkosi.extra", "usr", "lib", "systemd", "user");
+    mkdirSync(dist, { recursive: true });
+    mkdirSync(shipped, { recursive: true });
+    mkdirSync(extra, { recursive: true });
+    mkdirSync(path.join(dir, "dev", "mkosi", "mkosi.build.d"), { recursive: true });
+    writeFileSync(path.join(dist, "arlen-lonely.service"), UNIT(), "utf8");
+    // A packaged pair beside it, because the gate refuses a tree with no
+    // packaged units at all - correctly, and that refusal is not what this
+    // case is about.
+    writeFileSync(path.join(shipped, "arlen-probe.service"), UNIT(), "utf8");
+    writeFileSync(path.join(extra, "arlen-probe.service"), UNIT(), "utf8");
+    execFileSync("git", ["init", "-q"], { cwd: dir });
+    execFileSync("git", ["add", "-A"], { cwd: dir });
+    let out = "";
+    let code = 0;
+    try {
+      out = execFileSync("bash", [gate, dir], { encoding: "utf8" });
+    } catch (e) {
+      code = e.status ?? 1;
+      out = (e.stdout ?? "") + (e.stderr ?? "");
+    }
+    check("a unit no phase builds is reported", out.includes("arlen-lonely.service"),
+          out.trim().split("\n").pop());
+    // Reported, NOT failed: whether a finished daemon belongs on the image is a
+    // packaging decision, and one of the seven is deliberately held back.
+    check("and it does not fail the gate", code === 0, `exit ${code}`);
+  } finally {
+    cleanup(dir);
+  }
+}
+
+
 // The real tree, read-only.
 {
   let r;

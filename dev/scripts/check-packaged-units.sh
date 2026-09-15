@@ -297,6 +297,63 @@ else
   echo "OK: all $built_checked image-built daemon(s) ship their unit."
 fi
 
+# THE OTHER DIRECTION, printed rather than failed. The block above asks whether
+# every daemon the image BUILDS ships a unit. This asks the reverse: a daemon
+# that wrote a unit meant to be started, which no mkosi phase builds or installs.
+#
+# On 15 September that was seven of them, and one had a consequence anybody could
+# hit: `settings-broker` owns writes to apps' config files, the Settings app links
+# its client, and with no broker on the image every per-app settings write fails.
+# The integration suite covers that path and passes, because it spawns the daemon
+# from `target/debug`.
+#
+# It does not fail the gate, because whether a finished daemon belongs on the
+# image is a packaging decision rather than a defect - `online-accounts` is
+# deliberately held back, and says so in the file manager's own comment. What it
+# does is stop the list being something somebody has to go and count.
+# The same two staging mechanisms the loop above reads, captured once so the
+# reverse direction asks about exactly the set that one checked.
+built_crates=$({ grep -h "manifest-path" dev/mkosi/mkosi.build.d/*.chroot 2>/dev/null
+                 grep -hoE '^(daemons|ai)/[a-z0-9-]+:' dev/mkosi/build-image.sh 2>/dev/null
+               } | grep -oE "(daemons|ai)/[a-z0-9-]+" | sort -u || true)
+
+unbuilt=0
+while IFS= read -r unit; do
+  # Everything before `/dist/`: the portal keeps its units one level deeper
+  # (`dist/systemd/`, `dist/dbus/`) and a crate is still a crate.
+  crate=$(printf '%s' "$unit" | sed -E 's|/dist/.*$||')
+  base=$(basename "$unit")
+  # Three ways a unit reaches the machine, and reading only one of them was the
+  # first draft's bug: it reported the kernel layer and the portal, both of
+  # which ARE installed - by a phase that uses `install -Dm644` rather than a
+  # `--manifest-path` build, so the crate list above cannot see them.
+  if printf '%s\n' "$built_crates" | grep -qx "$crate"; then
+    continue
+  fi
+  if grep -rqF "$base" dev/mkosi/mkosi.build.d/ dev/mkosi/build-image.sh 2>/dev/null; then
+    continue
+  fi
+  if grep -rqF "$crate" dev/mkosi/mkosi.build.d/ dev/mkosi/build-image.sh 2>/dev/null; then
+    continue
+  fi
+  if find dev/mkosi/mkosi.extra -name "$base" -not -path '*.wants/*' 2>/dev/null | grep -q .; then
+    continue
+  fi
+  if [ "$unbuilt" -eq 0 ]; then
+    echo "NOT ON THE IMAGE (not failing): a finished unit no phase builds or installs"
+  fi
+  unbuilt=$((unbuilt + 1))
+  echo "  $crate -> $base"
+  # Only the roots that exist: a fixture tree has `daemons/` and no `ai/`, and
+  # `find` over a missing directory returns non-zero, which under this script's
+  # error handling took the whole run down silently after this point.
+done < <(for r in daemons ai; do
+           [ -d "$r" ] && find "$r" -path '*/dist/*.service' -not -path '*/target/*' 2>/dev/null
+         done | sort)
+if [ "$unbuilt" -eq 0 ]; then
+  echo "OK: every daemon that ships a unit is built into the image."
+fi
+
 if [ "$gate_failed" -ne 0 ]; then
   exit 1
 fi
