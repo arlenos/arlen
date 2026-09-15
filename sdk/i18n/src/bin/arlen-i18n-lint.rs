@@ -502,11 +502,6 @@ fn is_displayed_attr(name: &str) -> bool {
             .any(|p| p.eq_ignore_ascii_case(name))
 }
 
-/// Every quoted literal in an expression, unescaped, in order.
-///
-/// Only the string bodies: what is around them (a ternary, a call, an object)
-/// decides nothing here, because the attribute name has already said this
-
 /// Whether the `/` at `i` opens a REGEX literal rather than being division.
 ///
 /// A regex may hold a quote - `/^['"]|['"]$/g` is the ordinary way to strip
@@ -567,6 +562,10 @@ fn skip_regex(chars: &[char], i: usize) -> usize {
     i + 1
 }
 
+/// Every quoted literal in an expression, unescaped, in order.
+///
+/// Only the string bodies: what is around them (a ternary, a call, an object)
+/// decides nothing here, because the attribute name has already said this
 /// position is displayed.
 fn expr_literals(src: &str) -> Vec<String> {
     let chars: Vec<char> = src.chars().collect();
