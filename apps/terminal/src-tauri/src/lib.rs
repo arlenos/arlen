@@ -602,7 +602,7 @@ fn projects_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
 /// sentence about scopes.
 #[tauri::command]
 async fn terminal_projects() -> ReadOutcome<Project> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = "MATCH (p:Project) WHERE p.expired_at IS NULL \
                   RETURN p.id AS id, p.name AS name, p.root_path AS path LIMIT 64";

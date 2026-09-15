@@ -113,7 +113,7 @@ pub struct LensMember {
 /// ask".
 #[tauri::command]
 pub async fn provenance_of(r#ref: String) -> Result<Vec<LensProvenanceStep>, String> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let rows = client
         .query_rows(&file_query(&r#ref))
@@ -138,7 +138,7 @@ pub async fn project_of(
     r#ref: String,
     as_of: Option<i64>,
 ) -> Result<LensProjectAnswer, String> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let rows = client
         .query_rows(&project_query(&r#ref, as_of))
@@ -198,7 +198,7 @@ fn began_after_query(node: &str, t: i64) -> String {
 /// because the read gate refuses an unlabelled one, bare back-reference included.
 #[tauri::command]
 pub async fn related_of(r#ref: String) -> Result<Vec<LensBacklink>, String> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let rows = client
         .query_rows(&backlinks_query(&r#ref))

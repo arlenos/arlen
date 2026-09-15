@@ -449,7 +449,7 @@ impl Manager {
                     .filter(|s| !s.is_empty())
             })
             .unwrap_or_else(|| {
-                os_sdk::runtime::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock")
+                os_sdk::runtime::knowledge_socket_path()
                     .to_string_lossy()
                     .into_owned()
             });

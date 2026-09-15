@@ -22,7 +22,7 @@ pub const NOT_RUNNING: &str = "knowledge-daemon-not-running";
 /// `Err(NOT_RUNNING)` when the socket is absent, so a caller can return it
 /// straight to the frontend with `?`.
 pub fn socket_or_absent() -> Result<std::path::PathBuf, String> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = os_sdk::runtime::knowledge_socket_path();
     if socket.exists() {
         Ok(socket)
     } else {
