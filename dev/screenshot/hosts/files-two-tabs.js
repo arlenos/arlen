@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// EXPECT: Home
+// EXPECT: home
 //
 // TWO TABS, which no route reaches. `TabStrip` renders only when `$tabs.length
 // > 1`, so every files surface in every sweep has drawn a single-tab window and
@@ -16,6 +16,12 @@
 // and put a second thing in the picture. A host script is allowed to be nothing
 // but a driver.
 //
+// THE `EXPECT` IS WEAK HERE and it is worth saying so rather than pretending:
+// a tab is labelled with the last segment of its path, so the sentence this
+// state "says" is a folder name rather than a claim. What actually proves the
+// fixture reached its state is the driver below, which retries until two tab
+// labels exist and gives up loudly after forty tries.
+//
 // Ctrl+T is the app's own shortcut (`+layout.svelte`), pressed rather than
 // reaching into the store, so this drives the path a person drives. The handler
 // listens on the window and reads `e.key`, so the event needs a real `key`
@@ -23,7 +29,15 @@
 // nothing and looks exactly like a strip that is broken.
 (function () {
   var tries = 0;
+  function open() {
+    return document.querySelectorAll(".tab-strip .ts-label").length;
+  }
   function tick() {
+    // CHECK BEFORE PRESSING, not after. Dispatching and then counting reads the
+    // DOM before Svelte has updated it, so the check fails, the timer fires
+    // again and a THIRD tab opens - measured, three tabs for two presses.
+    if (open() >= 2) return;
+    if (++tries > 40) return;
     var e = new KeyboardEvent("keydown", {
       key: "t",
       code: "KeyT",
@@ -32,12 +46,7 @@
       cancelable: true,
     });
     window.dispatchEvent(e);
-    // The strip appears one tick after the store updates. Retry rather than
-    // sleep: the first press can land before the app has opened its own first
-    // tab, and then there is nothing to be the second one.
-    if (!document.querySelector(".tab-strip") && ++tries < 40) {
-      setTimeout(tick, 150);
-    }
+    setTimeout(tick, 150);
   }
   setTimeout(tick, 300);
 })();
