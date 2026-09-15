@@ -18,10 +18,19 @@ files entry got it right, which is the sort of drift that spreads by copying.
 The validator is `desktop-file-utils`. When it is absent this check says so and passes:
 the same convention the rest of the harness follows, since a missing tool must not block
 a commit that has nothing to do with it.
+
+AND THE ONE FIELD THE VALIDATOR CANNOT CHECK: `Icon=`. It is a NAME, not a path - the
+launcher looks it up in the icon theme - so an entry naming an icon nothing installs
+validates perfectly and shows a generic placeholder in the launcher. Every app here
+installs its icon by RENAMING one of its Tauri sources
+(`src-tauri/icons/128x128.png` -> `.../hicolor/128x128/apps/<Icon>.png`), so the entry and
+the install line agree only because somebody typed the same word twice. This asks the
+image whether that word appears on the other side.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -96,6 +105,29 @@ def main() -> int:
                 f"{entry.relative_to(ROOT)}:\n      says X-Arlen-AppId={declared}, but the app "
                 f"installs as {identifier}.\n      The resolver reads the install directory, so "
                 "the entry names an app nothing can be."
+            )
+
+    # The `Icon=` name against the image's install lines.
+    phases = ROOT / "dev/mkosi/mkosi.build.d"
+    phase_text = "\n".join(
+        f.read_text(encoding="utf-8", errors="replace") for f in sorted(phases.glob("*")) if f.is_file()
+    )
+    for entry in found:
+        icon = next(
+            (
+                line[len("Icon=") :].strip()
+                for line in entry.read_text(encoding="utf-8", errors="replace").splitlines()
+                if line.startswith("Icon=")
+            ),
+            None,
+        )
+        if icon is None:
+            continue
+        if not re.search(rf"apps/{re.escape(icon)}\.(png|svg)\b", phase_text):
+            problems.append(
+                f"{entry.relative_to(ROOT)}:\n      says Icon={icon}, and no build phase "
+                f"installs an icon by that name.\n      `Icon=` is a THEME NAME, so the entry "
+                "validates and the launcher draws a placeholder."
             )
 
     validator = shutil.which("desktop-file-validate")

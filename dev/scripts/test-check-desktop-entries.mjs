@@ -31,8 +31,18 @@ try {
   haveValidator = false;
 }
 
-function tree(entries, identifier = "dev.arlen.good") {
+function tree(entries, identifier = "dev.arlen.good", installedIcons = null) {
   const root = mint("desktop-entries-");
+  // The image side. `Icon=` is a theme NAME, so the only thing that can answer
+  // whether it resolves is a build phase installing an icon by that name.
+  mkdirSync(join(root, "dev", "mkosi", "mkosi.build.d"), { recursive: true });
+  const icons = installedIcons ?? Object.keys(entries).map((n) => `arlen-${n}`);
+  writeFileSync(
+    join(root, "dev", "mkosi", "mkosi.build.d", "04-apps.sh.chroot"),
+    icons
+      .map((i) => `install -Dm644 "$SRCDIR/x.png" "$DESTDIR/usr/share/icons/hicolor/128x128/apps/${i}.png"\n`)
+      .join(""),
+  );
   for (const [name, body] of Object.entries(entries)) {
     mkdirSync(join(root, "apps", name, "dist"), { recursive: true });
     writeFileSync(join(root, "apps", name, "dist", `arlen-${name}.desktop`), body);
@@ -136,6 +146,37 @@ if (!haveValidator) {
 }
 
 {
+  // The planted defect: an entry naming an icon no phase installs. It validates
+  // perfectly - `Icon=` is a name, not a path - and the launcher draws a
+  // placeholder.
+  const root = tree(
+    {
+      good: `[Desktop Entry]\nType=Application\nName=Good\nExec=arlen-good %f\nIcon=arlen-nothing-installs-this\nCategories=Utility;\nX-Arlen-AppId=dev.arlen.good\n`,
+    },
+    "dev.arlen.good",
+    ["arlen-good"],
+  );
+  const rc = run(root);
+  rc === 1
+    ? ok("an icon no phase installs is a finding")
+    : bad("an icon no phase installs is a finding", `expected 1, got ${rc}`);
+  cleanup(root);
+}
+
+{
+  // And the near-miss: the same entry with the install line present passes, so
+  // the rung is about the agreement and not about having an Icon key at all.
+  const root = tree({
+    good: `[Desktop Entry]\nType=Application\nName=Good\nExec=arlen-good %f\nIcon=arlen-good\nCategories=Utility;\nX-Arlen-AppId=dev.arlen.good\n`,
+  });
+  const rc = run(root);
+  rc === 0
+    ? ok("an icon a phase installs passes")
+    : bad("an icon a phase installs passes", `expected 0, got ${rc}`);
+  cleanup(root);
+}
+
+{
   const rc = run(join(here, "..", ".."));
   rc === 0
     ? ok("the repository itself passes")
@@ -146,4 +187,4 @@ if (failures) {
   console.log(`\n${failures} case(s) failed`);
   process.exit(1);
 }
-console.log("a hint fails the check, not only a hard error");
+console.log("a hint fails the check, and an icon nothing installs does too");
