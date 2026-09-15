@@ -3,10 +3,6 @@
 # decide what the app should get, make every id say it, drop the row.
 #
 # app	the ids that disagree
-hydrapaper	com.github.maoschanz.HydraPaper org.gabmus.hydrapaper
-insomnia	insomnia rest.insomnia.Insomnia
-iotas	iotas org.gnome.World.Iotas org.gnome.gitlab.cheywood.Iotas
-itch	io.itch.itch itch
 jami	jami org.jami.Jami
 jellyfin-media-player	com.github.iwalton3.jellyfin-media-player io.github.iwalton3.jellyfin-media-player jellyfin-media-player
 kaddressbook	kaddressbook org.kde.kaddressbook
