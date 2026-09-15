@@ -104,6 +104,15 @@ case "$base" in
   # container rather than a label, per the fixture rule.
   */ai/providers|*/ai/providers?*)
     [ "$#" -eq 0 ] && set -- '.add-row button' ;;
+  # THE KIT'S POPOVER-SELECT, which every other row here misses: the four above
+  # are dialogs, and a dropdown is the other overlay shape - it portals its menu
+  # out of the page, closes on an outside click, and owns its own key handling
+  # rather than borrowing the Dialog shell's. So none of the dialog rows says
+  # anything about it, and it is the control this suite has the most of: cursor
+  # and icon themes here, sound cues, providers, displays, printers, languages.
+  # `button.trigger` is the component's own class, read off the rendered DOM.
+  */appearance/system|*/appearance/system?*)
+    [ "$#" -eq 0 ] && set -- 'button.trigger' ;;
 esac
 
 # THE OTHER APPS' MODALS. Every selector here is one `sweep-render-all.sh`
