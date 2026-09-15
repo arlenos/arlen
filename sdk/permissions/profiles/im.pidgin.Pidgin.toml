@@ -1,7 +1,15 @@
-# Starting permission profile for Pidgin (a multi-protocol instant messenger). Network is its function.
+# Starting permission profile for Pidgin (a multi-protocol chat client). Talks to
+# chat servers over the network, which is its function, and saves a transferred
+# file to Downloads. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the reverse-DNS id had no file
+# grant, so a file somebody sent had nowhere to land.
 [info]
 app_id = "im.pidgin.Pidgin"
 tier = "third-party"
+
+[filesystem]
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

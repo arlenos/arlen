@@ -1,9 +1,13 @@
-# Starting permission profile for PrusaSlicer (3D-print slicer). Reads models and
-# writes G-code from Documents; no network (Prusa Connect upload is opt-in and
-# granted on use), no graph.
+# Starting permission profile for PrusaSlicer (a 3D-print slicer). Models and
+# G-code live in Documents, and a model arrives as a download at least as often;
+# no network and no Knowledge Graph.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep): the com.* id had Documents alone,
+# and an STL you just downloaded is the ordinary way a print starts.
 [info]
 app_id = "com.prusa3d.PrusaSlicer"
 tier = "third-party"
 
 [filesystem]
 documents = true
+downloads = true

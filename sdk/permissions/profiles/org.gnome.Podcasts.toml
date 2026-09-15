@@ -1,5 +1,10 @@
-# Starting permission profile for GNOME Podcasts.
-# Fetches and downloads episodes over the network; plays from Music. No graph.
+# Starting permission profile for GNOME Podcasts (a podcast player). Fetches
+# feeds and episodes over the network, which is its function, and keeps a
+# downloaded episode in Music. No Knowledge Graph access.
+#
+# ONE ANSWER FOR BOTH PACKAGING IDS (15 Sep), and each had a different idea of
+# where an episode goes. Music, because a downloaded episode is audio the user
+# keeps and plays, not a file they fetched once.
 [info]
 app_id = "org.gnome.Podcasts"
 tier = "third-party"
