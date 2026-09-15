@@ -1,0 +1,44 @@
+[Unit]
+Description=Arlen Knowledge Graph MCP Server (user service)
+Documentation=https://github.com/arlenos/arlen
+# Bridges the knowledge daemon's read-query socket to an MCP socket the AI
+# daemon connects to. After= only orders startup: the server retries until
+# the graph socket is up, so it does not fail if the daemon is slow.
+After=arlen-graph.service
+
+[Service]
+Type=simple
+# Installed at /usr/bin/arlen-knowledge-mcp on purpose. The AI daemon
+# peer-authenticates this server by resolving its binary path to the app id
+# "knowledge-mcp" (arlen-permissions maps /usr/bin/arlen-<name> to <name>);
+# a different install path would change the id and the AI daemon would
+# refuse the socket as an imposter.
+ExecStart=/usr/bin/arlen-knowledge-mcp
+Restart=on-failure
+RestartSec=2
+
+# Point the server at the graph daemon's read socket. This matches the
+# per-user path the knowledge daemon binds; the server's own resolution
+# would find the same path, but pin it for clarity.
+Environment=ARLEN_KNOWLEDGE_SOCKET=/run/user/%U/arlen/knowledge.sock
+Environment=RUST_LOG=info
+
+# Pure reader: it connects to one Unix socket and serves one Unix socket. It
+# never writes the graph, never touches disk beyond the runtime dir, and
+# never uses the network.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/user/%U/arlen
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

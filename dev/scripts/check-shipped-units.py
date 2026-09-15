@@ -78,7 +78,6 @@ NOT_YET_DEPLOYED: dict[str, str] = {
     # image, when what it has is the one that RUNS COMMANDS and none of the three
     # that only read - which is the opposite of the order anyone would choose.
     "arlen-file-manager-mcp.service": "the three read-only MCP servers wait while terminal-run ships; staging them needs a build phase, a unit and a read profile each (14 Sep)",
-    "arlen-knowledge-mcp.service": "the three read-only MCP servers wait while terminal-run ships; without one the AI reads nothing from the graph on the image (14 Sep)",
     "arlen-system-monitor-mcp.service": "the three read-only MCP servers wait while terminal-run ships; staging them needs a build phase, a unit and a read profile each (14 Sep)",
 }
 

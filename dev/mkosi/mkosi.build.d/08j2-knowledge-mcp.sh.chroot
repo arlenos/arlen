@@ -1,0 +1,51 @@
+#!/bin/sh
+# Phase 8j2 (CHROOT): the knowledge-graph MCP server (arlen-knowledge-mcp), the
+# read-only bridge between the graph daemon's query socket and the MCP socket the
+# AI engine connects to. It exposes two tools - a Cypher `query` and a
+# `describe_schema` that lists the node and edge types so a model can write a
+# valid one - and writes nothing, ever.
+#
+# WHY IT SHIPS NOW, beside phase 8j. Until today the image carried exactly one MCP
+# server: terminal-run, the one that RUNS COMMANDS. None of the three read-only
+# ones were staged, so the AI on a real machine could be asked to run something in
+# a sandbox and could not read a single fact out of the graph the whole system is
+# built around. That is the opposite of the order anyone would choose, and the
+# missing half is this binary.
+#
+# WHAT IT MAY READ is its own profile, not this phase, and the grant beside it
+# (mkosi.extra/var/lib/arlen/permissions/1000/knowledge-mcp.toml) is deliberately
+# the same four fields `ai-agent.toml` already grants. The server reads under its
+# OWN identity, so its grant is the ceiling on anything the AI can ask through it;
+# making that ceiling equal to the engine's own means the bridge is a convenience
+# and not new reach - the engine can already ask the graph directly.
+#
+# Its own standalone cargo workspace (daemons/knowledge-mcp) -> its own target dir
+# in the persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-knowledge-mcp"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the knowledge MCP server - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/knowledge-mcp/Cargo.toml
+
+# Install at /usr/bin/arlen-knowledge-mcp, NOT libexec: arlen-permissions maps
+# /usr/bin/arlen-<name> to the app id <name>, so this path is what gives the
+# server the stable identity `knowledge-mcp` that the AI daemon peer-authenticates
+# and that the profile beside it is filed under. The unit's ExecStart matches, and
+# its own comment says a different path would make the daemon refuse the socket as
+# an imposter.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-knowledge-mcp" \
+    "$DESTDIR/usr/bin/arlen-knowledge-mcp"
+echo ">> staged arlen-knowledge-mcp into the image (/usr/bin, the identity path)"

@@ -186,6 +186,13 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-event-bus.service", "event-bus"),
     ("arlen-graph.service", "knowledge"),
     ("arlen-journald-parser.service", "journald-parser"),
+    // The graph's read-only MCP bridge, packaged 15 September. Until then the
+    // image carried exactly one MCP server - the one that runs commands - and
+    // none of the three that only read, so the AI could be asked to run something
+    // in a sandbox and could not read a fact out of the graph. It installs at
+    // `/usr/bin/arlen-knowledge-mcp`, which is the path rule that produces this
+    // id, so both resolvers name it the same.
+    ("arlen-knowledge-mcp.service", "knowledge-mcp"),
     // Verify images only, and it earns its place rather than borrowing one. With
     // the `/proc` fallback removed, a caller the supervisor has not registered
     // cannot be named at all - so a probe whose whole job is asking the graph
