@@ -68,7 +68,7 @@
         {#each $clock.timers as ti (ti.id)}
           {@const remaining = timerRemaining(ti, $tick)}
           {@const pct = ti.duration_ms > 0 ? (remaining / ti.duration_ms) * 100 : 0}
-          <div class="ti-row">
+          <div class="ti-row" class:done={!ti.paused && remaining === 0}>
             <span class="ti-ring" style={`--p:${pct}`} aria-hidden="true"></span>
             <span class="ti-remaining" class:paused={ti.paused}>{fmtDuration(remaining)}</span>
             <span class="ti-of">/ {fmtDuration(ti.duration_ms)}</span>
@@ -175,6 +175,17 @@
     );
     -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px + 0.5px));
     mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px + 0.5px));
+  }
+  /* A timer reaching zero: its empty ring swells once and settles, the one
+     moment the timers view has of its own (design-system 6b). On
+     --duration-normal, which the theme zeroes under reduced motion. */
+  .ti-row.done .ti-ring {
+    animation: ring-done var(--duration-normal) var(--ease-out);
+  }
+  @keyframes ring-done {
+    50% {
+      transform: scale(1.2);
+    }
   }
   .ti-remaining {
     font-size: var(--clock-list-time, 1.75rem);
