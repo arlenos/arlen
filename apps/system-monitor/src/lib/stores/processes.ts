@@ -286,7 +286,20 @@ export function stopProcessPolling(): void {
 /// BACK in the list. Dropping the row and swallowing the error would tell the
 /// user they killed a process that is still running - a false confirmation of a
 /// destructive action, the one thing this surface must not do.
+/// Pids a Stop was just pressed for, so the table lets their rows go with a
+/// gesture; a process that exits on its own leaves the list at the next poll
+/// and goes at once. Kept long enough to cover a poll, since a group's rows
+/// leave then rather than on the press.
+export const stopping = writable<ReadonlySet<number>>(new Set());
+let stoppingTimer: ReturnType<typeof setTimeout> | undefined;
+function markStopping(ids: number[]): void {
+  stopping.update((s) => new Set([...s, ...ids]));
+  clearTimeout(stoppingTimer);
+  stoppingTimer = setTimeout(() => stopping.set(new Set()), 3000);
+}
+
 export async function stop(id: number, force = false): Promise<void> {
+  markStopping([id]);
   let previous: Process[] = [];
   processes.update((list) => {
     previous = list;
@@ -327,6 +340,7 @@ export function pidsOf(p: Process): number[] {
 export async function stopRow(p: Process, force = false): Promise<void> {
   const ids = pidsOf(p);
   if (ids.length === 1) return stop(ids[0], force);
+  markStopping(ids);
   const failures: unknown[] = [];
   for (const id of ids) {
     try {

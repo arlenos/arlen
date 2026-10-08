@@ -17,10 +17,31 @@
   import { ChevronRight, Cog, Cpu, Camera, Mic, Brain } from "lucide-svelte";
   import type { Process, ProcGroup, ProcStatus, SortKey } from "$lib/stores/processes";
   import { sensorsFor } from "$lib/stores/detail";
-  import { ratesReady } from "$lib/stores/processes";
+  import { ratesReady, stopping } from "$lib/stores/processes";
+  import { cubicOut } from "svelte/easing";
   import { pinnedOrder, rowMatches } from "$lib/freeze";
   import { t, locale } from "$lib/i18n/messages";
   import { formatDecimal } from "@arlen/ui-kit/i18n";
+
+  // A stopped process's row slides a step aside and fades, and its gap closes
+  // behind it, on `--duration-slow` from the root (zeroed under reduce motion).
+  // Only rows a Stop was pressed for take it; the rest leave in 0 ms.
+  function slow(): number {
+    const v = getComputedStyle(document.documentElement).getPropertyValue("--duration-slow").trim();
+    const n = parseFloat(v);
+    if (!Number.isFinite(n)) return 0;
+    return v.endsWith("ms") ? n : n * 1000;
+  }
+  function leave(node: HTMLElement, pid: number) {
+    if (!$stopping.has(pid)) return { duration: 0 };
+    const h = node.offsetHeight;
+    return {
+      duration: slow(),
+      easing: cubicOut,
+      css: (t: number) =>
+        `opacity: ${t}; transform: translateX(${(1 - t) * 16}px); overflow: hidden; height: ${Math.min(1, t * 2) * h}px`,
+    };
+  }
 
   let {
     list,
@@ -364,6 +385,7 @@
           role="row"
           aria-label={p.name}
           data-pid={p.id}
+          out:leave|global={p.id}
           data-critical={p.critical ? "1" : null}
           tabindex={p.id === activeRowId ? 0 : -1}
           onclick={() => {
