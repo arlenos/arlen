@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Chip } from "@arlen/ui-kit/components/ui/chip";
   /// Attachments as a chip row: name, type, size - and a press SAVES the file
   /// out, it never opens or previews it here (the core's named-and-measured
@@ -82,8 +83,12 @@
         </Chip>
       {/each}
     </div>
-    {#if outcome}
-      <p class="outcome" class:bad={!outcome.ok} role="status">{outcome.text}</p>
+    <!-- A refusal is the kit Notice, like every other refusal (design-system 6.11,
+         thread two); a save that worked is one quiet line saying where it went. -->
+    {#if outcome && !outcome.ok}
+      <Notice tone="error" text={outcome.text} />
+    {:else if outcome}
+      <p class="outcome" role="status">{outcome.text}</p>
     {/if}
   </div>
 {/if}
@@ -111,8 +116,5 @@
     margin: 0;
     font-size: var(--text-xs, 12px);
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
-  }
-  .outcome.bad {
-    color: var(--color-warning, #eab308);
   }
 </style>
