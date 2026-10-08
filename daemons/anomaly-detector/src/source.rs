@@ -290,6 +290,16 @@ impl Detector {
             let app_id = String::from_utf8_lossy(payload);
             let alert = Alert::rate_limit(&app_id);
             self.maybe_dispatch(&alert, crate::now_micros()).await;
+        } else if ev_type == "graph.events_dropped" {
+            // The writer lost events its store refused. The payload is the
+            // running total as decimal text; one that will not parse is still a
+            // report that something was lost, so it alerts with no number.
+            let total = std::str::from_utf8(payload)
+                .ok()
+                .and_then(|t| t.trim().parse::<u64>().ok())
+                .unwrap_or(0);
+            let alert = Alert::events_dropped(total);
+            self.maybe_dispatch(&alert, crate::now_micros()).await;
         }
     }
 
@@ -325,6 +335,7 @@ impl Detector {
                     "audit.".to_string(),
                     "window.".to_string(),
                     "graph.rate_limited".to_string(),
+                    "graph.events_dropped".to_string(),
                 ])
                 .await
             {
@@ -355,7 +366,7 @@ impl Detector {
                 }
             };
             tracing::info!(
-                "anomaly detector: subscribed to audit.* + window.* + graph.rate_limited"
+                "anomaly detector: subscribed to audit.* + window.* + graph.rate_limited + graph.events_dropped"
             );
             loop {
                 tokio::select! {
@@ -612,6 +623,19 @@ mod tests {
             "a rate-limit event must raise a per-app RateLimit alert: {:?}",
             d.state.alert_cooldowns
         );
+    }
+
+    #[tokio::test]
+    async fn a_dropped_events_report_raises_one_alert() {
+        let state = State {
+            bootstrapped: true,
+            ..Default::default()
+        };
+        let mut d = detector(state, DetectorConfig::default(), MockSource::new(vec![]), 0);
+        d.handle_event("graph.events_dropped", b"42").await;
+        d.handle_event("graph.events_dropped", b"97").await;
+        let keys: Vec<_> = d.state.alert_cooldowns.keys().filter(|k| k.contains("events-dropped")).collect();
+        assert_eq!(keys.len(), 1, "one condition, one key: {keys:?}");
     }
 
     #[tokio::test]
