@@ -48,6 +48,12 @@ pub struct CommitRow {
     /// `committed_at` sits on the same axis as every other stamp it is compared
     /// with instead of a million times too early.
     pub committed_at: i64,
+    /// When the work was authored (`%at`), in microseconds: the commit's VALID
+    /// time (bitemporal-knowledge-graph.md §3.1, `source_field`). A rebase or a
+    /// cherry-pick moves the committer time to the day it ran; the author time
+    /// stays when the change was made, which is what "when did I write this"
+    /// asks.
+    pub authored_at: i64,
     /// The parent commit SHAs (empty for the root, two for a merge). Written as
     /// `PARENT_OF` edges when both endpoints are ingested nodes.
     pub parents: Vec<String>,
@@ -59,7 +65,7 @@ pub struct CommitRow {
 const FIELD_SEP: char = '\u{1f}';
 
 /// The `git log --format` spec matching [`CommitRow`]: SHA, committer Unix time,
-/// parents, author email, author name, subject - unit-separated, **and in that
+/// author Unix time, parents, author email, author name, subject - unit-separated, **and in that
 /// order for a reason**.
 ///
 /// A commit message, an author name and an author email are written by whoever
@@ -76,7 +82,7 @@ const FIELD_SEP: char = '\u{1f}';
 /// separators they carry. A `\x1f` in an email or a name can still smear the
 /// boundary between those two and the subject; that puts the wrong text in a
 /// column, which is a different thing from forging when a commit happened.
-pub const LOG_FORMAT: &str = "%H%x1f%ct%x1f%P%x1f%ae%x1f%an%x1f%s";
+pub const LOG_FORMAT: &str = "%H%x1f%ct%x1f%at%x1f%P%x1f%ae%x1f%an%x1f%s";
 
 /// Parse `git log --format` output (one commit per line, [`FIELD_SEP`]-separated
 /// fields) into commit rows. A line with too few fields, an empty SHA, or a
@@ -87,12 +93,18 @@ pub fn parse_git_log(output: &str) -> Vec<CommitRow> {
 }
 
 fn parse_line(line: &str) -> Option<CommitRow> {
-    // Bounded, so the sixth field is the rest of the line: a subject carrying its
+    // Bounded, so the seventh field is the rest of the line: a subject carrying its
     // own separators lands wholly in the subject instead of shifting what follows
     // it. See [`LOG_FORMAT`] for what that prevents.
-    let mut f = line.splitn(6, FIELD_SEP);
+    let mut f = line.splitn(7, FIELD_SEP);
     let id = f.next()?.trim().to_string();
     let committed_at = f
+        .next()?
+        .trim()
+        .parse::<i64>()
+        .ok()?
+        .checked_mul(1_000_000)?;
+    let authored_at = f
         .next()?
         .trim()
         .parse::<i64>()
@@ -118,6 +130,7 @@ fn parse_line(line: &str) -> Option<CommitRow> {
         author,
         author_email,
         committed_at,
+        authored_at,
         parents,
     })
 }
@@ -154,8 +167,8 @@ pub async fn ingest_commits(graph: &GraphHandle, commits: &[CommitRow]) -> Resul
             .write(format!(
                 "MERGE (c:Commit {{id: '{id}'}}) \
                  SET c.message = '{message}', c.author = '{author}', \
-                 c.author_email = '{email}', c.committed_at = {}",
-                c.committed_at
+                 c.author_email = '{email}', c.committed_at = {}, c.authored_at = {}",
+                c.committed_at, c.authored_at
             ))
             .await?;
         // The DAG edge to each parent. MATCH both commits so an edge is created
@@ -419,10 +432,12 @@ mod tests {
 
     #[test]
     fn parses_the_git_log_format_field_by_field() {
-        // A real LOG_FORMAT line: sha, time, parents, email, name, subject. A
-        // subject with a comma and a quote must survive intact.
-        let out = "abc123\u{1f}1700000000\u{1f}def456 aaa111\u{1f}tim@x.org\u{1f}Tim\u{1f}fix: the bug, \"finally\"\n\
-                   def456\u{1f}1699999999\u{1f}\u{1f}ada@x.org\u{1f}Ada\u{1f}initial commit\n";
+        // A real LOG_FORMAT line: sha, committer time, author time, parents,
+        // email, name, subject. A subject with a comma and a quote must survive
+        // intact. The first commit was rebased: authored a day before it was
+        // committed.
+        let out = "abc123\u{1f}1700000000\u{1f}1699913600\u{1f}def456 aaa111\u{1f}tim@x.org\u{1f}Tim\u{1f}fix: the bug, \"finally\"\n\
+                   def456\u{1f}1699999999\u{1f}1699999999\u{1f}\u{1f}ada@x.org\u{1f}Ada\u{1f}initial commit\n";
         let rows = parse_git_log(out);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].id, "abc123");
@@ -430,6 +445,7 @@ mod tests {
         assert_eq!(rows[0].author, "Tim");
         assert_eq!(rows[0].author_email, "tim@x.org");
         assert_eq!(rows[0].committed_at, 1_700_000_000_000_000, "git's seconds, as microseconds");
+        assert_eq!(rows[0].authored_at, 1_699_913_600_000_000, "the author time, the valid time");
         // A merge commit has two parents; the root has none.
         assert_eq!(rows[0].parents, vec!["def456".to_string(), "aaa111".to_string()]);
         assert_eq!(rows[1].id, "def456");
@@ -449,7 +465,7 @@ mod tests {
         // have believed it. Here the same string reaches the parser last, where
         // the bounded split keeps it whole.
         let forged = "Innocent\u{1f}FORGED-AUTHOR\u{1f}forged@evil\u{1f}9999999999";
-        let out = format!("abc123\u{1f}1700000000\u{1f}p1\u{1f}real@x.org\u{1f}Real Name\u{1f}{forged}\n");
+        let out = format!("abc123\u{1f}1700000000\u{1f}1700000000\u{1f}p1\u{1f}real@x.org\u{1f}Real Name\u{1f}{forged}\n");
         let rows = parse_git_log(&out);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].author, "Real Name", "the author git reported, not the one the message names");
@@ -464,9 +480,10 @@ mod tests {
         // Too few fields, an empty SHA, and a non-numeric time each drop the line
         // rather than fabricate a partial commit.
         let out = "just-a-hash\u{1f}only two\n\
-                   \u{1f}1\u{1f}\u{1f}a@x\u{1f}A\u{1f}empty sha\n\
-                   ok123\u{1f}notanumber\u{1f}\u{1f}a@x\u{1f}A\u{1f}good\n\
-                   real\u{1f}5\u{1f}\u{1f}a@x\u{1f}A\u{1f}good\n";
+                   \u{1f}1\u{1f}1\u{1f}\u{1f}a@x\u{1f}A\u{1f}empty sha\n\
+                   ok123\u{1f}notanumber\u{1f}1\u{1f}\u{1f}a@x\u{1f}A\u{1f}good\n\
+                   badauthor\u{1f}5\u{1f}x\u{1f}\u{1f}a@x\u{1f}A\u{1f}good\n\
+                   real\u{1f}5\u{1f}5\u{1f}\u{1f}a@x\u{1f}A\u{1f}good\n";
         let rows = parse_git_log(out);
         assert_eq!(rows.len(), 1, "only the well-formed line survives");
         assert_eq!(rows[0].id, "real");
@@ -491,6 +508,7 @@ mod tests {
             author: "Tim".into(),
             author_email: "tim@x.org".into(),
             committed_at: 42,
+            authored_at: 41,
             parents: vec![],
         }];
         ingest_commits(&graph, &commits).await.unwrap();
@@ -516,6 +534,7 @@ mod tests {
             author: "A".into(),
             author_email: "a@x".into(),
             committed_at: 1,
+            authored_at: 1,
             parents,
         };
         // Ingest the child FIRST, whose parent is not yet a node: no edge is made.
@@ -551,6 +570,7 @@ mod tests {
             author: "A".into(),
             author_email: "a@x".into(),
             committed_at: 1,
+            authored_at: 1,
             parents: vec![],
         }])
         .await
@@ -625,6 +645,7 @@ mod tests {
             author: "A".into(),
             author_email: "a@x".into(),
             committed_at: 1,
+            authored_at: 1,
             parents: vec![],
         }])
         .await

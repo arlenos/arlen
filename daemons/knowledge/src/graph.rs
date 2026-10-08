@@ -729,6 +729,7 @@ fn create_schema(conn: &Connection) -> Result<()> {
             author       STRING,
             author_email STRING,
             committed_at INT64,
+            authored_at  INT64,
             PRIMARY KEY(id)
         )",
     )

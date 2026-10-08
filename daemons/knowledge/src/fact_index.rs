@@ -10,8 +10,8 @@
 //! - a type with a time column is read forward from a per-label mark, `(time,
 //!   id)`, so every pass reads only what arrived since the last one and equal
 //!   times across a batch boundary are neither lost nor read forever;
-//! - a type without one is small or slow-changing (apps, branches, endpoints,
-//!   action items, code symbols) and is re-read whole, bounded, but only when its
+//! - a type without one, or whose times do not grow with arrival (commits), is
+//!   small or slow-changing (apps, branches, endpoints, action items, code symbols) and is re-read whole, bounded, but only when its
 //!   count has changed. An edit that keeps the count, an app renamed in place, is
 //!   picked up the next time anything of that type is added; named, not hidden.
 //!
@@ -44,7 +44,10 @@ pub(crate) const SPECS: &[Spec] = &[
         time: Some("started_at"),
         text: &[("title", "title"), ("summary", "summary"), ("participants", "participants")],
     },
-    Spec { label: "Commit", time: Some("committed_at"), text: &[("message", "message"), ("author", "author")] },
+    // Untimed though it has two times: neither grows as commits arrive. Fetching
+    // an old branch ingests commits dated before the mark, and a forward read
+    // would skip every one of them.
+    Spec { label: "Commit", time: None, text: &[("message", "message"), ("author", "author")] },
     Spec {
         label: "Event",
         time: Some("timestamp"),
