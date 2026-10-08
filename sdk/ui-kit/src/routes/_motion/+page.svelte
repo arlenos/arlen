@@ -21,6 +21,14 @@ SPDX-License-Identifier: AGPL-3.0-only
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { Notice } from "$lib/components/ui/notice";
   import { Button } from "$lib/components/ui/button";
+  import { SegmentedControl } from "$lib/components/ui/segmented-control";
+
+  const views = [
+    { value: "day", label: "Day" },
+    { value: "week", label: "Week" },
+    { value: "month", label: "Month" },
+    { value: "agenda", label: "Agenda list" },
+  ];
   import {
     Collapsible,
     CollapsibleTrigger,
@@ -54,7 +62,7 @@ SPDX-License-Identifier: AGPL-3.0-only
           a.pause();
           a.currentTime = at;
         }
-      }, 30);
+      }, 80);
     }
   });
 </script>
@@ -118,6 +126,14 @@ SPDX-License-Identifier: AGPL-3.0-only
       <Button id="motion-press">Save</Button>
       <Button variant="outline">Cancel</Button>
       <Button variant="ghost" size="sm">Undo</Button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tabs</h2>
+    <div class="row">
+      <SegmentedControl options={views} value={flipped ? "agenda" : "day"} ariaLabel="view" />
+      <SegmentedControl options={views} value={flipped ? "day" : "month"} size="compact" ariaLabel="compact view" />
     </div>
   </section>
 </div>
