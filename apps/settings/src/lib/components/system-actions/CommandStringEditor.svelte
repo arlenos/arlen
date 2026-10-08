@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
   import { t } from "$lib/i18n/messages";
   /// Inline editor for system-action command strings.
   ///
@@ -128,7 +129,7 @@
   </div>
 {:else}
   <div class="display">
-    <code class="value" title={value}>{value}</code>
+    <code class="value"><OverflowLabel text={value} /></code>
     <div class="actions">
       {#if isModified}
         <Button

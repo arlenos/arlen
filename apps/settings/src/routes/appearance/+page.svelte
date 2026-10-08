@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { t } from "$lib/i18n/messages";
   /// Appearance landing: the 80%-user hub. Pick a theme, nudge the two or three
   /// high-leverage knobs, step into the six deep pages for full control, and see
@@ -187,9 +188,17 @@
       <Row label={$t("s.appr.accent")} description={$t("s.appr.accentHint")} overridden={isColOv($coloursOv, "accent")} onreset={() => resetColorOverride("accent")} id="quick-accent">
         {#snippet control()}
           <span class="cf">
-            <label class="cf-swatch" style={`background:${accent}`} title={$t("s.appr.pickAccent")}>
-              <input type="color" value={accent} oninput={(e) => setColorOverride("accent", e.currentTarget.value)} aria-label={$t("s.appr.accentColour")} />
-            </label>
+            <!-- A colour-only control: the kit tooltip says what it does (§6.4). -->
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <label {...props} class="cf-swatch" style={`background:${accent}`}>
+                    <input type="color" value={accent} oninput={(e) => setColorOverride("accent", e.currentTarget.value)} aria-label={$t("s.appr.accentColour")} />
+                  </label>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.TooltipContent>{$t("s.appr.pickAccent")}</Tooltip.TooltipContent>
+            </Tooltip.Root>
           </span>
         {/snippet}
       </Row>

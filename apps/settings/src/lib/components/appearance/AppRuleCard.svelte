@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { t } from "$lib/i18n/messages";
   /// Per-app notification rule card. Expandable row that exposes the
   /// four daemon-supported overrides (`enabled`, `suppress`,
@@ -53,15 +54,25 @@
         <span class="badge muted">{$t("s.rule.silent")}</span>
       {/if}
     </button>
-    <button
-      type="button"
-      class="remove"
-      title={$t("s.rule.remove")}
-      aria-label={$t("s.rule.remove")}
-      onclick={onremove}
-    >
-      <X size={12} strokeWidth={2.5} />
-    </button>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <button
+            {...props}
+            type="button"
+            class="remove"
+            aria-label={$t("s.rule.remove")}
+            onclick={(e) => {
+              (props.onclick as ((ev: MouseEvent) => void) | undefined)?.(e);
+              onremove();
+            }}
+          >
+            <X size={12} strokeWidth={2.5} />
+          </button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.TooltipContent>{$t("s.rule.remove")}</Tooltip.TooltipContent>
+    </Tooltip.Root>
   </div>
 
   {#if expanded}
