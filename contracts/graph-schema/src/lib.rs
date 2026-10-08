@@ -10,10 +10,11 @@
 //! This is a hand-maintained mirror of the `CREATE NODE TABLE` /
 //! `CREATE REL TABLE` statements in `daemons/knowledge/src/graph.rs`. When the
 //! Knowledge Graph schema changes there, this file must be updated to
-//! match. Phase 9-γ should replace the hardcoded tables with a
-//! dynamic load from the Knowledge Daemon (which owns the Foundation
-//! §3 schema registry), removing the sync burden. Until then the
-//! mismatch risk is a documented, accepted limitation.
+//! match, and `dev/scripts/check-graph-schema-contract.py` fails until it is:
+//! every table and column the DDL declares is listed here or named in that
+//! gate's exclusions with a reason. On 8 October this listed 14 of 22 node and
+//! 11 of 26 relationship tables, so the AI query layer could not name `Command`,
+//! `Meeting` or `CO_ACCESSED`.
 
 /// Property type of a graph node field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +103,7 @@ const NODES: &[NodeSchema] = &[
             ("path", FieldType::Text),
             ("app_id", FieldType::Text),
             ("last_accessed", FieldType::Int),
+            ("last_cgroup_id", FieldType::Int),
         ],
     },
     NodeSchema {
@@ -119,6 +121,10 @@ const NODES: &[NodeSchema] = &[
             ("type", FieldType::Text),
             ("timestamp", FieldType::Int),
             ("source", FieldType::Text),
+            ("title", FieldType::Text),
+            ("app_id", FieldType::Text),
+            ("service", FieldType::Text),
+            ("kind", FieldType::Text),
         ],
     },
     NodeSchema {
@@ -129,6 +135,9 @@ const NODES: &[NodeSchema] = &[
             ("action", FieldType::Text),
             ("subject", FieldType::Text),
             ("timestamp", FieldType::Int),
+            ("app_id", FieldType::Text),
+            ("pid", FieldType::Int),
+            ("inferred", FieldType::Bool),
         ],
     },
     NodeSchema {
@@ -147,6 +156,7 @@ const NODES: &[NodeSchema] = &[
             ("confidence", FieldType::Int),
             ("promoted", FieldType::Bool),
             ("archived_at", FieldType::Int),
+            ("expired_at", FieldType::Int),
         ],
     },
     NodeSchema {
@@ -235,6 +245,49 @@ const NODES: &[NodeSchema] = &[
         label: "NetworkEndpoint",
         fields: &[("id", FieldType::Text), ("protocol", FieldType::Text)],
     },
+    // One version of an annotation's data. The `Annotation` node is the identity;
+    // its value is the live `HAS_VERSION` edge's target, closed and appended on
+    // every change, so a reader asks for the version, not `Annotation.data`.
+    NodeSchema {
+        label: "AnnotationVersion",
+        fields: &[
+            ("id", FieldType::Text),
+            ("data", FieldType::Text),
+            ("recorded_at", FieldType::Int),
+        ],
+    },
+    // A shell command the terminal ran, with where and how it ended.
+    NodeSchema {
+        label: "Command",
+        fields: &[
+            ("id", FieldType::Text),
+            ("command", FieldType::Text),
+            ("cwd", FieldType::Text),
+            ("exit_code", FieldType::Int),
+            ("duration_ms", FieldType::Int),
+            ("origin", FieldType::Text),
+            ("ran_at", FieldType::Int),
+        ],
+    },
+    // A recorded meeting's note and its action items.
+    NodeSchema {
+        label: "Meeting",
+        fields: &[
+            ("id", FieldType::Text),
+            ("title", FieldType::Text),
+            ("summary", FieldType::Text),
+            ("participants", FieldType::Text),
+            ("started_at", FieldType::Int),
+        ],
+    },
+    NodeSchema {
+        label: "ActionItem",
+        fields: &[
+            ("id", FieldType::Text),
+            ("text", FieldType::Text),
+            ("owner", FieldType::Text),
+        ],
+    },
 ];
 
 /// Relationship tables. Mirrors `daemons/knowledge/src/graph.rs`.
@@ -297,6 +350,66 @@ const EDGES: &[EdgeSchema] = &[
         label: "REFERENCES",
         from: "CodeSymbol",
         to: "CodeSymbol",
+    },
+    EdgeSchema {
+        label: "ACCESSED_IN",
+        from: "File",
+        to: "Session",
+    },
+    EdgeSchema {
+        label: "MODIFIED_BY",
+        from: "File",
+        to: "App",
+    },
+    EdgeSchema {
+        label: "PERFORMED_IN",
+        from: "UserAction",
+        to: "Session",
+    },
+    EdgeSchema {
+        label: "CO_ACCESSED",
+        from: "File",
+        to: "File",
+    },
+    EdgeSchema {
+        label: "LINKS_TO",
+        from: "File",
+        to: "File",
+    },
+    EdgeSchema {
+        label: "LAUNCHED",
+        from: "App",
+        to: "App",
+    },
+    EdgeSchema {
+        label: "CONNECTED_TO",
+        from: "App",
+        to: "NetworkEndpoint",
+    },
+    EdgeSchema {
+        label: "COMMITTED_IN",
+        from: "Commit",
+        to: "Project",
+    },
+    EdgeSchema {
+        label: "HEAD_AT",
+        from: "Branch",
+        to: "Commit",
+    },
+    EdgeSchema {
+        label: "PARENT_OF",
+        from: "Commit",
+        to: "Commit",
+    },
+    EdgeSchema {
+        label: "HAS_VERSION",
+        from: "Annotation",
+        to: "AnnotationVersion",
+    },
+    EdgeSchema {
+        label: "HAS_ACTION_ITEM",
+        from: "Meeting",
+        to: "ActionItem",
     },
 ];
 
@@ -388,10 +501,11 @@ mod tests {
     #[test]
     fn schema_has_expected_table_counts() {
         let s = GraphSchema::knowledge_graph();
-        // 10 activity-graph nodes + CodeSymbol (code-graph, CG-R5) + the reserved
-        // Commit/Branch (foundation §04 pre-provision) + NetworkEndpoint.
-        assert_eq!(s.node_labels().count(), 14);
-        // 7 activity-graph edges + DEFINES/CALLS/IMPORTS/REFERENCES (code-graph).
-        assert_eq!(s.edge_labels().count(), 11);
+        // Every node and relationship table the DDL declares, less the ones
+        // `check-graph-schema-contract.py` excludes by name and reason (the
+        // authority projection and the merge-suggestion queue). That gate is
+        // what keeps this in step; the counts only catch an entry lost here.
+        assert_eq!(s.node_labels().count(), 18);
+        assert_eq!(s.edge_labels().count(), 23);
     }
 }

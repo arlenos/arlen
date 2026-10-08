@@ -283,6 +283,7 @@ jobs:
           python3 dev/scripts/check-opener-args.py
           python3 dev/scripts/check-grant-visibility.py
           python3 dev/scripts/check-graph-columns.py
+          python3 dev/scripts/check-graph-schema-contract.py
           python3 dev/scripts/check-webview-sandbox.py
           python3 dev/scripts/check-setup-runtime.py
           python3 dev/scripts/check-dev-prefix-admission.py
@@ -331,6 +332,7 @@ jobs:
           node dev/scripts/test-check-setup-runtime.mjs
           node dev/scripts/test-check-refusal-shape.mjs
           node dev/scripts/test-check-graph-columns.mjs
+          node dev/scripts/test-check-graph-schema-contract.mjs
           node dev/scripts/test-check-invokes.mjs
           node dev/scripts/test-check-invoke-scope.mjs
           node dev/scripts/test-check-window-grants.mjs
