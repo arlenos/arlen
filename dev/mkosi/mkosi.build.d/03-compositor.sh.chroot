@@ -43,10 +43,16 @@ cd "$src"
 arlen="https://github.com/arlenos/arlen"
 theme="$SRCDIR/arlen/sdk/theme"
 permissions="$SRCDIR/arlen/sdk/permissions"
+# Every cargo call in this phase takes the patch: on 8 October the second one,
+# `ghost-repro` below, did not, and went back to cloning the monorepo after the
+# compositor itself had built from the tree.
+from_tree() {
+    cargo "$@" \
+        --config "patch.\"$arlen\".arlen-theme.path=\"$theme\"" \
+        --config "patch.\"$arlen\".arlen-permissions.path=\"$permissions\""
+}
 echo ">> cargo build cosmic-comp - Debian-native ($(cargo --version)), arlen crates from the mounted tree"
-cargo build --release --bin cosmic-comp \
-    --config "patch.\"$arlen\".arlen-theme.path=\"$theme\"" \
-    --config "patch.\"$arlen\".arlen-permissions.path=\"$permissions\""
+from_tree build --release --bin cosmic-comp
 # Installed as `arlen-compositor`, not under the upstream fork's name, and this
 # is a security property rather than tidiness. `detect_tier` places a binary by
 # path prefix - /usr/bin/arlen- or /usr/lib/arlen/ - so `/usr/bin/cosmic-comp`
@@ -67,7 +73,7 @@ echo ">> staged the compositor into the image as arlen-compositor"
 # ARLEN_IMAGE_TOOLS=0 leaves it out. This is the verification image; a release
 # image should not carry it.
 if [ "${ARLEN_IMAGE_TOOLS:-1}" != "0" ]; then
-    cargo build --release --features test-client --bin ghost-repro
+    from_tree build --release --features test-client --bin ghost-repro
     install -Dm755 "$CARGO_TARGET_DIR/release/ghost-repro" "$DESTDIR/usr/bin/ghost-repro"
     echo ">> staged ghost-repro into the image"
 fi
