@@ -14,11 +14,17 @@ use lbug::{Connection, Database, SystemConfig, Value};
 /// `--test-threads=1`, and why a bare `cargo test` here fails for everyone who
 /// has not read that file. One gigabyte is more than any test in this crate
 /// writes, and two dozen of those coexist without noticing.
+///
+/// The buffer pool was 64 MB and is 256 MB since 8 October: with the journal, the
+/// curation and mention tables, a full single-threaded run failed about one time
+/// in three on `Buffer manager exception: Unable to allocate memory! The buffer
+/// pool is full`, in whichever linking test it happened to reach (measured; two
+/// full runs green after the change). Sixteen parallel tests at 256 MB are 4 GB.
 pub(crate) fn system_config() -> SystemConfig {
     if cfg!(test) {
         SystemConfig::default()
             .max_db_size(1 << 30)
-            .buffer_pool_size(64 << 20)
+            .buffer_pool_size(256 << 20)
     } else {
         SystemConfig::default()
     }
