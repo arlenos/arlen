@@ -243,13 +243,16 @@
     void initAppMenu();
     // PRESENCE IS EPHEMERAL, so somebody has to end it: the SDK emits and leaves
     // the WHEN to the app, and for a reader it is the window losing focus.
+    // Without a toplevel (vite) there is nothing to lose focus, and the guard is
+    // not optional: `getCurrentWindow()` throws before any promise exists, so a
+    // `.catch` cannot see it, and the throw took the whole mount with it - the
+    // fixture document was set and never drawn.
+    if (!tauriAvailable) return;
     void getCurrentWindow()
       .onFocusChanged(({ payload: focused }) => {
         void publishPresence(focused ? ($doc?.path ?? null) : null, $doc?.pages ?? 0);
       })
-      .catch(() => {
-        // No toplevel (vite): nothing to lose focus, so nothing to clear.
-      });
+      .catch(() => {});
   });
 
   const title = $derived($doc ? $doc.path.split("/").pop() : null);
