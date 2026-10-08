@@ -4,8 +4,8 @@
 # night of 9 August, a gate went red for four hours because a verification pass
 # ran "the checkers" from a list in my head that was missing one.
 #
-# The gates are independent, so they run concurrently and their output is
-# re-ordered back into CI's order afterwards. Serial, the sweep took 46 seconds,
+# The gates are independent, so they run concurrently, a few at a time, and their
+# output is re-ordered back into CI's order afterwards. Serial, the sweep took 46 seconds,
 # which is enough for a pre-commit hook to feel like something to skip - and a
 # hook that gets skipped is the same as no hook. This is the difference between
 # a check that runs before each commit and one that runs when someone remembers.
@@ -89,8 +89,24 @@ for cmd in "${lints[@]}"; do
   names+=("$(sed -n 's/.*--bin \([A-Za-z0-9_-]*\).*/\1/p' <<<"$cmd")")
 done
 
+# AT MOST `ARLEN_GATE_JOBS` AT A TIME (default 4). Every gate used to start at
+# once: 177 processes on 16 threads per commit, on a machine three agents and a
+# CI container share, and the load reached 110 at 17:15 on 8 October. Measured
+# the same day on the same tree: all at once took 81 s and took the load from 4
+# to 51; four at a time took 147 s and left the load falling instead. The
+# order of the report below does not depend on the order things finish in.
+jobs=${ARLEN_GATE_JOBS:-4}
+case "$jobs" in ''|*[!0-9]*|0) jobs=4 ;; esac
+
+slot() {
+  while [ "$(jobs -rp | wc -l)" -ge "$jobs" ]; do
+    wait -n
+  done
+}
+
 for i in "${!scripts[@]}"; do
   script="${scripts[$i]}"
+  slot
   {
     case "$script" in
       *.py) python3 "$script" >"$out/$i.log" 2>&1 ;;
@@ -104,6 +120,7 @@ base=${#scripts[@]}
 for j in "${!lints[@]}"; do
   i=$((base + j))
   cmd="${lints[$j]}"
+  slot
   {
     eval "$cmd" >"$out/$i.log" 2>&1
     echo $? >"$out/$i.rc"
