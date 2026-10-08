@@ -1,5 +1,6 @@
 <script lang="ts">
   import { kt } from "../../../i18n/messages.kit";
+  import { Chip } from "../chip/index.js";
   /// Add/remove list of short string chips (app-id allow/suppress lists,
   /// autonomous-apps, tags). Canonical replacement for the bespoke `chips` +
   /// inline add/remove markup. Self-contained text-add by default; bindable
@@ -48,16 +49,7 @@
 
 <div class="chiplist {className ?? ''}" {id}>
   {#each items as item (item)}
-    <span class="chip">
-      <span class="chip-label">{item}</span>
-      {#if !disabled}
-        <button
-          type="button"
-          class="chip-x"
-          aria-label={`Remove ${item}`}
-          onclick={() => remove(item)}>×</button>
-      {/if}
-    </span>
+    <Chip label={item} onremove={disabled ? undefined : () => remove(item)} />
   {/each}
   {#if !disabled}
     <!-- Commit only on Enter (explicit), never on blur: a half-typed or invalid
@@ -81,40 +73,8 @@
     gap: 6px;
   }
 
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    height: var(--height-control-compact, 26px);
-    padding: 0 4px 0 8px;
-    font-size: var(--text-xs);
-    color: var(--foreground);
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
-    border-radius: var(--radius-chip, 4px);
-    max-width: 100%;
-  }
 
-  .chip-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
-  .chip-x {
-    appearance: none;
-    border: none;
-    background: transparent;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    font-size: var(--text-base);
-    line-height: 1;
-    padding: 0 2px;
-    border-radius: var(--radius-chip, 4px);
-  }
-  .chip-x:hover {
-    color: var(--foreground);
-    background: color-mix(in srgb, var(--foreground) 12%, transparent);
-  }
 
   .chip-input {
     flex: 1;
