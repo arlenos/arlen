@@ -43,7 +43,10 @@ pub struct CommitRow {
     pub author: String,
     /// The author's email.
     pub author_email: String,
-    /// The commit time, Unix seconds.
+    /// The commit time, microseconds since the Unix epoch - the graph's one time
+    /// unit (`time.rs`). git reports seconds (`%ct`); the parse scales them, so a
+    /// `committed_at` sits on the same axis as every other stamp it is compared
+    /// with instead of a million times too early.
     pub committed_at: i64,
     /// The parent commit SHAs (empty for the root, two for a merge). Written as
     /// `PARENT_OF` edges when both endpoints are ingested nodes.
@@ -89,7 +92,12 @@ fn parse_line(line: &str) -> Option<CommitRow> {
     // it. See [`LOG_FORMAT`] for what that prevents.
     let mut f = line.splitn(6, FIELD_SEP);
     let id = f.next()?.trim().to_string();
-    let committed_at = f.next()?.trim().parse::<i64>().ok()?;
+    let committed_at = f
+        .next()?
+        .trim()
+        .parse::<i64>()
+        .ok()?
+        .checked_mul(1_000_000)?;
     // `%P` is a space-separated parent list, empty for the root commit. A missing
     // field (an older format) is treated as no parents rather than a parse error.
     let parents = f
@@ -421,7 +429,7 @@ mod tests {
         assert_eq!(rows[0].message, "fix: the bug, \"finally\"");
         assert_eq!(rows[0].author, "Tim");
         assert_eq!(rows[0].author_email, "tim@x.org");
-        assert_eq!(rows[0].committed_at, 1700000000);
+        assert_eq!(rows[0].committed_at, 1_700_000_000_000_000, "git's seconds, as microseconds");
         // A merge commit has two parents; the root has none.
         assert_eq!(rows[0].parents, vec!["def456".to_string(), "aaa111".to_string()]);
         assert_eq!(rows[1].id, "def456");
@@ -446,7 +454,7 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].author, "Real Name", "the author git reported, not the one the message names");
         assert_eq!(rows[0].author_email, "real@x.org");
-        assert_eq!(rows[0].committed_at, 1_700_000_000, "not the 9999999999 the message asks for");
+        assert_eq!(rows[0].committed_at, 1_700_000_000_000_000, "not the 9999999999 the message asks for");
         assert_eq!(rows[0].parents, vec!["p1".to_string()], "the real parent, not a displaced author");
         assert_eq!(rows[0].message, forged, "the whole subject, separators and all");
     }
