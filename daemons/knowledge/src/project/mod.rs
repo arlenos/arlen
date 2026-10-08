@@ -16,4 +16,6 @@ pub use config::{
 pub use parser::{ParseError, ProjectParser};
 pub use signals::{DetectionSignal, SignalDetector, SignalType};
 pub use store::{Project, ProjectStatus, ProjectStore, PruneOutcome, PruneStats};
+#[cfg(test)]
+pub(crate) use store::test_pool;
 pub use watch_config::WatchConfig;

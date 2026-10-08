@@ -13,6 +13,22 @@ use crate::utils::{content_merge_key, escape_cypher};
 
 // ── Types ───────────────────────────────────────────────────────────────
 
+/// The namespace an inferred project's id is derived in. Fixed: changing it
+/// renames every inferred project on every machine.
+const INFERRED_NAMESPACE: Uuid = Uuid::from_u128(0x6a1f_3c2e_8b4d_4e6a_9c7b_2d5f_0e8a_1b3c);
+
+/// An inferred project's id: a version-5 UUID of its root path, trailing slashes dropped.
+///
+/// It used to be random (`now_v7`), so a graph rebuilt by re-scanning gave every
+/// inferred project a new id, and the memberships the journal records, which name
+/// project ids, pointed at nothing. Derived from the root, detection and record
+/// agree on the id however often the project is found again.
+pub fn inferred_id(root_path: &str) -> Uuid {
+    let root = root_path.trim_end_matches('/');
+    let root = if root.is_empty() { "/" } else { root };
+    Uuid::new_v5(&INFERRED_NAMESPACE, root.as_bytes())
+}
+
 /// Project status in the graph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectStatus {
@@ -100,7 +116,7 @@ impl Project {
     /// Create a new inferred project from auto-detection.
     pub fn new_inferred(name: String, root_path: String, confidence: u8) -> Self {
         Self {
-            id: Uuid::now_v7(),
+            id: inferred_id(&root_path),
             name,
             description: String::new(),
             root_path,
@@ -193,11 +209,20 @@ const PROJECT_COLUMNS: &str = "p.id, p.name, p.description, p.root_path, \
     p.accent_color, p.icon, p.status, p.created_at, p.last_accessed, \
     p.inferred, p.confidence, p.promoted, p.archived_at, p.expired_at";
 
+/// A fact journal for a test's store, in the test's own directory.
+#[cfg(test)]
+pub(crate) async fn test_pool(dir: &std::path::Path) -> sqlx::SqlitePool {
+    crate::db::open(dir.join("journal.db").to_str().unwrap()).await.unwrap()
+}
+
 // ── ProjectStore ────────────────────────────────────────────────────────
 
 /// Store for Project CRUD and `PART_OF` edge operations.
 pub struct ProjectStore {
     graph: GraphHandle,
+    /// The fact journal every write here goes through (D11): a project, its
+    /// promotion and its memberships are the record, Ladybug is their projection.
+    pool: sqlx::SqlitePool,
     /// The device-wide merge clock. When set, `link_file` stamps the HLC and
     /// device id on a new membership so a future cross-device merge can order
     /// promoted edges (graph-drift.md §2). Left `None` in tests and non-writing
@@ -208,8 +233,19 @@ pub struct ProjectStore {
 
 impl ProjectStore {
     /// Create a new `ProjectStore` with no merge clock (unstamped writes).
-    pub fn new(graph: GraphHandle) -> Self {
-        Self { graph, clock: None }
+    pub fn new(graph: GraphHandle, pool: sqlx::SqlitePool) -> Self {
+        Self { graph, pool, clock: None }
+    }
+
+    /// Record `facts` and bring the graph up to date. The provenance is `graph`:
+    /// the system observed these, nobody asserted them.
+    async fn journal(&self, facts: Vec<crate::journal::Fact>) -> Result<()> {
+        let origin = crate::journal::Origin {
+            provenance: crate::provenance::Provenance::Graph.as_key().to_string(),
+            valid_time_source: String::new(),
+            event_id: None,
+        };
+        crate::journal::commit_and_project(&self.pool, &self.graph, facts, &origin).await
     }
 
     /// Attach the device-wide merge clock so `link_file` stamps the ordering
@@ -222,12 +258,6 @@ impl ProjectStore {
 
     /// Insert a new project node.
     pub async fn create(&self, project: &Project) -> Result<()> {
-        let id = escape_cypher(&project.id.to_string());
-        let name = escape_cypher(&project.name);
-        let desc = escape_cypher(&project.description);
-        let root = escape_cypher(&project.root_path);
-        let color = escape_cypher(&project.accent_color);
-        let icon = escape_cypher(&project.icon);
         let status = project.status.as_str();
         let created = dt_to_micros(&project.created_at);
         let accessed = project.last_accessed.map(|d| dt_to_micros(&d)).unwrap_or(0);
@@ -247,27 +277,33 @@ impl ProjectStore {
             }
         }
 
-        self.graph
-            .write(format!(
-                "CREATE (p:Project {{
-                    id: '{id}',
-                    name: '{name}',
-                    description: '{desc}',
-                    root_path: '{root}',
-                    accent_color: '{color}',
-                    icon: '{icon}',
-                    status: '{status}',
-                    created_at: {created},
-                    last_accessed: {accessed},
-                    inferred: {inferred},
-                    confidence: {confidence},
-                    promoted: {promoted},
-                    archived_at: 0
-                }})"
-            ))
-            .await?;
-
-        Ok(())
+        // Through the journal: a node upsert, so finding an inferred project
+        // again at the same root (same derived id) reopens the one that was
+        // closed rather than failing on a duplicate key.
+        use serde_json::json;
+        self.journal(vec![crate::journal::Fact::Node {
+            label: "Project".into(),
+            id: project.id.to_string(),
+            props: [
+                ("name", json!(project.name)),
+                ("description", json!(project.description)),
+                ("root_path", json!(project.root_path)),
+                ("accent_color", json!(project.accent_color)),
+                ("icon", json!(project.icon)),
+                ("status", json!(status)),
+                ("last_accessed", json!(accessed)),
+                ("inferred", json!(inferred)),
+                ("confidence", json!(confidence)),
+                ("promoted", json!(promoted)),
+                ("archived_at", json!(0)),
+                ("expired_at", serde_json::Value::Null),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+            on_create: [("created_at".to_string(), json!(created))].into_iter().collect(),
+        }])
+        .await
     }
 
     /// Get a project by its UUID.
@@ -291,7 +327,8 @@ impl ProjectStore {
         let rs = self
             .graph
             .query_rows(format!(
-                "MATCH (p:Project {{root_path: '{path_esc}'}}) RETURN {PROJECT_COLUMNS}"
+                "MATCH (p:Project {{root_path: '{path_esc}'}}) WHERE p.expired_at IS NULL \
+                 RETURN {PROJECT_COLUMNS}"
             ))
             .await?;
         if rs.rows.is_empty() {
@@ -372,78 +409,94 @@ impl ProjectStore {
 
     /// Update a project's mutable fields.
     pub async fn update(&self, project: &Project) -> Result<()> {
-        let id = escape_cypher(&project.id.to_string());
-        let name = escape_cypher(&project.name);
-        let desc = escape_cypher(&project.description);
-        let color = escape_cypher(&project.accent_color);
-        let icon = escape_cypher(&project.icon);
-        let status = project.status.as_str();
-        let inferred = project.inferred;
-        let confidence = project.confidence as i64;
-        let promoted = project.promoted;
-
-        self.graph
-            .write(format!(
-                "MATCH (p:Project {{id: '{id}'}})
-                 SET p.name = '{name}',
-                     p.description = '{desc}',
-                     p.accent_color = '{color}',
-                     p.icon = '{icon}',
-                     p.status = '{status}',
-                     p.inferred = {inferred},
-                     p.confidence = {confidence},
-                     p.promoted = {promoted}"
-            ))
-            .await?;
-        Ok(())
+        use serde_json::json;
+        self.journal(vec![crate::journal::Fact::node(
+            "Project",
+            &project.id.to_string(),
+            &[
+                ("name", json!(project.name)),
+                ("description", json!(project.description)),
+                ("accent_color", json!(project.accent_color)),
+                ("icon", json!(project.icon)),
+                ("status", json!(project.status.as_str())),
+                ("inferred", json!(project.inferred)),
+                ("confidence", json!(project.confidence as i64)),
+                ("promoted", json!(project.promoted)),
+            ],
+        )])
+        .await
     }
 
     /// Archive a project (soft delete).
     pub async fn archive(&self, id: Uuid) -> Result<()> {
-        let id_esc = escape_cypher(&id.to_string());
         let now = crate::time::now().0;
         // Archiving is a transaction-time close (§4.9): `expired_at` is the one
         // tombstone the bi-temporal model reads (a live project is
         // `expired_at IS NULL`); `status`/`archived_at` stay as denormalised read
         // filters set alongside it.
-        self.graph
-            .write(format!(
-                "MATCH (p:Project {{id: '{id_esc}'}})
-                 SET p.status = 'archived', p.archived_at = {now}, p.expired_at = {now}"
-            ))
-            .await?;
-        Ok(())
+        self.journal(vec![Self::closed(id, now)]).await
     }
 
-    /// Delete a project node and all its edges.
-    pub async fn delete(&self, id: Uuid) -> Result<()> {
-        let id_esc = escape_cypher(&id.to_string());
-        self.graph
-            .write(format!(
-                "MATCH (p:Project {{id: '{id_esc}'}}) DETACH DELETE p"
-            ))
-            .await?;
-        Ok(())
+    /// The node fact that closes a project at `now`.
+    fn closed(id: Uuid, now: i64) -> crate::journal::Fact {
+        use serde_json::json;
+        crate::journal::Fact::node(
+            "Project",
+            &id.to_string(),
+            &[("status", json!("archived")), ("archived_at", json!(now)), ("expired_at", json!(now))],
+        )
+    }
+
+    /// Withdraw a project: close it and every live membership into it.
+    ///
+    /// This was a `DETACH DELETE`, and the record has no delete: an inferred
+    /// project that turned out wrong is now closed like an archived one, its
+    /// memberships closed with it. The reads already show only active projects,
+    /// so nothing pollutes Waypointer, and a rebuild from the journal arrives at
+    /// the same closed project instead of resurrecting it. Found again at the same
+    /// root, it gets the same id back and `create` reopens it.
+    pub async fn retract(&self, id: Uuid) -> Result<()> {
+        let now = crate::time::now().0;
+        self.journal(vec![
+            crate::journal::Fact::CloseTo {
+                rel: "FILE_PART_OF".into(),
+                to: ("Project".into(), id.to_string()),
+                at: now,
+            },
+            Self::closed(id, now),
+        ])
+        .await
     }
 
     /// Promote a project (make visible in Waypointer).
     pub async fn promote(&self, id: Uuid) -> Result<()> {
-        let id_esc = escape_cypher(&id.to_string());
-        self.graph
-            .write(format!(
-                "MATCH (p:Project {{id: '{id_esc}'}}) SET p.promoted = true"
-            ))
-            .await?;
-        Ok(())
+        // Journaled above all the rest: a person's promotion of an inferred
+        // project is recovered from nowhere else.
+        self.journal(vec![crate::journal::Fact::node(
+            "Project",
+            &id.to_string(),
+            &[("promoted", serde_json::json!(true))],
+        )])
+        .await
     }
 
-    /// Update the `last_accessed` timestamp.
+    /// Refresh `last_accessed`: the latest access of any file that is a live
+    /// member of the project.
+    ///
+    /// A projection aggregate, not a fact, so it is not journaled: it is computed
+    /// from the files' own `last_accessed`, which their open events record. It
+    /// used to be the clock at the moment of the call, written on every open, the
+    /// busiest write the store made. After a rebuild a project's value returns
+    /// with the next open inside it.
     pub async fn touch(&self, id: Uuid) -> Result<()> {
         let id_esc = escape_cypher(&id.to_string());
-        let now = crate::time::now().0;
         self.graph
             .write(format!(
-                "MATCH (p:Project {{id: '{id_esc}'}}) SET p.last_accessed = {now}"
+                "MATCH (p:Project {{id: '{id_esc}'}}) \
+                 OPTIONAL MATCH (f:File)-[r:FILE_PART_OF]->(p) \
+                   WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+                 WITH p, max(f.last_accessed) AS latest \
+                 SET p.last_accessed = CASE WHEN latest IS NULL THEN p.last_accessed ELSE latest END"
             ))
             .await?;
         Ok(())
@@ -486,7 +539,7 @@ impl ProjectStore {
         }
 
         if project.inferred {
-            self.delete(id).await?;
+            self.retract(id).await?;
             Ok(PruneOutcome::Pruned)
         } else {
             self.archive(id).await?;
@@ -557,31 +610,56 @@ impl ProjectStore {
         // The cross-device ordering stamp (GD-R5), only when a merge clock is
         // attached. The device id is a UUID by construction (no quote or
         // backslash), safe to interpolate like the hex `merge_key`.
-        let hlc_set = match &self.clock {
-            Some(clock) => {
-                // Epoch micros are always positive, so the i64 -> u64 is lossless;
-                // the value fits the INT64 column when read back.
-                let h = clock.stamp(crate::time::now().0 as u64);
-                format!(
-                    ", r.hlc_physical = {}, r.hlc_logical = {}, r.device_id = '{}'",
-                    h.physical,
-                    h.logical,
-                    clock.device_id()
-                )
-            }
-            None => String::new(),
-        };
-        self.graph
-            .write(format!(
-                "MATCH (f:File {{id: '{fid}'}}), (p:Project {{id: '{pid}'}})
-                 MERGE (f)-[r:FILE_PART_OF]->(p) ON CREATE SET r.merge_key = '{merge_key}', \
-                 r.valid_at = {stamped_at}, r.created_at = {stamped_at}, r.origin = '{origin}'{hlc_set}"
+        use serde_json::json;
+        let mut props: std::collections::BTreeMap<String, serde_json::Value> = [
+            ("merge_key", json!(merge_key)),
+            ("origin", json!(origin)),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        if let Some(clock) = &self.clock {
+            // Epoch micros are always positive, so the i64 -> u64 is lossless;
+            // the value fits the INT64 column when read back.
+            let h = clock.stamp(crate::time::now().0 as u64);
+            props.insert("hlc_physical".into(), json!(h.physical as i64));
+            props.insert("hlc_logical".into(), json!(h.logical as i64));
+            props.insert("device_id".into(), json!(clock.device_id().to_string()));
+        }
+        // Idempotent like the MERGE it replaces: a live membership to this
+        // project already holds, so there is nothing to record. A closed one does
+        // not count, and a new link then appends instead of reopening it.
+        let live = self
+            .graph
+            .query_rows(format!(
+                "MATCH (f:File {{id: '{fid}'}})-[r:FILE_PART_OF]->(p:Project {{id: '{pid}'}}) \
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN count(*) AS n"
             ))
             .await?;
-        Ok(())
+        if live.rows.first().and_then(|r| r.first()).map(|c| c.as_i64()).unwrap_or(0) > 0 {
+            return Ok(());
+        }
+        // An op id of its own per assertion, so the journal's upsert-by-op_id can
+        // never land on an earlier, closed membership and clear its stamps.
+        self.journal(vec![crate::journal::Fact::Edge {
+            rel: "FILE_PART_OF".into(),
+            from: ("File".into(), file_id.to_string()),
+            to: ("Project".into(), pid_str.clone()),
+            op_id: Some(format!("link:{merge_key}:{stamped_at}")),
+            stamps: crate::journal::Stamps {
+                valid_at: Some(stamped_at),
+                created_at: Some(stamped_at),
+                ..Default::default()
+            },
+            props,
+        }])
+        .await
     }
 
-    /// Check if a file is already linked to a project.
+    /// Check if a file is already linked to a project, by a live OR a closed
+    /// membership. Closed counts on purpose: a file the agent moved to another
+    /// project carries a closed edge here, and promotion must not pull it back on
+    /// its next open.
     pub async fn is_file_linked(&self, file_id: &str, project_id: Uuid) -> Result<bool> {
         let fid = escape_cypher(file_id);
         let pid = escape_cypher(&project_id.to_string());
@@ -607,7 +685,8 @@ impl ProjectStore {
         let rs = self
             .graph
             .query_rows(format!(
-                "MATCH (f:File)-[:FILE_PART_OF]->(p:Project {{id: '{pid}'}})
+                "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project {{id: '{pid}'}})
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL
                  RETURN f.path"
             ))
             .await?;
@@ -648,15 +727,15 @@ impl ProjectStore {
             .collect())
     }
 
-    /// Remove all `FILE_PART_OF` edges pointing to a project.
+    /// Close every live `FILE_PART_OF` membership pointing to a project.
     pub async fn unlink_all_files(&self, project_id: Uuid) -> Result<()> {
-        let pid = escape_cypher(&project_id.to_string());
-        self.graph
-            .write(format!(
-                "MATCH ()-[r:FILE_PART_OF]->(p:Project {{id: '{pid}'}}) DELETE r"
-            ))
-            .await?;
-        Ok(())
+        // A close, not a delete: the memberships stay as history (§4.7).
+        self.journal(vec![crate::journal::Fact::CloseTo {
+            rel: "FILE_PART_OF".into(),
+            to: ("Project".into(), project_id.to_string()),
+            at: crate::time::now().0,
+        }])
+        .await
     }
 
     /// Count distinct files linked to a project that were accessed by an
@@ -671,7 +750,8 @@ impl ProjectStore {
         let rs = self
             .graph
             .query_rows(format!(
-                "MATCH (f:File)-[:FILE_PART_OF]->(p:Project {{id: '{pid}'}})
+                "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project {{id: '{pid}'}})
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL
                  MATCH (f)-[:ACCESSED_BY]->(a:App)-[:ACTIVE_IN]->(s:Session {{id: '{sid}'}})
                  RETURN count(DISTINCT f) AS cnt"
             ))
@@ -726,7 +806,8 @@ mod tests {
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         // Small delay for schema creation.
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-        (ProjectStore::new(graph), tmp)
+        let pool = test_pool(tmp.path()).await;
+        (ProjectStore::new(graph, pool), tmp)
     }
 
     #[tokio::test]
@@ -873,32 +954,87 @@ mod tests {
         let p = Project::new_inferred("test".into(), "/a".into(), 90);
         store.create(&p).await.unwrap();
 
+        // `last_accessed` is the latest access of a live member file, not the
+        // clock at the moment of the call.
+        store
+            .graph
+            .write("CREATE (f:File {id: '/a/x.rs', path: '/a/x.rs', app_id: 't', last_accessed: 1780000000000000})".into())
+            .await
+            .unwrap();
+        store.link_file("/a/x.rs", p.id).await.unwrap();
         store.touch(p.id).await.unwrap();
 
         let got = store.get_by_id(p.id).await.unwrap().unwrap();
-        assert!(got.last_accessed.is_some());
+        assert_eq!(got.last_accessed.map(|d| crate::time::dt_to_micros(&d)), Some(1_780_000_000_000_000));
     }
 
     #[tokio::test]
-    async fn test_delete() {
+    async fn retract_closes_the_project_and_its_memberships() {
         let (store, _tmp) = setup().await;
 
         let p = Project::new_inferred("test".into(), "/a".into(), 90);
         store.create(&p).await.unwrap();
-        store.delete(p.id).await.unwrap();
+        store
+            .graph
+            .write("CREATE (f:File {id: '/a/x.rs', path: '/a/x.rs', app_id: 't', last_accessed: 0})".into())
+            .await
+            .unwrap();
+        store.link_file("/a/x.rs", p.id).await.unwrap();
+        store.retract(p.id).await.unwrap();
 
-        let got = store.get_by_id(p.id).await.unwrap();
-        assert!(got.is_none());
+        // Closed, not gone: the node stays as history, out of every active read.
+        let got = store.get_by_id(p.id).await.unwrap().expect("kept");
+        assert_eq!(got.status, ProjectStatus::Archived);
+        assert!(got.expired_at.is_some());
+        assert!(store.list_active().await.unwrap().is_empty());
+        assert!(store.get_project_files(p.id).await.unwrap().is_empty(), "memberships closed");
+        assert!(store.get_by_root_path("/a").await.unwrap().is_none());
+
+        // Found again at the same root: the same id, reopened.
+        let again = Project::new_inferred("test".into(), "/a/".into(), 90);
+        assert_eq!(again.id, p.id, "the id comes from the root");
+        store.create(&again).await.unwrap();
+        let back = store.get_by_id(p.id).await.unwrap().unwrap();
+        assert_eq!(back.status, ProjectStatus::Active);
+        assert!(back.expired_at.is_none());
+    }
+
+    /// What the ruling is for: a person's promotion of an inferred project, and
+    /// its memberships, come back from the journal into a fresh graph.
+    #[tokio::test]
+    async fn a_promoted_inferred_project_survives_a_rebuild() {
+        let tmp = TempDir::new().unwrap();
+        let pool = test_pool(tmp.path()).await;
+        let graph = crate::graph::spawn(tmp.path().join("g1").to_str().unwrap()).unwrap();
+        let store = ProjectStore::new(graph.clone(), pool.clone());
+        let file = "CREATE (f:File {id: '/w/a.rs', path: '/w/a.rs', app_id: 't', last_accessed: 0})";
+        graph.write(file.into()).await.unwrap();
+        let p = Project::new_inferred("w".into(), "/w".into(), 70);
+        store.create(&p).await.unwrap();
+        store.link_file("/w/a.rs", p.id).await.unwrap();
+        store.promote(p.id).await.unwrap();
+
+        let fresh = crate::graph::spawn(tmp.path().join("g2").to_str().unwrap()).unwrap();
+        fresh.write(file.into()).await.unwrap();
+        crate::journal::set_projected_seq(&pool, 0).await.unwrap();
+        crate::journal::project_pending(&pool, &fresh).await.unwrap();
+        let rebuilt = ProjectStore::new(fresh, pool);
+        let got = rebuilt.get_by_id(p.id).await.unwrap().expect("the project is rebuilt");
+        assert!(got.promoted, "and its promotion with it");
+        assert_eq!(rebuilt.get_project_files(p.id).await.unwrap(), vec!["/w/a.rs".to_string()]);
     }
 
     #[tokio::test]
     async fn test_unique_root_path() {
         let (store, _tmp) = setup().await;
 
+        // Two inferred projects at one root are one project: the id is the
+        // root's. A different project claiming that root is refused.
         let p1 = Project::new_inferred("first".into(), "/same".into(), 90);
-        let p2 = Project::new_inferred("second".into(), "/same".into(), 90);
+        assert_eq!(Project::new_inferred("second".into(), "/same".into(), 90).id, p1.id);
         store.create(&p1).await.unwrap();
 
+        let p2 = Project::new_explicit(Uuid::now_v7(), "second".into(), "/same".into());
         let result = store.create(&p2).await;
         assert!(result.is_err());
     }
@@ -1144,9 +1280,10 @@ mod tests {
         let outcome = store.prune_or_archive(p.id).await.unwrap();
         assert_eq!(outcome, PruneOutcome::Pruned);
 
-        // Node should be gone — inferred + dead means delete, not archive.
-        let got = store.get_by_id(p.id).await.unwrap();
-        assert!(got.is_none(), "inferred-dead project should be removed");
+        // Closed rather than removed: the record has no delete.
+        let got = store.get_by_id(p.id).await.unwrap().expect("kept as history");
+        assert!(got.expired_at.is_some(), "inferred-dead project is closed");
+        assert!(store.list_active().await.unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -1208,7 +1345,7 @@ mod tests {
 
         // Verify final graph state matches the stats.
         assert!(store.get_by_id(alive.id).await.unwrap().is_some());
-        assert!(store.get_by_id(dead_inf.id).await.unwrap().is_none());
+        assert!(store.get_by_id(dead_inf.id).await.unwrap().unwrap().expired_at.is_some());
         let exp_after = store.get_by_id(dead_exp.id).await.unwrap().unwrap();
         assert_eq!(exp_after.status, ProjectStatus::Archived);
     }

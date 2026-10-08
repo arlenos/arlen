@@ -145,7 +145,7 @@ async fn run(
     // points the spec calls out. Failures on individual projects do
     // not abort the sweep — they are logged and counted.
     {
-        let store = project::ProjectStore::new(graph.clone());
+        let store = project::ProjectStore::new(graph.clone(), pool.clone());
         match store.prune_dead_projects().await {
             Ok(stats) => info!(
                 alive = stats.alive,
@@ -163,8 +163,9 @@ async fn run(
 
     // Project watcher: scans configured directories and watches for changes.
     let project_graph = graph.clone();
+    let project_pool = pool.clone();
     tokio::spawn(async move {
-        if let Err(e) = project::watcher::run(project_graph).await {
+        if let Err(e) = project::watcher::run(project_graph, project_pool).await {
             tracing::error!("project watcher error: {e}");
         }
     });
@@ -210,7 +211,7 @@ async fn run(
             Ok(()) => bail!("retention task exited unexpectedly"),
             Err(e) => bail!("retention: {e}"),
         },
-        r = project::cooccurrence::run(graph.clone()) => match r {
+        r = project::cooccurrence::run(graph.clone(), pool.clone()) => match r {
             Ok(()) => bail!("project inference task exited unexpectedly"),
             Err(e) => bail!("project inference: {e}"),
         },

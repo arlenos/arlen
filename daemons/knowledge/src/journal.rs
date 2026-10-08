@@ -80,6 +80,13 @@ pub enum Fact {
         from: (String, String),
         at: i64,
     },
+    /// Close every live `rel` edge INTO a node: a project that stops being one
+    /// closes its members' memberships, which is what its delete used to remove.
+    CloseTo {
+        rel: String,
+        to: (String, String),
+        at: i64,
+    },
     /// One occurrence of something that recurs between two nodes - an app
     /// launching another. The record keeps every occurrence under its own `id`;
     /// the graph keeps ONE edge per pair whose `count`, `first_seen` and
@@ -251,6 +258,20 @@ pub async fn record(tx: &mut Transaction<'_, Sqlite>, facts: &[(Fact, Origin)]) 
                 .bind(None::<i64>)
                 .bind(None::<i64>)
                 .bind(None::<i64>),
+            Fact::CloseTo { rel, to, at } => q
+                .bind("close_to")
+                .bind(rel)
+                .bind("")
+                .bind(None::<String>)
+                .bind(None::<String>)
+                .bind(&to.0)
+                .bind(&to.1)
+                .bind("{}")
+                .bind("{}")
+                .bind(None::<i64>)
+                .bind(Some(*at))
+                .bind(None::<i64>)
+                .bind(Some(*at)),
             Fact::CloseFrom { rel, from, at } => q
                 .bind("close_from")
                 .bind(rel)
@@ -353,6 +374,16 @@ fn row_to_fact(r: Row) -> Result<Fact> {
                 from: (fl, fi),
                 to: (tl, ti),
                 at: va.ok_or_else(|| anyhow::anyhow!("journal occurrence row without its time"))?,
+            }
+        }
+        "close_to" => {
+            let (Some(tl), Some(ti)) = (tl, ti) else {
+                bail!("journal close_to row without its node");
+            };
+            Fact::CloseTo {
+                rel: label,
+                to: (tl, ti),
+                at: ia.ok_or_else(|| anyhow::anyhow!("journal close_to row without its time"))?,
             }
         }
         "close_from" => {
@@ -482,6 +513,14 @@ pub fn project(fact: &Fact) -> Result<String> {
         Fact::Occurrence { .. } => {
             bail!("an occurrence is projected from the record's aggregate; see project_occurrence")
         }
+        Fact::CloseTo { rel, to, at } => Ok(format!(
+            "MATCH ()-[r:{}]->(b:{} {{id: '{}'}}) \
+             WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+             SET r.invalid_at = {at}, r.expired_at = {at}",
+            ident(rel)?,
+            ident(&to.0)?,
+            escape_cypher(&to.1),
+        )),
         Fact::CloseFrom { rel, from, at } => Ok(format!(
             "MATCH (a:{} {{id: '{}'}})-[r:{}]->() \
              WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
@@ -640,6 +679,7 @@ mod tests {
             },
             Fact::Close { rel: "FILE_PART_OF".into(), op_id: "op-1".into(), at: 9 },
             Fact::CloseFrom { rel: "HAS_VERSION".into(), from: ("Annotation".into(), "a1".into()), at: 11 },
+            Fact::CloseTo { rel: "FILE_PART_OF".into(), to: ("Project".into(), "p1".into()), at: 11 },
             Fact::Occurrence {
                 rel: "LAUNCHED".into(),
                 id: "ev-9".into(),

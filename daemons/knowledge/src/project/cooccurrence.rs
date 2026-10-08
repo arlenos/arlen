@@ -430,7 +430,7 @@ pub async fn retract_refused_inferences(
         doomed.push(project.id);
     }
     for id in doomed {
-        store.delete(id).await?;
+        store.retract(id).await?;
         stats.retracted += 1;
     }
     Ok(stats)
@@ -461,8 +461,8 @@ async fn retract_and_log(store: &ProjectStore, home: &str) {
 /// inferred `Project` nodes. Best-effort densification - a scan or materialise
 /// failure is logged, never fatal (the graph is fully usable without inferred
 /// projects), so this task never brings the daemon down.
-pub async fn run(graph: GraphHandle) -> anyhow::Result<()> {
-    let store = ProjectStore::new(graph.clone());
+pub async fn run(graph: GraphHandle, pool: sqlx::SqlitePool) -> anyhow::Result<()> {
+    let store = ProjectStore::new(graph.clone(), pool);
     // Read once, not per pass: the home directory does not move under a running
     // daemon, and a pass that had to ask the environment every hour would be one
     // more thing that can change behind the floor. Empty when `HOME` is unset,
@@ -653,7 +653,7 @@ mod tests {
     async fn materialize_mints_a_deep_root_project_and_skips_shallow_ones() {
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
-        let store = ProjectStore::new(graph.clone());
+        let store = ProjectStore::new(graph.clone(), crate::project::store::test_pool(tmp.path()).await);
 
         // A deep-root trio (common root /home/tim/proj, depth 3) and a shallow
         // trio (common root /home, depth 1), each repeated across two sessions.
@@ -705,7 +705,7 @@ mod tests {
     ) -> (ProjectStore, GraphHandle, String, String, uuid::Uuid) {
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let store = ProjectStore::new(graph.clone());
+        let store = ProjectStore::new(graph.clone(), crate::project::store::test_pool(tmp.path()).await);
         let home = tmp.path().join("home");
         let umbrella = home.join("Repos");
         for child in ["a", "b"] {
@@ -738,7 +738,7 @@ mod tests {
         let stats = retract_refused_inferences(&store, &home).await.unwrap();
         assert_eq!(stats.retracted, 1, "the umbrella is withdrawn");
         assert_eq!(stats.kept, 2, "its two real children are left alone");
-        assert!(store.get_by_id(id).await.unwrap().is_none());
+        assert!(store.get_by_id(id).await.unwrap().unwrap().expired_at.is_some(), "closed, kept as history");
         assert!(store.get_by_root_path(&root).await.unwrap().is_none());
 
         // Self-limiting: the second run finds nothing left to refuse, so it needs
@@ -805,7 +805,7 @@ mod tests {
 
         let stats = retract_refused_inferences(&store, &home).await.unwrap();
         assert_eq!(stats.retracted, 1);
-        assert!(store.get_by_id(id).await.unwrap().is_none());
+        assert!(store.get_by_id(id).await.unwrap().unwrap().expired_at.is_some(), "closed, kept as history");
     }
 
     /// A renamed project is not as minted, so it stays whatever the floor says.
@@ -879,7 +879,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let store = ProjectStore::new(graph.clone());
+        let store = ProjectStore::new(graph.clone(), crate::project::store::test_pool(tmp.path()).await);
 
         for (name, root) in [("arlen", "/home/tim/Repositories/arlen"), ("other", "/home/tim/Repositories/other")] {
             let p = Project::new_inferred(name.to_string(), root.to_string(), 90);
