@@ -75,7 +75,7 @@
       size="icon"
       onclick={() => onReset(entry)}
       aria-label={$t("s.bind.resetDefault")}
-      title={$t("s.bind.resetDefaultTo", { binding: entry.defaultBinding })}
+      tooltip={$t("s.bind.resetDefaultTo", { binding: entry.defaultBinding })}
     >
       <RotateCcw size={14} strokeWidth={2} />
     </Button>
