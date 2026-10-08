@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   /// Action items (meetings-app.md killer #3): attribution is a draft, never an
   /// assertion - the owner is an editable chip ("Set owner" when the model found
   /// none), the checkbox is real state, and a grounded item clicks through to its
@@ -74,16 +75,28 @@
             />
           </span>
         {:else}
-          <button
-            type="button"
-            class="owner"
-            class:unset={!item.owner}
-            id={`item-owner-${i}`}
-            title={$t("mt.owner.edit")}
-            onclick={() => beginOwner(i, item.owner)}
-          >
-            {item.owner ?? $t("mt.owner.set")}
-          </button>
+          <!-- The button shows the owner, so what pressing it does is said by the
+               kit tooltip, which also describes it to a reader (§6.4). -->
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+                <button
+                  {...props}
+                  type="button"
+                  class="owner"
+                  class:unset={!item.owner}
+                  id={`item-owner-${i}`}
+                  onclick={(e) => {
+                    (props.onclick as ((ev: MouseEvent) => void) | undefined)?.(e);
+                    beginOwner(i, item.owner);
+                  }}
+                >
+                  {item.owner ?? $t("mt.owner.set")}
+                </button>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.TooltipContent>{$t("mt.owner.edit")}</Tooltip.TooltipContent>
+          </Tooltip.Root>
         {/if}
       </div>
     {/each}
