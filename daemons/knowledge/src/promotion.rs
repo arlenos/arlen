@@ -386,9 +386,9 @@ async fn run_pass(
                 promote_command_finished(pool, graph, id, timestamp, payload).await
             }
             "app.annotation.set" => {
-                promote_annotation_set(graph, timestamp, payload).await
+                promote_annotation_set(pool, graph, id, timestamp, payload).await
             }
-            "app.annotation.cleared" => promote_annotation_cleared(graph, payload).await,
+            "app.annotation.cleared" => promote_annotation_cleared(pool, graph, id, payload).await,
             "app.badge.set" => promote_badge_set(pool, graph, id, timestamp, payload).await,
             // User interactions (toolbar / shortcut / menu) become UserAction
             // nodes, so the KG carries a native interaction history (the GAP-10
@@ -1505,7 +1505,9 @@ async fn promote_command_finished(
 /// honestly and the trust boundary is the SO_PEERCRED-derived uid on
 /// the producer socket.
 async fn promote_annotation_set(
+    pool: &SqlitePool,
     graph: &GraphHandle,
+    event_id: &str,
     timestamp: &i64,
     payload: &[u8],
 ) -> Result<()> {
@@ -1513,36 +1515,43 @@ async fn promote_annotation_set(
     let id = annotation_id(&p.target_type, &p.target_id, &p.namespace);
     let version_id = uuid::Uuid::now_v7();
 
-    let id_esc = escape_cypher(&id.to_string());
-    let ns_esc = escape_cypher(&p.namespace);
-    let tt_esc = escape_cypher(&p.target_type);
-    let ti_esc = escape_cypher(&p.target_id);
-    let data_esc = escape_cypher(&p.data_json);
-    let vid_esc = escape_cypher(&version_id.to_string());
-
-    // §4.8: the Annotation is the stable identity (created_at set once); its
-    // value lives on a temporal HAS_VERSION edge to an AnnotationVersion content
-    // node. A set closes the live version and appends a new one in ONE statement,
-    // so the prior value is retained as history rather than overwritten. The
-    // Annotation node is namespace-specific by id, so closing *this* node's live
-    // version is namespace-scoped by construction (other-namespace annotations
-    // are different nodes). Promotion collapses valid==created to the event
-    // instant (§7.5, no ingest LLM to extract a content valid-time).
-    graph
-        .write(format!(
-            "MERGE (a:Annotation {{id: '{id_esc}'}}) \
-               ON CREATE SET a.namespace = '{ns_esc}', a.target_type = '{tt_esc}', \
-                             a.target_id = '{ti_esc}', a.created_at = {timestamp} \
-             WITH a \
-             OPTIONAL MATCH (a)-[old:HAS_VERSION]->(:AnnotationVersion) \
-               WHERE old.invalid_at IS NULL AND old.expired_at IS NULL \
-             SET old.invalid_at = {timestamp}, old.expired_at = {timestamp} \
-             WITH a \
-             CREATE (a)-[:HAS_VERSION {{valid_at: {timestamp}, invalid_at: NULL, \
-               created_at: {timestamp}, expired_at: NULL}}]->\
-               (:AnnotationVersion {{id: '{vid_esc}', data: '{data_esc}', recorded_at: {timestamp}}})"
-        ))
-        .await?;
+    // Through the fact journal (D11): close whatever version is live, then the new
+    // version and its edge, the same supersession the single statement made.
+    use crate::journal::{Fact, Origin, Stamps};
+    use serde_json::json;
+    let ann = id.to_string();
+    let vid = version_id.to_string();
+    let facts = vec![
+        Fact::Node {
+            label: "Annotation".into(),
+            id: ann.clone(),
+            props: Default::default(),
+            on_create: [
+                ("namespace", json!(p.namespace)),
+                ("target_type", json!(p.target_type)),
+                ("target_id", json!(p.target_id)),
+                ("created_at", json!(*timestamp)),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+        },
+        Fact::CloseFrom { rel: "HAS_VERSION".into(), from: ("Annotation".into(), ann.clone()), at: *timestamp },
+        Fact::node(
+            "AnnotationVersion",
+            &vid,
+            &[("data", json!(p.data_json)), ("recorded_at", json!(*timestamp))],
+        ),
+        Fact::Edge {
+            rel: "HAS_VERSION".into(),
+            from: ("Annotation".into(), ann),
+            to: ("AnnotationVersion".into(), vid.clone()),
+            op_id: Some(vid),
+            stamps: Stamps { valid_at: Some(*timestamp), created_at: Some(*timestamp), ..Default::default() },
+            props: Default::default(),
+        },
+    ];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     debug!(
         target_type = %p.target_type,
@@ -1560,19 +1569,22 @@ async fn promote_annotation_set(
 /// `DETACH DELETE`), so a cleared annotation's prior values can still be read at
 /// a past `T_asof`. Idempotent: clearing a non-existent or already-cleared
 /// annotation closes nothing (the liveness predicate matches no live version).
-async fn promote_annotation_cleared(graph: &GraphHandle, payload: &[u8]) -> Result<()> {
+async fn promote_annotation_cleared(
+    pool: &SqlitePool,
+    graph: &GraphHandle,
+    event_id: &str,
+    payload: &[u8],
+) -> Result<()> {
     let p = AnnotationClearPayload::decode(payload)?;
     let id = annotation_id(&p.target_type, &p.target_id, &p.namespace);
-    let id_esc = escape_cypher(&id.to_string());
     let now = crate::time::now().0;
-
-    graph
-        .write(format!(
-            "MATCH (a:Annotation {{id: '{id_esc}'}})-[r:HAS_VERSION]->(:AnnotationVersion) \
-             WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
-             SET r.invalid_at = {now}, r.expired_at = {now}"
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    let facts = vec![Fact::CloseFrom {
+        rel: "HAS_VERSION".into(),
+        from: ("Annotation".into(), id.to_string()),
+        at: now,
+    }];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     debug!(
         target_type = %p.target_type,
@@ -3238,7 +3250,7 @@ mod shell_event_tests {
             data_json: r#"{"word_count":1240}"#.into(),
         };
 
-        promote_annotation_set(&graph, &1_000_000, &encode_annotation_set(&payload))
+        promote_annotation_set(&scratch().await, &graph, "ev", &1_000_000, &encode_annotation_set(&payload))
             .await
             .unwrap();
 
@@ -3268,10 +3280,10 @@ mod shell_event_tests {
             data_json: r#"{"word_count":250}"#.into(),
         };
 
-        promote_annotation_set(&graph, &1_000, &encode_annotation_set(&p1))
+        promote_annotation_set(&scratch().await, &graph, "ev", &1_000, &encode_annotation_set(&p1))
             .await
             .unwrap();
-        promote_annotation_set(&graph, &5_000, &encode_annotation_set(&p2))
+        promote_annotation_set(&scratch().await, &graph, "ev", &5_000, &encode_annotation_set(&p2))
             .await
             .unwrap();
 
@@ -3318,14 +3330,14 @@ mod shell_event_tests {
             target_id: "/x".into(),
         };
 
-        promote_annotation_set(&graph, &100, &encode_annotation_set(&set_payload))
+        promote_annotation_set(&scratch().await, &graph, "ev", &100, &encode_annotation_set(&set_payload))
             .await
             .unwrap();
         assert!(fetch_annotation(&graph, "File", "/x", "com.example.editor")
             .await
             .is_some());
 
-        promote_annotation_cleared(&graph, &encode_annotation_clear(&clear_payload))
+        promote_annotation_cleared(&scratch().await, &graph, "ev", &encode_annotation_clear(&clear_payload))
             .await
             .unwrap();
         assert!(fetch_annotation(&graph, "File", "/x", "com.example.editor")
@@ -3343,7 +3355,7 @@ mod shell_event_tests {
             target_id: "/never-set".into(),
         };
         // Must not panic / error.
-        promote_annotation_cleared(&graph, &encode_annotation_clear(&clear_payload))
+        promote_annotation_cleared(&scratch().await, &graph, "ev", &encode_annotation_clear(&clear_payload))
             .await
             .unwrap();
     }
@@ -3386,10 +3398,10 @@ mod shell_event_tests {
             data_json: r#"{"branch":"main"}"#.into(),
         };
 
-        promote_annotation_set(&graph, &10, &encode_annotation_set(&editor))
+        promote_annotation_set(&scratch().await, &graph, "ev", &10, &encode_annotation_set(&editor))
             .await
             .unwrap();
-        promote_annotation_set(&graph, &20, &encode_annotation_set(&git))
+        promote_annotation_set(&scratch().await, &graph, "ev", &20, &encode_annotation_set(&git))
             .await
             .unwrap();
 

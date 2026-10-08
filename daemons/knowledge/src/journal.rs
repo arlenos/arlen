@@ -71,6 +71,15 @@ pub enum Fact {
         op_id: String,
         at: i64,
     },
+    /// Close every live `rel` edge leaving node `from`: the "supersede whatever
+    /// version is current" step, for a writer that does not know that version's
+    /// id. Deterministic under replay because facts apply in `seq` order, so the
+    /// live set at this fact is the one the original write saw.
+    CloseFrom {
+        rel: String,
+        from: (String, String),
+        at: i64,
+    },
 }
 
 impl Fact {
@@ -213,6 +222,20 @@ pub async fn record(tx: &mut Transaction<'_, Sqlite>, facts: &[(Fact, Origin)]) 
                 .bind(stamps.invalid_at)
                 .bind(stamps.created_at)
                 .bind(stamps.expired_at),
+            Fact::CloseFrom { rel, from, at } => q
+                .bind("close_from")
+                .bind(rel)
+                .bind("")
+                .bind(&from.0)
+                .bind(&from.1)
+                .bind(None::<String>)
+                .bind(None::<String>)
+                .bind("{}")
+                .bind("{}")
+                .bind(None::<i64>)
+                .bind(Some(*at))
+                .bind(None::<i64>)
+                .bind(Some(*at)),
             Fact::Close { rel, op_id, at } => q
                 .bind("close")
                 .bind(rel)
@@ -289,6 +312,16 @@ fn row_to_fact(r: Row) -> Result<Fact> {
                 op_id: (!id.is_empty()).then_some(id),
                 stamps: Stamps { valid_at: va, invalid_at: ia, created_at: ca, expired_at: ea },
                 props: serde_json::from_str(&props)?,
+            }
+        }
+        "close_from" => {
+            let (Some(fl), Some(fi)) = (fl, fi) else {
+                bail!("journal close_from row without its node");
+            };
+            Fact::CloseFrom {
+                rel: label,
+                from: (fl, fi),
+                at: ia.ok_or_else(|| anyhow::anyhow!("journal close_from row without its time"))?,
             }
         }
         "close" => Fact::Close {
@@ -405,6 +438,14 @@ pub fn project(fact: &Fact) -> Result<String> {
                 None => Ok(format!("{head} MERGE (a)-[r:{rel}]->(b) SET {}", set.join(", "))),
             }
         }
+        Fact::CloseFrom { rel, from, at } => Ok(format!(
+            "MATCH (a:{} {{id: '{}'}})-[r:{}]->() \
+             WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+             SET r.invalid_at = {at}, r.expired_at = {at}",
+            ident(&from.0)?,
+            escape_cypher(&from.1),
+            ident(rel)?,
+        )),
         Fact::Close { rel, op_id, at } => Ok(format!(
             "MATCH ()-[r:{} {{op_id: '{}'}}]->() WHERE r.invalid_at IS NULL \
              SET r.invalid_at = {at}, r.expired_at = {at}",
@@ -502,6 +543,7 @@ mod tests {
                 props: BTreeMap::new(),
             },
             Fact::Close { rel: "FILE_PART_OF".into(), op_id: "op-1".into(), at: 9 },
+            Fact::CloseFrom { rel: "HAS_VERSION".into(), from: ("Annotation".into(), "a1".into()), at: 11 },
         ];
         let tagged: Vec<_> = facts.iter().cloned().map(|f| (f, origin())).collect();
         let mut tx = pool.begin().await.unwrap();
