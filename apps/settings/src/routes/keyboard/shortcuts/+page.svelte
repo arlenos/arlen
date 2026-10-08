@@ -278,14 +278,14 @@
       variant="outline" size="sm"
       data-action="use-defaults"
       onclick={() => (pendingReset = "builtin")}
-      title={$t("s.sc.useDefaultsHint")}
+      tooltip={$t("s.sc.useDefaultsHint")}
     >
       {$t("s.sc.useDefaults")}
     </Button>
     <Button
       variant="outline" size="sm"
       onclick={() => (pendingReset = "modules")}
-      title={$t("s.sc.resetModulesHint")}
+      tooltip={$t("s.sc.resetModulesHint")}
     >
       {$t("s.sc.resetModules")}
     </Button>

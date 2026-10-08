@@ -248,7 +248,7 @@
             size="sm"
             onclick={() => onApply(p)}
             disabled={p.isCurrent}
-            title={p.isCurrent ? $t("s.profile.alreadyActive") : $t("s.profile.apply")}
+            tooltip={p.isCurrent ? $t("s.profile.alreadyActive") : $t("s.profile.apply")}
           >
             <Play size={12} strokeWidth={2.5} /> {$t("s.profile.apply")}
           </Button>
@@ -257,7 +257,7 @@
             size="icon-sm"
             onclick={() => startRename(p)}
             aria-label={$t("s.profile.rename.aria")}
-            title={$t("s.profile.rename")}
+            tooltip={$t("s.profile.rename")}
           >
             <Pencil size={12} strokeWidth={2} />
           </Button>
@@ -266,7 +266,7 @@
             size="icon-sm"
             onclick={() => (deleteCandidate = p)}
             aria-label={$t("s.profile.delete.aria")}
-            title={$t("s.profile.delete")}
+            tooltip={$t("s.profile.delete")}
           >
             <Trash2 size={12} strokeWidth={2} />
           </Button>
