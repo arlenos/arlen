@@ -36,6 +36,15 @@
 # remembered from a comment nobody reads at commit time.
 set -uo pipefail
 
+# Low priority for everything below, set here because every script and `rustc`
+# this spawns inherits it. On 8 October the gates and the cargo lints ran at nice
+# 0 on a machine three agents share and took the load to 67, although every agent
+# had been asked to prefix `nice`: a rule each caller has to remember does not
+# hold, the tool has to carry it. util-linux `renice -n` SETS the niceness, so
+# this is a floor of 10; a caller already nicer cannot be raised back by an
+# unprivileged renice, which fails here harmlessly and is not an error.
+renice -n 10 $$ >/dev/null 2>&1 || true
+
 root=$(git rev-parse --show-toplevel)
 runner="$root/dev/scripts/run-ci-gates.sh"
 
