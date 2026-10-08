@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Chip } from "@arlen/ui-kit/components/ui/chip";
   import { ChoiceList } from "@arlen/ui-kit/components/ui/choice-list";
   import { t, locale } from "$lib/i18n/messages";
   import { readsAsInternal } from "$lib/errors";
@@ -422,11 +423,7 @@
               {#if alwaysAllow.length > 0}
                 <div class="chips">
                   {#each alwaysAllow as name}
-                    <button
-                      type="button"
-                      class="chip"
-                      onclick={() => removeAlwaysAllow(name)}>{name} ×</button
-                    >
+                    <Chip label={name} onremove={() => removeAlwaysAllow(name)} />
                   {/each}
                 </div>
               {/if}
@@ -445,12 +442,7 @@
               {#if alwaysSuppress.length > 0}
                 <div class="chips">
                   {#each alwaysSuppress as name}
-                    <button
-                      type="button"
-                      class="chip muted"
-                      onclick={() => removeAlwaysSuppress(name)}
-                      >{name} ×</button
-                    >
+                    <Chip label={name} onremove={() => removeAlwaysSuppress(name)} />
                   {/each}
                 </div>
               {/if}
@@ -742,26 +734,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
-  }
-  .chip {
-    height: 22px;
-    padding: 0 0.5rem;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
-    color: var(--foreground);
-    font-size: var(--text-2xs);
-    transition: background-color 120ms ease;
-  }
-  .chip:hover {
-    background: color-mix(in srgb, var(--color-accent) 26%, transparent);
-  }
-  .chip.muted {
-    background: color-mix(in srgb, var(--foreground) 12%, transparent);
-    border-color: color-mix(in srgb, var(--foreground) 18%, transparent);
-  }
-  .chip.muted:hover {
-    background: color-mix(in srgb, var(--foreground) 18%, transparent);
   }
 
   .test-row {
