@@ -359,9 +359,31 @@ pub fn project(fact: &Fact) -> Result<String> {
     }
 }
 
-/// Apply every fact after the projected mark to `graph`, in order, advancing the
-/// mark as it goes. A failure stops at that fact; the next call resumes there.
-/// Returns how many facts were applied.
+/// Record `facts` in one transaction, then bring the projection up to date.
+///
+/// The record commits first: if the projection fails, the facts are already the
+/// truth and the next call applies them. The other order would leave a graph
+/// holding things the record never heard of.
+pub async fn commit_and_project(
+    pool: &SqlitePool,
+    graph: &crate::graph::GraphHandle,
+    facts: &[(Fact, Origin)],
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    record(&mut tx, facts).await?;
+    tx.commit().await?;
+    project_pending(pool, graph).await?;
+    Ok(())
+}
+
+/// Apply every fact after the projected mark to `graph`, in order. Returns how
+/// many facts were applied.
+///
+/// The mark moves once per batch, not once per fact: every projection is
+/// idempotent, so a failure halfway re-applies the head of the batch on the next
+/// call and changes nothing, while a per-fact mark cost one more SQLite write for
+/// every fact the graph learns. On failure the mark still moves to the last fact
+/// that did land, so a fact that cannot be projected is retried, not skipped.
 pub async fn project_pending(pool: &SqlitePool, graph: &crate::graph::GraphHandle) -> Result<usize> {
     let mut applied = 0;
     loop {
@@ -370,11 +392,18 @@ pub async fn project_pending(pool: &SqlitePool, graph: &crate::graph::GraphHandl
         if batch.is_empty() {
             return Ok(applied);
         }
+        let mut last = from;
         for (seq, fact) in batch {
-            graph.write(project(&fact)?).await?;
-            set_projected_seq(pool, seq).await?;
+            if let Err(e) = async { graph.write(project(&fact)?).await }.await {
+                if last > from {
+                    set_projected_seq(pool, last).await?;
+                }
+                return Err(e);
+            }
+            last = seq;
             applied += 1;
         }
+        set_projected_seq(pool, last).await?;
     }
 }
 
@@ -390,7 +419,6 @@ mod tests {
     async fn pool() -> (SqlitePool, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
         let pool = crate::db::open(dir.path().join("j.db").to_str().unwrap()).await.unwrap();
-        ensure_schema(&pool).await.unwrap();
         (pool, dir)
     }
 
@@ -507,6 +535,49 @@ mod tests {
         let rebuilt = crate::graph::spawn(dir.path().join("g2").to_str().unwrap()).unwrap();
         project_pending(&pool, &rebuilt).await.unwrap();
         assert_eq!(snapshot(rebuilt).await, before);
+    }
+
+    /// What journaling costs on the promotion path, measured rather than guessed:
+    /// one transaction per file open with the five facts a session-bearing open
+    /// makes. Ignored because it times things; run with `--ignored --nocapture`.
+    #[tokio::test]
+    #[ignore = "a measurement, not a check: it prints timings"]
+    async fn measure_the_cost_of_journaling_a_file_open() {
+        let (pool, dir) = pool().await;
+        let graph = crate::graph::spawn(dir.path().join("g").to_str().unwrap()).unwrap();
+        let opens = 200;
+        let mut record_ns = 0u128;
+        let mut project_ns = 0u128;
+        for i in 0..opens {
+            let path = format!("/r/f{i}.rs");
+            let facts: Vec<(Fact, Origin)> = vec![
+                Fact::Node { label: "App".into(), id: "app".into(), props: props(&[("name", json!("x"))]), on_create: BTreeMap::new() },
+                Fact::Node { label: "File".into(), id: path.clone(), props: props(&[("path", json!(path)), ("last_accessed", json!(i))]), on_create: BTreeMap::new() },
+                Fact::Edge { rel: "ACCESSED_BY".into(), from: ("File".into(), path.clone()), to: ("App".into(), "app".into()), op_id: None, stamps: Stamps::default(), props: BTreeMap::new() },
+                Fact::Node { label: "Session".into(), id: "s".into(), props: BTreeMap::new(), on_create: BTreeMap::new() },
+                Fact::Edge { rel: "ACCESSED_IN".into(), from: ("File".into(), path.clone()), to: ("Session".into(), "s".into()), op_id: None, stamps: Stamps::default(), props: BTreeMap::new() },
+            ]
+            .into_iter()
+            .map(|f| (f, origin()))
+            .collect();
+            let t = std::time::Instant::now();
+            let mut tx = pool.begin().await.unwrap();
+            record(&mut tx, &facts).await.unwrap();
+            tx.commit().await.unwrap();
+            record_ns += t.elapsed().as_nanos();
+            let t = std::time::Instant::now();
+            project_pending(&pool, &graph).await.unwrap();
+            project_ns += t.elapsed().as_nanos();
+        }
+        let bytes = std::fs::metadata(dir.path().join("j.db")).unwrap().len();
+        println!(
+            "journal: {:.2} ms/open recording, {:.2} ms/open projecting, {} facts, {} bytes on disk ({} per fact)",
+            record_ns as f64 / opens as f64 / 1e6,
+            project_ns as f64 / opens as f64 / 1e6,
+            opens * 5,
+            bytes,
+            bytes / (opens as u64 * 5),
+        );
     }
 
     #[test]

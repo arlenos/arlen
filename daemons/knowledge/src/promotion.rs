@@ -326,7 +326,7 @@ async fn run_pass(
         let result = match event_type.as_str() {
             "file.opened" => {
                 let res = promote_file_opened(
-                    graph, id, timestamp, source, pid, session_of(origin), payload,
+                    pool, graph, id, timestamp, source, pid, session_of(origin), payload,
                 )
                 .await;
                 // After the File node exists, try linking it to a project.
@@ -526,7 +526,9 @@ async fn index_project_fact_text(pool: &SqlitePool, graph: &GraphHandle) -> Resu
 /// so the pass stays bounded whatever the graph holds.
 const MAX_INDEXED_PROJECTS: i64 = 500;
 
+#[allow(clippy::too_many_arguments)]
 async fn promote_file_opened(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     timestamp: &i64,
@@ -589,29 +591,54 @@ async fn promote_file_opened(
         format!("{source}:{pid}")
     };
 
-    let path_esc = escape_cypher(&path);
-    let app_id_esc = escape_cypher(&app_id);
-    let source_esc = escape_cypher(source);
-
-    graph
-        .write(format!(
-            "MERGE (a:App {{id: '{app_id_esc}'}}) SET a.name = '{source_esc}'"
-        ))
-        .await?;
-
-    graph
-        .write(format!(
-            "MERGE (f:File {{id: '{path_esc}'}})
-             SET f.path = '{path_esc}', f.last_accessed = {timestamp}, f.app_id = '{app_id_esc}', f.last_cgroup_id = {cgroup_id}"
-        ))
-        .await?;
-
-    graph
-        .write(format!(
-            "{} MERGE (f)-[:ACCESSED_BY]->(a)",
-            crate::cypher::match_two_nodes("f", "File", &path, "a", "App", &app_id)
-        ))
-        .await?;
+    // Through the fact journal (D11): what this open makes true is recorded in
+    // SQLite first and then projected, so the graph can be rebuilt from the record.
+    // Projected before the reads below, which look at these edges.
+    use crate::journal::Fact;
+    use serde_json::json;
+    let node = |label: &str, id: &str, props: Vec<(&str, serde_json::Value)>| Fact::Node {
+        label: label.into(),
+        id: id.into(),
+        props: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+        on_create: Default::default(),
+    };
+    let edge = |rel: &str, from: (&str, &str), to: (&str, &str)| Fact::Edge {
+        rel: rel.into(),
+        from: (from.0.into(), from.1.into()),
+        to: (to.0.into(), to.1.into()),
+        op_id: None,
+        stamps: Default::default(),
+        props: Default::default(),
+    };
+    let mut facts = vec![
+        node("App", &app_id, vec![("name", json!(source))]),
+        node(
+            "File",
+            &path,
+            vec![
+                ("path", json!(path)),
+                ("last_accessed", json!(*timestamp)),
+                ("app_id", json!(app_id)),
+                ("last_cgroup_id", json!(cgroup_id)),
+            ],
+        ),
+        edge("ACCESSED_BY", ("File", &path), ("App", &app_id)),
+    ];
+    if !session_id.is_empty() {
+        facts.push(node("Session", session_id, vec![]));
+        facts.push(edge("ACCESSED_IN", ("File", &path), ("Session", session_id)));
+    }
+    let origin = crate::journal::Origin {
+        provenance: "graph".into(),
+        valid_time_source: "event".into(),
+        event_id: Some(event_id.to_string()),
+    };
+    crate::journal::commit_and_project(
+        pool,
+        graph,
+        &facts.into_iter().map(|f| (f, origin.clone())).collect::<Vec<_>>(),
+    )
+    .await?;
 
     // Session<->activity edge (KG-richness Thrust 1): link the file to the
     // focus/activity session it was accessed in, so the graph can answer "which
@@ -624,15 +651,6 @@ async fn promote_file_opened(
     // event, and Session nodes are already materialised by window.focused.
     if !session_id.is_empty() {
         let session_esc = escape_cypher(session_id);
-        graph
-            .write(crate::cypher::merge_node("s", "Session", session_id))
-            .await?;
-        graph
-            .write(format!(
-                "{} MERGE (f)-[:ACCESSED_IN]->(s)",
-                crate::cypher::match_two_nodes("f", "File", &path, "s", "Session", session_id)
-            ))
-            .await?;
 
         // File<->file co-access (KG-richness Thrust 1): link this file to the
         // most-recently-accessed other files in the same session, the strongest
@@ -1736,6 +1754,22 @@ mod shell_event_tests {
     use std::collections::HashMap;
     use tempfile::TempDir;
 
+    /// `promote_file_opened` with a scratch journal of its own, for the tests that
+    /// only look at the graph it leaves behind.
+    async fn promote_file_opened_t(
+        graph: &GraphHandle,
+        event_id: &str,
+        timestamp: &i64,
+        source: &str,
+        pid: &i64,
+        session_id: &str,
+        payload: &[u8],
+    ) -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let pool = crate::db::open(tmp.path().join("j.db").to_str().unwrap()).await.unwrap();
+        promote_file_opened(&pool, graph, event_id, timestamp, source, pid, session_id, payload).await
+    }
+
     async fn setup() -> (GraphHandle, TempDir) {
         let tmp = TempDir::new().unwrap();
         let graph =
@@ -1959,7 +1993,7 @@ mod shell_event_tests {
             };
             let mut buf = Vec::new();
             payload.encode(&mut buf).unwrap();
-            promote_file_opened(&graph, &format!("ev{i}"), &100, "ebpf", &1234, "sess", &buf)
+            promote_file_opened_t(&graph, &format!("ev{i}"), &100, "ebpf", &1234, "sess", &buf)
                 .await
                 .unwrap();
         }
@@ -1993,7 +2027,7 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
-        promote_file_opened(&graph, "ev9", &100, "shell", &77, "sess", &buf)
+        promote_file_opened_t(&graph, "ev9", &100, "shell", &77, "sess", &buf)
             .await
             .unwrap();
         let rs = graph
@@ -2022,7 +2056,7 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
-        promote_file_opened(&graph, "ev1", &100, "ebpf", &42, "sess", &buf)
+        promote_file_opened_t(&graph, "ev1", &100, "ebpf", &42, "sess", &buf)
             .await
             .unwrap();
         let rs = graph
@@ -2051,7 +2085,7 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
-        promote_file_opened(&graph, "ev1", &100, "ebpf", &42, "sess-9", &buf)
+        promote_file_opened_t(&graph, "ev1", &100, "ebpf", &42, "sess-9", &buf)
             .await
             .unwrap();
         let rs = graph
@@ -2075,7 +2109,7 @@ mod shell_event_tests {
         }
         .encode(&mut buf2)
         .unwrap();
-        promote_file_opened(&graph, "ev2", &100, "ebpf", &42, "", &buf2)
+        promote_file_opened_t(&graph, "ev2", &100, "ebpf", &42, "", &buf2)
             .await
             .unwrap();
         let rs2 = graph
@@ -2109,9 +2143,9 @@ mod shell_event_tests {
 
         // Open /z then /a in one session: /a (smaller id) is FROM, /z is TO.
         let (b1, t1, e1) = open("/proj/z.rs", 100, "co1");
-        promote_file_opened(&graph, &e1, &t1, "ebpf", &1, "sess-co", &b1).await.unwrap();
+        promote_file_opened_t(&graph, &e1, &t1, "ebpf", &1, "sess-co", &b1).await.unwrap();
         let (b2, t2, e2) = open("/proj/a.rs", 200, "co2");
-        promote_file_opened(&graph, &e2, &t2, "ebpf", &1, "sess-co", &b2).await.unwrap();
+        promote_file_opened_t(&graph, &e2, &t2, "ebpf", &1, "sess-co", &b2).await.unwrap();
 
         // Exactly one CO_ACCESSED edge between the pair, in canonical direction.
         let dir = graph
@@ -2138,7 +2172,7 @@ mod shell_event_tests {
 
         // Re-open /z later: same pair, refreshed last_seen, still one edge.
         let (b3, t3, e3) = open("/proj/z.rs", 300, "co3");
-        promote_file_opened(&graph, &e3, &t3, "ebpf", &1, "sess-co", &b3).await.unwrap();
+        promote_file_opened_t(&graph, &e3, &t3, "ebpf", &1, "sess-co", &b3).await.unwrap();
         let again = graph
             .query_rows(
                 "MATCH (:File {id:'/proj/a.rs'})-[c:CO_ACCESSED]->(:File {id:'/proj/z.rs'}) \
@@ -2152,7 +2186,7 @@ mod shell_event_tests {
 
         // A file in a different session shares no co-access edge.
         let (b4, t4, e4) = open("/other/x.rs", 400, "co4");
-        promote_file_opened(&graph, &e4, &t4, "ebpf", &1, "sess-other", &b4).await.unwrap();
+        promote_file_opened_t(&graph, &e4, &t4, "ebpf", &1, "sess-other", &b4).await.unwrap();
         let cross = graph
             .query_rows(
                 "MATCH (:File {id:'/other/x.rs'})-[:CO_ACCESSED]-(:File) RETURN count(*) AS c".into(),
