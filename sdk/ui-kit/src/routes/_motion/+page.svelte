@@ -19,6 +19,7 @@ SPDX-License-Identifier: AGPL-3.0-only
   import { onMount, tick } from "svelte";
   import { Switch } from "$lib/components/ui/switch";
   import { Checkbox } from "$lib/components/ui/checkbox";
+  import { Notice } from "$lib/components/ui/notice";
   import {
     Collapsible,
     CollapsibleTrigger,
@@ -93,6 +94,17 @@ SPDX-License-Identifier: AGPL-3.0-only
       </Collapsible>
     </div>
   </section>
+
+  <section>
+    <h2>Notice</h2>
+    <div class="notices">
+      {#if flipped}
+        <Notice tone="error" text="The file could not be saved, so the copy on disk is the old one." />
+        <Notice tone="caution" text="This folder is shared with two other people." />
+        <Notice text="Example pictures, not files on this machine." />
+      {/if}
+    </div>
+  </section>
 </div>
 
 <style>
@@ -143,6 +155,12 @@ SPDX-License-Identifier: AGPL-3.0-only
     font-size: 0.8rem;
     opacity: 0.75;
     margin: 0.5rem 0 0;
+  }
+  .notices {
+    display: grid;
+    gap: 0.5rem;
+    max-width: 30rem;
+    min-height: 7.5rem;
   }
   .row {
     display: flex;
