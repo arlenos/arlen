@@ -3,14 +3,22 @@
 # Run once: ./setup-vm.sh setup
 # Run after: ./setup-vm.sh start
 
+#
+# DEBIAN TRIXIE, the release the image is built from (`dev/mkosi/mkosi.conf`).
+# This was a Fedora 41 cloud image with Fedora package names and `dnf`, from the
+# days the target was Fedora; the kernel layer is meant to run on the kernel and
+# userland the image ships, so the dev VM follows the image.
+
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$SCRIPT_DIR/vm-common.sh"
+
 VM_DIR="$HOME/vms/arlen-ebpf"
-DISK_IMG="$VM_DIR/fedora-ebpf.qcow2"
-CLOUD_IMG="$VM_DIR/fedora-base.qcow2"
+DISK_IMG="$VM_DIR/debian-ebpf.qcow2"
+CLOUD_IMG="$VM_DIR/debian-base.qcow2"
 CLOUD_INIT_IMG="$VM_DIR/cloud-init.iso"
-FEDORA_URL="https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-41-1.4.x86_64.qcow2"
-SSH_PORT=2222
+DEBIAN_URL="https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2"
 VM_RAM=4096
 VM_CPUS=4
 VM_DISK_SIZE=20G
@@ -19,9 +27,9 @@ setup() {
     echo "==> Creating VM directory"
     mkdir -p "$VM_DIR"
 
-    echo "==> Downloading Fedora 41 Cloud image"
+    echo "==> Downloading the Debian trixie cloud image"
     if [ ! -f "$CLOUD_IMG" ]; then
-        curl -L -o "$CLOUD_IMG" "$FEDORA_URL"
+        curl -L --fail -o "$CLOUD_IMG" "$DEBIAN_URL"
     else
         echo "    Already downloaded, skipping"
     fi
@@ -29,15 +37,11 @@ setup() {
     echo "==> Creating VM disk (${VM_DISK_SIZE})"
     qemu-img create -f qcow2 -F qcow2 -b "$CLOUD_IMG" "$DISK_IMG" "$VM_DISK_SIZE"
 
-    echo "==> Injecting SSH public key into cloud-init config"
-    PUBKEY=$(cat "$HOME/.ssh/id_ed25519.pub" 2>/dev/null || cat "$HOME/.ssh/id_rsa.pub" 2>/dev/null || echo "")
-    if [ -z "$PUBKEY" ]; then
-        echo "ERROR: No SSH public key found at ~/.ssh/id_ed25519.pub or ~/.ssh/id_rsa.pub"
-        exit 1
-    fi
-
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-    sed "s|REPLACE_WITH_YOUR_PUBLIC_KEY|$PUBKEY|" \
+    echo "==> Injecting SSH public key and user into cloud-init config"
+    KEY=$(vm_key)
+    PUBKEY=$(cat "$KEY.pub")
+    sed -e "s|REPLACE_WITH_YOUR_PUBLIC_KEY|$PUBKEY|" \
+        -e "s|REPLACE_WITH_USER|$VM_USER|g" \
         "$SCRIPT_DIR/cloud-init-user-data.yaml" > "$VM_DIR/user-data"
 
     cat > "$VM_DIR/meta-data" << 'EOF'
@@ -59,7 +63,7 @@ EOF
 
 start() {
     echo "==> Starting Arlen eBPF dev VM"
-    echo "    SSH will be available at: ssh -p $SSH_PORT tim@localhost"
+    echo "    SSH will be available at: ssh -p $SSH_PORT $VM_USER@localhost"
     echo "    First boot takes ~60 seconds for cloud-init to finish"
     echo ""
 
@@ -80,7 +84,8 @@ ssh_vm() {
     ssh -p "$SSH_PORT" \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
-        tim@localhost "$@"
+        -i "$(vm_key)" \
+        "$VM_USER@localhost" "$@"
 }
 
 case "${1:-}" in
@@ -90,7 +95,7 @@ case "${1:-}" in
     *)
         echo "Usage: $0 {setup|start|ssh}"
         echo ""
-        echo "  setup  - Download Fedora image and prepare VM disk"
+        echo "  setup  - Download the Debian trixie image and prepare the VM disk"
         echo "  start  - Start the VM (KVM accelerated, headless)"
         echo "  ssh    - SSH into the running VM"
         exit 1

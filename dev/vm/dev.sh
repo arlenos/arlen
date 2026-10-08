@@ -21,9 +21,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SSH_PORT=2222
-SSH_OPTS="-p $SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $HOME/.ssh/id_rsa"
-VM_USER=tim
+. "$(dirname "$0")/vm-common.sh"
+VM_KEY="$(vm_key)"
+SSH_OPTS="-p $SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $VM_KEY"
 VM_HOST=localhost
 TMUX_SESSION=arlen-dev
 
@@ -39,7 +39,7 @@ ssh_vm() {
 }
 
 scp_to_vm() {
-    scp -P $SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$HOME/.ssh/id_rsa" "$1" "$VM_USER@$VM_HOST:$2"
+    scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$VM_KEY" "$1" "$VM_USER@$VM_HOST:$2"
 }
 
 build_all() {
@@ -70,7 +70,8 @@ copy_to_vm() {
 
 setup_vm() {
     echo "==> Setting up VM"
-    ssh_vm "which tmux || sudo dnf install -y tmux -q"
+    # cloud-init installs tmux; this only covers a VM made before it did.
+    ssh_vm "command -v tmux >/dev/null || sudo apt-get install -y -q tmux"
     ssh_vm "mkdir -p /tmp"
 }
 

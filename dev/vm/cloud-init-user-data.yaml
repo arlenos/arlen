@@ -1,27 +1,32 @@
 #cloud-config
 hostname: arlen-ebpf-dev
-user: tim
-password: arlen-dev
-chpasswd:
-  expire: false
-ssh_authorized_keys:
-  - REPLACE_WITH_YOUR_PUBLIC_KEY
+users:
+  - name: REPLACE_WITH_USER
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - REPLACE_WITH_YOUR_PUBLIC_KEY
 ssh_pwauth: false
 
 packages:
   - bpftool
-  - kernel-devel
-  - kernel-headers
+  - linux-headers-amd64
   - clang
   - llvm
-  - elfutils-libelf-devel
-  - zlib-devel
+  - libelf-dev
+  - zlib1g-dev
+  - tmux
   - git
   - curl
   - gcc
 
 runcmd:
   # Install Rust
-  - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sudo -u tim sh -s -- -y
+  # Block scalars, not plain ones: `echo "BTF: OK"` holds a colon-space, which in
+  # a plain YAML scalar starts a mapping, and the whole file failed to parse - so
+  # cloud-init created no user and installed no key, and no login could work.
+  - |
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sudo -u REPLACE_WITH_USER sh -s -- -y
   # Verify BTF is available
-  - ls /sys/kernel/btf/vmlinux && echo "BTF: OK" || echo "BTF: MISSING"
+  - |
+    ls /sys/kernel/btf/vmlinux && echo "BTF: OK" || echo "BTF: MISSING"
