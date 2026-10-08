@@ -359,6 +359,44 @@
     }
   });
 
+  // A refused move to another workspace (`Super+Shift+N` with nothing to
+  // move). The compositor has changed nothing, so nothing in the workspace
+  // state would show it; the strip answers by showing the target for a
+  // moment and settling back. 600 ms is one `--duration-normal` slide there,
+  // a short hold, and the slide back starting from here.
+  const PEEK_HOLD_MS = 600;
+  let peekIndex = $state<number | null>(null);
+  let peekTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function onWorkspaceMoveRefused(ev: {
+    payload: { output: string; target: number };
+  }) {
+    const { output, target } = ev.payload;
+    // Each output's bar answers only for its own output. A bar that does not
+    // know its connector yet shows it rather than drop it.
+    if (outputConnector !== null && output !== outputConnector) return;
+    if (target < 0 || target >= workspacesView.length || target === activeIndex) return;
+    peekIndex = target;
+    if (peekTimer) clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => {
+      peekIndex = null;
+      peekTimer = null;
+    }, PEEK_HOLD_MS);
+  }
+
+  $effect(() => {
+    let unlistenRefused: UnlistenFn | null = null;
+    listen("arlen://workspace-move-refused", onWorkspaceMoveRefused)
+      .then((fn) => {
+        unlistenRefused = fn;
+      })
+      .catch((e) => console.warn("workspace-move-refused subscribe failed", e));
+    return () => {
+      if (unlistenRefused) unlistenRefused();
+      if (peekTimer) clearTimeout(peekTimer);
+    };
+  });
+
   $effect(() => {
     // Subscribe to the compositor's keyboard-triggered open event.
     // Listen returns its unsubscribe handle async; we stash it so the
@@ -392,6 +430,7 @@
       workspaces={workspacesView}
       {mode}
       {activeIndex}
+      {peekIndex}
       onActivate={handlePillClick}
     />
     <WorkspaceOverlay
