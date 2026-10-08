@@ -12,6 +12,7 @@
   import type { Snippet } from "svelte";
   import { X } from "@lucide/svelte";
   import { kt } from "../../../i18n/messages.kit";
+  import * as Tooltip from "../tooltip/index.js";
 
   let {
     label,
@@ -19,6 +20,7 @@
     lead,
     onclick,
     onremove,
+    tooltip,
     class: className,
   }: {
     label: string;
@@ -29,11 +31,28 @@
     onclick?: (e: MouseEvent) => void;
     /// Adds a remove control; the caller owns any confirm step.
     onremove?: () => void;
+    /// The chip's identity when its label is shorter than it, as the kit
+    /// tooltip (a file's path behind its name; design-system 6.6).
+    tooltip?: string;
     class?: string;
   } = $props();
 </script>
 
-<span class="chip {className ?? ''}" class:has-x={!!onremove} {id}>
+{#if tooltip}
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      {#snippet child({ props })}
+        {@render chip(props)}
+      {/snippet}
+    </Tooltip.Trigger>
+    <Tooltip.TooltipContent>{tooltip}</Tooltip.TooltipContent>
+  </Tooltip.Root>
+{:else}
+  {@render chip({})}
+{/if}
+
+{#snippet chip(attrs: Record<string, unknown>)}
+<span class="chip {className ?? ''}" class:has-x={!!onremove} {id} {...attrs}>
   {#if onclick}
     <button type="button" class="chip-body" {onclick}>
       {#if lead}<span class="chip-lead" aria-hidden="true">{@render lead()}</span>{/if}
@@ -51,6 +70,7 @@
     </button>
   {/if}
 </span>
+{/snippet}
 
 <style>
   .chip {
