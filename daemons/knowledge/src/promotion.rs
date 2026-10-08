@@ -355,7 +355,7 @@ async fn run_pass(
                 res
             }
             "process.started" => {
-                promote_process_started(graph, timestamp, source, payload).await
+                promote_process_started(pool, graph, id, timestamp, source, payload).await
             }
             "window.focused" => {
                 promote_window_focused(pool, graph, id, timestamp, session_of(origin), payload).await
@@ -767,7 +767,9 @@ async fn link_co_accessed(
 ///     the executable identity is the whole payload. There is no argv field to
 ///     drop here because there is none in the payload, and there must not be one.
 async fn promote_process_started(
+    pool: &SqlitePool,
     graph: &GraphHandle,
+    event_id: &str,
     timestamp: &i64,
     source: &str,
     payload: &[u8],
@@ -800,18 +802,23 @@ async fn promote_process_started(
         return Ok(());
     }
 
-    let child_esc = escape_cypher(&child);
-    let parent_esc = escape_cypher(&parent);
-    let ts = *timestamp;
-    graph
-        .write(format!(
-            "MERGE (p:App {{id: '{parent_esc}'}}) \
-             MERGE (c:App {{id: '{child_esc}'}}) \
-             MERGE (p)-[l:LAUNCHED]->(c) \
-             ON CREATE SET l.first_seen = {ts}, l.last_seen = {ts}, l.count = 1 \
-             ON MATCH SET l.last_seen = {ts}, l.count = l.count + 1"
-        ))
-        .await?;
+    // Through the fact journal (D11): every launch is its own fact, and the edge's
+    // tally is what the projection computes from them (see `Fact::Occurrence`).
+    // The edge used to count by incrementing itself, which a journal replayed
+    // after a retry would have counted twice.
+    use crate::journal::{Fact, Origin};
+    let facts = vec![
+        Fact::node("App", &parent, &[]),
+        Fact::node("App", &child, &[]),
+        Fact::Occurrence {
+            rel: "LAUNCHED".into(),
+            id: event_id.into(),
+            from: ("App".into(), parent),
+            to: ("App".into(), child),
+            at: *timestamp,
+        },
+    ];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
     Ok(())
 }
 
@@ -1840,8 +1847,9 @@ mod shell_event_tests {
     #[tokio::test]
     async fn a_launch_between_two_apps_is_one_edge() {
         let (graph, _tmp) = setup().await;
+        let pool = scratch().await;
         let buf = exec_payload(700, 800);
-        promote_process_started(&graph, &10, "ebpf", &buf).await.unwrap();
+        promote_process_started(&pool, &graph, "ev10", &10, "ebpf", &buf).await.unwrap();
 
         let rs = graph
             .query_rows(
@@ -1863,9 +1871,10 @@ mod shell_event_tests {
     #[tokio::test]
     async fn re_running_the_child_refreshes_instead_of_adding() {
         let (graph, _tmp) = setup().await;
+        let pool = scratch().await;
         let buf = exec_payload(700, 800);
         for ts in [10i64, 20, 30] {
-            promote_process_started(&graph, &ts, "ebpf", &buf).await.unwrap();
+            promote_process_started(&pool, &graph, &format!("ev{ts}"), &ts, "ebpf", &buf).await.unwrap();
         }
 
         let rs = graph
@@ -1894,9 +1903,10 @@ mod shell_event_tests {
     #[tokio::test]
     async fn a_shell_running_ls_a_hundred_times_records_nothing() {
         let (graph, _tmp) = setup().await;
+        let pool = scratch().await;
         let buf = exec_payload(700, 700);
         for ts in 0..100i64 {
-            promote_process_started(&graph, &ts, "ebpf", &buf).await.unwrap();
+            promote_process_started(&pool, &graph, &format!("ev{ts}"), &ts, "ebpf", &buf).await.unwrap();
         }
 
         let edges = graph
@@ -1914,6 +1924,7 @@ mod shell_event_tests {
     #[tokio::test]
     async fn an_unresolved_exec_records_nothing() {
         let (graph, _tmp) = setup().await;
+        let pool = scratch().await;
         for (parent, child) in [
             // The fork was never seen, so the parent is unattributed.
             (0u64, 800u64),
@@ -1924,7 +1935,7 @@ mod shell_event_tests {
             (0, 0),
         ] {
             let buf = exec_payload(parent, child);
-            promote_process_started(&graph, &10, "ebpf", &buf).await.unwrap();
+            promote_process_started(&pool, &graph, "ev10", &10, "ebpf", &buf).await.unwrap();
         }
 
         let edges = graph

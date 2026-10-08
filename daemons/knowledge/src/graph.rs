@@ -897,8 +897,13 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // anyway. A shell's thousand `ls` calls collapse into one edge that stops
     // growing - the same shape CO_ACCESSED uses.
     //
-    // `count` is a tally, not a series: it says a pair recurs, and no query can
-    // return when, because no when is stored.
+    // `count`, `first_seen` and `last_seen` are what the journal projection
+    // computes from the launches it records (`journal::Fact::Occurrence`), not a
+    // counter the edge increments. The graph holds the tally and no series. The
+    // series does exist, one fact per launch, in the SQLite journal - which keeps
+    // facts where the raw event log ages them out after 30 days, so folding old
+    // occurrences into a tally there is an open question in the coder report of
+    // 8 October.
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS LAUNCHED(FROM App TO App, \
          first_seen INT64, last_seen INT64, count INT64)",
