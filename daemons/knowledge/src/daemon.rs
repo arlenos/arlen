@@ -74,13 +74,17 @@ impl RateState {
     }
 }
 
-/// Fire-and-forget emitter for `graph.rate_limited` Event Bus events.
-struct RateLimitEmitter {
+/// The topic a throttled caller is reported under; the anomaly detector's alert.
+pub(crate) const RATE_LIMITED_TOPIC: &str = "graph.rate_limited";
+
+/// Fire-and-forget emitter for the daemon's own Event Bus events
+/// (`graph.rate_limited` here, `graph.events_dropped` from the writer).
+pub(crate) struct RateLimitEmitter {
     socket_path: PathBuf,
 }
 
 impl RateLimitEmitter {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let path = crate::utils::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
         Self {
             socket_path: PathBuf::from(path),
@@ -90,9 +94,15 @@ impl RateLimitEmitter {
     /// Emit `graph.rate_limited`; the payload is the offending `app_id`.
     /// Consumed by the Anomaly Detector (foundation §8.4). Best-effort.
     fn emit(&self, app_id: &str) {
+        self.emit_event(RATE_LIMITED_TOPIC, app_id.as_bytes());
+    }
+
+    /// Emit one event of `topic` with `payload`. Best-effort: a bus that is not
+    /// there loses the event, which is the right failure for an advisory signal.
+    pub(crate) fn emit_event(&self, topic: &str, payload: &[u8]) {
         let event = Event {
             id: uuid::Uuid::now_v7().to_string(),
-            r#type: "graph.rate_limited".to_string(),
+            r#type: topic.to_string(),
             timestamp: chrono::Utc::now().timestamp_micros(),
             source: "knowledge".to_string(),
             pid: std::process::id(),
@@ -100,7 +110,7 @@ impl RateLimitEmitter {
             // no user session, so a stable daemon identifier is used.
             // The daemon itself, in no user session: a named system source.
             origin: "system:knowledge-daemon".to_string(),
-            payload: app_id.as_bytes().to_vec(),
+            payload: payload.to_vec(),
             uid: unsafe { libc::getuid() },
             project_id: String::new(),
         };

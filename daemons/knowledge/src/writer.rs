@@ -36,6 +36,35 @@ pub fn dropped_events() -> u64 {
     DROPPED.load(Ordering::Relaxed)
 }
 
+/// The topic the drop total is reported under, for the anomaly detector. The
+/// payload is the running total as decimal text.
+pub const EVENTS_DROPPED_TOPIC: &str = "graph.events_dropped";
+
+/// At most one drop report this often: the total keeps climbing for as long as a
+/// store refuses, and one report a minute says that without flooding the bus.
+const DROP_REPORT_EVERY: Duration = Duration::from_secs(60);
+
+/// What the writer last told the bus about drops.
+#[derive(Debug, Default)]
+struct DropReport {
+    reported: u64,
+    at: Option<Instant>,
+}
+
+impl DropReport {
+    /// The total to report now, if there is news and the last report is old
+    /// enough. Advances its own state when it answers.
+    fn due(&mut self, total: u64, now: Instant) -> Option<u64> {
+        let quiet = self.at.is_none_or(|t| now.duration_since(t) >= DROP_REPORT_EVERY);
+        if total > self.reported && quiet {
+            self.reported = total;
+            self.at = Some(now);
+            return Some(total);
+        }
+        None
+    }
+}
+
 /// When the next batch write may be tried. A write that fails leaves its batch
 /// in the buffer, and this keeps the retries from hammering a store that is
 /// already refusing - a full disk or a locked database does not clear in 500ms.
@@ -87,8 +116,11 @@ pub async fn run(consumer_socket: &str, pool: SqlitePool) -> Result<()> {
     // connection would be the same loss as dropping it on a failed write.
     let mut buffer: Vec<Event> = Vec::with_capacity(RING_BUFFER_CAPACITY);
     let mut retry = Retry::default();
+    let mut drops = DropReport::default();
+    let emitter = std::sync::Arc::new(crate::daemon::RateLimitEmitter::new());
     loop {
-        match connect_and_consume(consumer_socket, &pool, &paused, &mut buffer, &mut retry).await {
+        match connect_and_consume(consumer_socket, &pool, &paused, &mut buffer, &mut retry, &mut drops, &emitter)
+            .await {
             Ok(()) => {
                 // Clean disconnect; Event Bus shut down intentionally.
                 info!("event bus disconnected, waiting to reconnect");
@@ -108,6 +140,8 @@ async fn connect_and_consume(
     paused: &std::sync::atomic::AtomicBool,
     buffer: &mut Vec<Event>,
     retry: &mut Retry,
+    drops: &mut DropReport,
+    emitter: &std::sync::Arc<crate::daemon::RateLimitEmitter>,
 ) -> Result<()> {
     let mut stream = UnixStream::connect(consumer_socket).await?;
     info!(socket = consumer_socket, "connected to event bus");
@@ -176,6 +210,12 @@ async fn connect_and_consume(
             _ = interval.tick() => {
                 if !buffer.is_empty() {
                     flush(buffer, pool, retry).await;
+                }
+                if let Some(total) = drops.due(dropped_events(), Instant::now()) {
+                    let emitter = emitter.clone();
+                    tokio::task::spawn_blocking(move || {
+                        emitter.emit_event(EVENTS_DROPPED_TOPIC, total.to_string().as_bytes())
+                    });
                 }
             }
         }
@@ -376,6 +416,17 @@ mod tests {
         flush(&mut buffer, &pool, &mut retry).await;
         assert!(buffer.is_empty());
         assert_eq!(retry.failures, 0);
+    }
+
+    #[test]
+    fn a_drop_is_reported_once_a_minute_and_only_when_it_grew() {
+        let now = Instant::now();
+        let mut r = DropReport::default();
+        assert_eq!(r.due(0, now), None, "nothing dropped, nothing to say");
+        assert_eq!(r.due(3, now), Some(3));
+        assert_eq!(r.due(9, now + Duration::from_secs(10)), None, "inside the minute");
+        assert_eq!(r.due(9, now + DROP_REPORT_EVERY), Some(9));
+        assert_eq!(r.due(9, now + DROP_REPORT_EVERY * 3), None, "no news");
     }
 
     #[test]
