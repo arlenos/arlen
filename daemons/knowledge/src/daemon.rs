@@ -2003,6 +2003,7 @@ async fn handle_write_request(
                     if let Some(data) = dedup_data {
                         let new_id = crate::write::entity_node_id(&qualified_type, &external_key);
                         if let Err(e) = crate::shared::dedup_shared_entity_on_write(
+                            pool,
                             graph,
                             &qualified_type,
                             &new_id,
@@ -2095,26 +2096,12 @@ async fn handle_write_request(
             if let Err(e) = crate::write::authorise_entity_merge(&token, &qualified_type) {
                 return format!("ERROR: {e}");
             }
-            // The rel tables whose edges must be re-pointed (a catalog read).
             let table = crate::write::entity_table_name(&qualified_type);
-            let involved = match graph.rel_tables_involving(&table).await {
-                Ok(t) => t,
-                Err(e) => return format!("ERROR: enumerate relations: {e}"),
-            };
-            // The re-point + delete plan (fail-closed: non-empty, distinct keys).
-            let stmts = match crate::write::plan_entity_merge(
-                &qualified_type,
-                &duplicate_key,
-                &canonical_key,
-                &involved,
-            ) {
-                Ok(s) => s,
-                Err(e) => return format!("ERROR: {e}"),
-            };
-            // Both instances must exist before a destructive merge. The delete is
-            // canonical-anchored so a missing canonical no-ops rather than
-            // destroys, but a merge that would move nothing is a caller error
-            // (a mistyped key), so surface it plainly instead of a false OK.
+            if duplicate_key.is_empty() || canonical_key.is_empty() || duplicate_key == canonical_key {
+                return "ERROR: merge needs two different, non-empty keys".to_string();
+            }
+            // Both instances must exist: a link to a mistyped key would wait in
+            // the record for an entity that never comes, so say it plainly.
             let dup_id = crate::write::entity_node_id(&qualified_type, &duplicate_key);
             let canon_id = crate::write::entity_node_id(&qualified_type, &canonical_key);
             let exist_q = format!(
@@ -2149,13 +2136,22 @@ async fn handle_write_request(
                 warn!("entity merge audit failed, refusing write: {e}");
                 return "ERROR: audit unavailable".to_string();
             }
-            // Re-point every edge then delete the duplicate ATOMICALLY: a partial
-            // merge (some edges moved, the duplicate left, or vice versa) would
-            // corrupt the graph, so the whole plan runs in one transaction.
-            match graph.transaction(stmts).await {
-                Ok(()) => "OK: merged".to_string(),
-                Err(e) => format!("ERROR: merge: {e}"),
+            // A merge is a decision that the two are one entity: a recorded
+            // `must_link`, replayed into a `SAME_AS` edge, with both nodes kept.
+            // It used to re-point every edge and delete the duplicate, which a
+            // wrong merge could not undo (bitemporal-knowledge-graph.md §4.11).
+            let decision = crate::curation::Command::MustLink {
+                entity_type: qualified_type.clone(),
+                a: dup_id,
+                b: canon_id,
+            };
+            if let Err(e) = crate::curation::record(pool, &decision, &token.app_id).await {
+                return format!("ERROR: record the decision: {e}");
             }
+            if let Err(e) = crate::curation::replay(pool, graph).await {
+                warn!("merge decision recorded, link not yet in the graph: {e}");
+            }
+            "OK: linked".to_string()
         }
         WriteRequest::PersistConsentGrant {
             recipient,
@@ -2893,12 +2889,15 @@ struct MergeDecisionRequest {
 
 /// Decide a merge suggestion (0x10, SHARED-ENTITIES.md §4 "owner confirms"). Only
 /// the OWNER app of the suggestion's entity type may act, and only on a `Pending`
-/// suggestion. An accept runs `merge_node` (delete the duplicate source, keep the
-/// canonical target, re-point the source's edges across the dynamic rel tables)
-/// then marks it Accepted; a reject marks it Rejected and touches no entity. The
-/// merged pair is read from the stored suggestion, not the request. Audited before
-/// any mutation, fail-closed.
+/// suggestion. An accept records a `must_link` decision and a reject a
+/// `cannot_link` (`crate::curation`), each replayed into the graph at once and
+/// again after every rebuild: an accept is a `SAME_AS` edge between the two
+/// entities, both of which stay. It used to fold the source into the target and
+/// delete it, which a wrong accept of two people could not undo
+/// (bitemporal-knowledge-graph.md §4.11). The pair is read from the stored
+/// suggestion, not the request. Audited before any mutation, fail-closed.
 async fn handle_merge_accept(
+    pool: &sqlx::SqlitePool,
     graph: &GraphHandle,
     audit: &Arc<dyn AuditSink>,
     token: Option<&crate::token::CapabilityToken>,
@@ -2970,20 +2969,25 @@ async fn handle_merge_accept(
             warn!("merge-decision audit failed, refusing: {e}");
             return "ERROR: audit unavailable".to_string();
         }
-        let table = crate::write::entity_table_name(&core.entity_type);
-        if let Err(e) =
-            crate::shared::merge_node(graph, &table, &core.source_id, &core.target_id).await
-        {
-            return format!("ERROR: merge: {e}");
+        let decision = crate::curation::Command::MustLink {
+            entity_type: core.entity_type.clone(),
+            a: core.source_id.clone(),
+            b: core.target_id.clone(),
+        };
+        if let Err(e) = crate::curation::record(pool, &decision, app_id).await {
+            return format!("ERROR: record the decision: {e}");
+        }
+        if let Err(e) = crate::curation::replay(pool, graph).await {
+            // Recorded, so it holds: the next replay links them.
+            warn!("merge decision recorded, link not yet in the graph: {e}");
         }
         // A merge is a write under the caller's grant for this entity type, and it
         // has now happened, so it counts. The refusal above (`can_write`) returns
         // before here, which is what keeps a denial out of the number.
         record_capability_uses(graph, uses, app_id, std::slice::from_ref(&core.entity_type)).await;
-        // The merge is applied; mark accepted best-effort (a status-write hiccup
-        // only leaves the suggestion listable, and a re-accept is now re-validated
-        // and either re-runs the idempotent merge_node harmlessly or is refused as
-        // stale).
+        // The decision is recorded; mark accepted best-effort (a status-write
+        // hiccup only leaves the suggestion listable, and a re-accept records the
+        // same link again, which the replay applies once).
         if let Err(e) = crate::shared::update_suggestion_status(
             graph,
             &req.suggestion_id,
@@ -2993,9 +2997,10 @@ async fn handle_merge_accept(
         {
             warn!("merge accepted but status update failed (advisory): {e}");
         }
-        "OK: merged".to_string()
+        "OK: linked".to_string()
     } else {
-        // Reject: audit, then mark Rejected. No entity is touched.
+        // Reject: audit, record that the two are different, then mark Rejected.
+        // No entity is touched, and the pair is never proposed again.
         if let Err(e) = audit
             .submit(crate::audit::merge_decision_event(
                 app_id,
@@ -3006,6 +3011,14 @@ async fn handle_merge_accept(
         {
             warn!("merge-decision audit failed, refusing: {e}");
             return "ERROR: audit unavailable".to_string();
+        }
+        let decision = crate::curation::Command::CannotLink {
+            entity_type: core.entity_type.clone(),
+            a: core.source_id.clone(),
+            b: core.target_id.clone(),
+        };
+        if let Err(e) = crate::curation::record(pool, &decision, app_id).await {
+            return format!("ERROR: record the decision: {e}");
         }
         if let Err(e) = crate::shared::update_suggestion_status(
             graph,
@@ -3515,7 +3528,7 @@ async fn handle_client(
                 } else {
                     None
                 };
-                handle_merge_accept(&graph, &audit, token.as_ref(), &app_id, &buf[1..], &uses).await
+                handle_merge_accept(&pool, &graph, &audit, token.as_ref(), &app_id, &buf[1..], &uses).await
             };
             timing_noise().await;
             let response_bytes = response.as_bytes();
