@@ -78,6 +78,36 @@ pub fn read_tier_for_level(level: u8) -> ReadTier {
     }
 }
 
+/// The ordinal position of a read tier, narrowest first.
+fn tier_rank(t: ReadTier) -> u8 {
+    match t {
+        ReadTier::None => 0,
+        ReadTier::Minimal => 1,
+        ReadTier::Standard => 2,
+        ReadTier::Extended => 3,
+        ReadTier::Full => 4,
+    }
+}
+
+/// The grant as the user's CURRENT read level allows it: its tier clamped to the
+/// narrower of the two, never widened.
+///
+/// The grant is built when the session is spawned, and the interactive session
+/// lives as long as the daemon, so a level lowered in Settings used to reach a
+/// running assistant only on the next restart - the control said "the assistant
+/// reads less now" while it went on reading as before. Clamping at the read makes
+/// a narrowing take effect on the next query. A WIDENING still needs a new
+/// session, deliberately: the grant a session started with is the most it can
+/// ever read, so a setting change can take reach away live but never hand it out.
+pub fn grant_at_level(grant: &SessionGrant, level: u8) -> SessionGrant {
+    let current = read_tier_for_level(level);
+    let mut g = grant.clone();
+    if tier_rank(current) < tier_rank(g.read_tier) {
+        g.read_tier = current;
+    }
+    g
+}
+
 /// Resolve a session's grant into the [`Capability`] the gate decides against.
 ///
 /// The read tier comes from the grant (mapped through
@@ -833,6 +863,15 @@ mod tests {
             externally_triggered: false,
             pid: 1,
         }
+    }
+
+    #[test]
+    fn a_lowered_level_narrows_a_running_grant_and_a_raised_one_does_not_widen_it() {
+        let g = grant(ReadTier::Extended);
+        assert_eq!(grant_at_level(&g, 1).read_tier, ReadTier::Minimal);
+        assert_eq!(grant_at_level(&g, 0).read_tier, ReadTier::None);
+        assert_eq!(grant_at_level(&g, 4).read_tier, ReadTier::Extended, "never widened live");
+        assert_eq!(grant_at_level(&g, 3).read_tier, ReadTier::Extended);
     }
 
     #[test]

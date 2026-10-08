@@ -10,7 +10,7 @@
 //! the human-gated executor-live flip. The write proxy tools land with the
 //! executor + compensation + atomic-KG-write re-pointing.
 
-use crate::capability_map::grant_to_query_scope;
+use crate::capability_map::{grant_at_level, grant_to_query_scope};
 use crate::dispatch::Executor;
 use crate::session::SessionGrant;
 use ai_engine_contract::{ContractError, Execute, ExecuteOutcome};
@@ -27,13 +27,25 @@ const GRAPH_ASK_TOOL: &str = "graph.ask";
 pub struct GraphAskExecutor {
     runner: Arc<dyn QueryRunner>,
     schema: GraphSchema,
+    /// The user's read level in force now, asked per read (see [`grant_at_level`]).
+    read_level: fn() -> u8,
 }
 
 impl GraphAskExecutor {
     /// Build the executor over a [`QueryRunner`] (the production
     /// `CypherPipeline` in the daemon binary, a mock in tests).
     pub fn new(runner: Arc<dyn QueryRunner>) -> Self {
-        Self { runner, schema: GraphSchema::knowledge_graph() }
+        Self {
+            runner,
+            schema: GraphSchema::knowledge_graph(),
+            read_level: crate::engine_config::read_level,
+        }
+    }
+
+    /// Replace the read-level source (tests pin it instead of reading `ai.toml`).
+    pub fn with_read_level(mut self, read_level: fn() -> u8) -> Self {
+        self.read_level = read_level;
+        self
     }
 }
 
@@ -55,7 +67,8 @@ impl Executor for GraphAskExecutor {
         // Bound the read to the session's grant (GAP-21-anchored). An empty
         // scope means no graph-read access at all: refuse without running the
         // query, never burning a provider call on a query that cannot pass.
-        let scope = grant_to_query_scope(grant, &self.schema);
+        let grant = grant_at_level(grant, (self.read_level)());
+        let scope = grant_to_query_scope(&grant, &self.schema);
         if scope.is_empty() {
             return ExecuteOutcome::Error {
                 code: ContractError::PermissionDenied,
@@ -148,9 +161,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_level_lowered_to_none_refuses_a_running_full_session() {
+        let runner = Arc::new(MockRunner::ok("3 files"));
+        let exec = GraphAskExecutor::new(runner.clone()).with_read_level(|| 0);
+        let outcome = exec
+            .execute(&read(serde_json::json!({ "query": "how many files" })), &grant(ReadTier::Full, None))
+            .await;
+        assert!(matches!(outcome, ExecuteOutcome::Error { code: ContractError::PermissionDenied, .. }));
+        assert!(!runner.was_called(), "the query never ran");
+    }
+
+    #[tokio::test]
     async fn a_scoped_read_runs_through_the_runner() {
         let runner = Arc::new(MockRunner::ok("3 files"));
-        let exec = GraphAskExecutor::new(runner.clone());
+        let exec = GraphAskExecutor::new(runner.clone()).with_read_level(|| 4);
         let outcome = exec
             .execute(&read(serde_json::json!({ "query": "how many files" })), &grant(ReadTier::Full, None))
             .await;
@@ -167,7 +191,7 @@ mod tests {
         // but is refused (the live provider lands at the Phase-2 cutover), so the
         // read executor maps it to ExecutionFailed rather than the blanket
         // Phase-0 Unavailable placeholder.
-        let exec = GraphAskExecutor::new(Arc::new(DeniedRunner));
+        let exec = GraphAskExecutor::new(Arc::new(DeniedRunner)).with_read_level(|| 4);
         let outcome = exec
             .execute(&read(serde_json::json!({ "query": "how many files" })), &grant(ReadTier::Full, None))
             .await;
@@ -180,7 +204,7 @@ mod tests {
     #[tokio::test]
     async fn an_empty_scope_is_refused_without_running() {
         let runner = Arc::new(MockRunner::ok("never"));
-        let exec = GraphAskExecutor::new(runner.clone());
+        let exec = GraphAskExecutor::new(runner.clone()).with_read_level(|| 4);
         let outcome = exec
             .execute(&read(serde_json::json!({ "query": "x" })), &grant(ReadTier::None, None))
             .await;
@@ -194,7 +218,7 @@ mod tests {
     #[tokio::test]
     async fn a_project_scoped_read_is_anchored() {
         let runner = Arc::new(MockRunner::ok("ok"));
-        let exec = GraphAskExecutor::new(runner.clone());
+        let exec = GraphAskExecutor::new(runner.clone()).with_read_level(|| 4);
         // ReadTier::Standard -> ProjectScoped; with an anchor the scope carries it.
         let _ = exec
             .execute(&read(serde_json::json!({ "query": "x" })), &grant(ReadTier::Standard, Some("p1")))
@@ -205,7 +229,7 @@ mod tests {
     #[tokio::test]
     async fn a_non_graph_read_tool_is_unknown() {
         let runner = Arc::new(MockRunner::ok("x"));
-        let exec = GraphAskExecutor::new(runner.clone());
+        let exec = GraphAskExecutor::new(runner.clone()).with_read_level(|| 4);
         let outcome = exec
             .execute(
                 &Execute { tool_name: "graph.write".into(), tool_input: serde_json::json!({}), proof: None },
@@ -222,7 +246,7 @@ mod tests {
     #[tokio::test]
     async fn a_missing_query_is_invalid_arguments() {
         let runner = Arc::new(MockRunner::ok("x"));
-        let exec = GraphAskExecutor::new(runner.clone());
+        let exec = GraphAskExecutor::new(runner.clone()).with_read_level(|| 4);
         let outcome = exec
             .execute(&read(serde_json::json!({})), &grant(ReadTier::Full, None))
             .await;
@@ -236,7 +260,7 @@ mod tests {
     #[tokio::test]
     async fn a_runner_failure_maps_to_execution_failed() {
         let runner = Arc::new(MockRunner::failing());
-        let exec = GraphAskExecutor::new(runner);
+        let exec = GraphAskExecutor::new(runner).with_read_level(|| 4);
         let outcome = exec
             .execute(&read(serde_json::json!({ "query": "x" })), &grant(ReadTier::Full, None))
             .await;

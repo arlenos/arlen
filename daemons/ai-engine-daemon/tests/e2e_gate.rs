@@ -291,7 +291,7 @@ async fn the_real_proxy_tool_forwards_execute_and_fails_closed_end_to_end() {
     // reached PAST the session bound and the read-scope check - not from the
     // no-session or no-scope fallbacks - so it proves the Execute verb round-trips
     // through the real executor end to end.
-    let ask_executor: Arc<dyn Executor> = Arc::new(GraphAskExecutor::new(Arc::new(DeniedRunner)));
+    let ask_executor: Arc<dyn Executor> = Arc::new(GraphAskExecutor::new(Arc::new(DeniedRunner)).with_read_level(|| 4));
     let write_executor: Arc<dyn Executor> = Arc::new(GraphWriteExecutor::new(Arc::new(DeniedWriter)));
     let executor = ProxyExecutor::new()
         .register("graph.ask", ask_executor)
