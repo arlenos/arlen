@@ -23,6 +23,9 @@
     tooltip,
     prefix,
     removeLabel,
+    meta,
+    trail,
+    actionLabel,
     class: className,
   }: {
     label: string;
@@ -42,6 +45,13 @@
     /// The remove control's name when "Remove <label>" would say the wrong
     /// thing (a filter chip removes its group, not one value).
     removeLabel?: string;
+    /// A quiet measurement after the label (an attachment's size).
+    meta?: string;
+    /// An icon after the label saying what a press does (a download arrow).
+    trail?: Snippet;
+    /// The press's accessible name when the label alone does not say what it
+    /// does ("Save report.pdf"); only read with `onclick`.
+    actionLabel?: string;
     class?: string;
   } = $props();
 </script>
@@ -62,16 +72,20 @@
 {#snippet chip(attrs: Record<string, unknown>)}
 <span class="chip {className ?? ''}" class:has-x={!!onremove} {id} {...attrs}>
   {#if onclick}
-    <button type="button" class="chip-body" {onclick}>
+    <button type="button" class="chip-body" aria-label={actionLabel} {onclick}>
       {#if lead}<span class="chip-lead" aria-hidden="true">{@render lead()}</span>{/if}
       {#if prefix}<span class="chip-prefix">{prefix}</span>{/if}
       <span class="chip-label">{label}</span>
+      {#if meta}<span class="chip-meta">{meta}</span>{/if}
+      {#if trail}<span class="chip-lead" aria-hidden="true">{@render trail()}</span>{/if}
     </button>
   {:else}
     <span class="chip-body">
       {#if lead}<span class="chip-lead" aria-hidden="true">{@render lead()}</span>{/if}
       {#if prefix}<span class="chip-prefix">{prefix}</span>{/if}
       <span class="chip-label">{label}</span>
+      {#if meta}<span class="chip-meta">{meta}</span>{/if}
+      {#if trail}<span class="chip-lead" aria-hidden="true">{@render trail()}</span>{/if}
     </span>
   {/if}
   {#if onremove}
@@ -113,7 +127,23 @@
   button.chip-body:hover {
     color: var(--foreground);
   }
+  /* A chip that does something on press lightens as a whole under the pointer,
+     and shows keyboard focus on the chip rather than on its inner text. */
+  .chip:has(> button.chip-body:hover) {
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  }
+  button.chip-body:focus-visible {
+    outline: none;
+  }
+  .chip:has(> button.chip-body:focus-visible) {
+    outline: 2px solid var(--color-accent, var(--ring));
+    outline-offset: 1px;
+  }
   .chip-prefix {
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+  .chip-meta {
     flex-shrink: 0;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }

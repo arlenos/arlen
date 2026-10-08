@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Chip } from "@arlen/ui-kit/components/ui/chip";
   /// Attachments as a chip row: name, type, size - and a press SAVES the file
   /// out, it never opens or previews it here (the core's named-and-measured
   /// rule; previewing is one of §3's backchannels). The save command is the
@@ -64,16 +65,21 @@
     <div class="chips">
       {#each message.attachments as file, i (i)}
         {@const name = file.name ?? $t("ml.unnamedAttachment")}
-        <button type="button" class="chip" aria-label={$t("ml.attach.save", { name })} onclick={() => save(i)}>
-          {#if file.media_type === "text/calendar"}
-            <CalendarDays size={13} strokeWidth={1.75} aria-hidden="true" />
-          {:else}
-            <Paperclip size={13} strokeWidth={1.75} aria-hidden="true" />
-          {/if}
-          <span class="chip-name">{name}</span>
-          <span class="chip-meta">{formatBytes(file.bytes, $locale)}</span>
-          <Download size={12} strokeWidth={1.75} class="chip-save" aria-hidden="true" />
-        </button>
+        <Chip
+          label={name}
+          meta={formatBytes(file.bytes, $locale)}
+          actionLabel={$t("ml.attach.save", { name })}
+          onclick={() => save(i)}
+        >
+          {#snippet lead()}
+            {#if file.media_type === "text/calendar"}
+              <CalendarDays size={13} strokeWidth={1.75} />
+            {:else}
+              <Paperclip size={13} strokeWidth={1.75} />
+            {/if}
+          {/snippet}
+          {#snippet trail()}<Download size={12} strokeWidth={1.75} />{/snippet}
+        </Chip>
       {/each}
     </div>
     {#if outcome}
@@ -98,39 +104,8 @@
     flex-wrap: wrap;
     gap: 0.4rem;
   }
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.3rem 0.6rem;
-    border: 1px solid var(--color-border-default, #2a2a2a);
-    border-radius: var(--radius-chip, 4px);
-    background: transparent;
-    font: inherit;
-    font-size: var(--text-xs, 12px);
-    color: color-mix(in srgb, var(--color-fg-primary) 80%, transparent);
-  }
-  .chip:hover {
-    background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
-  }
-  .chip:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 1px;
-  }
-  .chip :global(svg) {
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
-  }
-  .chip :global(.chip-save) {
-    color: var(--color-fg-secondary, #a1a1aa);
-  }
-  .chip-name {
+  .chips :global(.chip-label) {
     max-width: 16rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .chip-meta {
-    color: var(--color-fg-secondary, #a1a1aa);
   }
   .outcome {
     margin: 0;
