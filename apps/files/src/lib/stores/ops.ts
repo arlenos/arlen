@@ -127,6 +127,28 @@ function busyLabel(kind: OpKind, count: number): OpMessage {
 /// different sentences because only one of them can be taken back.
 export const opDone = writable<{ key: string; count: number } | null>(null);
 
+/// Names that just landed in the shown folder by a copy, a move or a new
+/// folder, so the list can settle each row in once. Emptied again after the
+/// gesture has played: a row re-created later (a re-sort, coming back to the
+/// folder) is not arriving.
+export const arrived = writable<ReadonlySet<string>>(new Set());
+let arrivedTimer: ReturnType<typeof setTimeout> | undefined;
+
+function markArrived(kind: OpKind, src: string[], dst: string | undefined): void {
+  const shown = get(activeController) ? get(get(activeController)!.path) : null;
+  if (!dst || dst !== shown) return;
+  const names =
+    kind === "new_folder"
+      ? src
+      : kind === "copy" || kind === "move"
+        ? src.map((p) => p.slice(p.lastIndexOf("/") + 1))
+        : [];
+  if (names.length === 0) return;
+  arrived.set(new Set(names));
+  clearTimeout(arrivedTimer);
+  arrivedTimer = setTimeout(() => arrived.set(new Set()), 1500);
+}
+
 /// Whether a name collision in this kind is a QUESTION or an answer.
 ///
 /// `files_op` reads the conflict policy in its copy and move arms and nowhere
@@ -169,6 +191,9 @@ export async function runOp(
     if (kind === "trash") opDone.set({ key: "f.done.trash", count: src.length });
     else if (kind === "delete") opDone.set({ key: "f.done.delete", count: src.length });
     else opDone.set(null);
+    // A rename or skip answer to a name clash lands under other names, or not
+    // at all, so only a clean landing or a replace is marked.
+    if (!policy || policy === "replace") markArrived(kind, src, dst);
     await get(activeController)?.refresh();
     return true;
   } catch (e) {

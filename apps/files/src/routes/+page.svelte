@@ -29,7 +29,7 @@
   import { addBookmark, homePath, loadPlaces } from "$lib/stores/places";
   import { infoOpen } from "$lib/stores/ui";
   import { templates, loadTemplates, type Template } from "$lib/stores/templates";
-  import { clipboard, paste, runOp, bulkRename, extractArchive, compressPaths, opError } from "$lib/stores/ops";
+  import { clipboard, paste, runOp, bulkRename, extractArchive, compressPaths, opError, arrived } from "$lib/stores/ops";
   import { openFailure } from "$lib/stores/openFailure";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Button } from "@arlen/ui-kit/components/ui/button";
@@ -610,6 +610,7 @@
           >
             <FileBrowser
               controller={$activeController}
+              arrived={$arrived}
               columns={aCols}
               nameLabel={$t("f.col.name")}
               emptyLabel={$t(aEmpty)}
