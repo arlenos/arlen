@@ -787,6 +787,30 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create MergeSuggestion table: {e}"))?;
 
+    // A span of text an extractor read as naming something
+    // (bitemporal-knowledge-graph.md §4.12). Not an entity: a `Person` exists only
+    // where something anchors it, and a mention points at one through a scored
+    // `REFERS_TO`, one table per entity type (`mention.rs`). The id is derived from
+    // source, span and extractor version, so a re-extraction with the same
+    // extractor finds the same mention and a new extractor version makes new ones.
+    // `score` is basis points (0 to 10000): neither the graph's INT columns nor the
+    // journal carry floats.
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS Mention(
+            id                STRING,
+            source_id         STRING,
+            span_start        INT64,
+            span_end          INT64,
+            text              STRING,
+            label             STRING,
+            score             INT64,
+            extractor         STRING,
+            extractor_version STRING,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create Mention table: {e}"))?;
+
     // Reserved terminal command-history node. A finished terminal block (the
     // `apps/terminal` `Block`, documented as "the projection of a future KG
     // command node") persists here so `⌃R` history search spans sessions and
