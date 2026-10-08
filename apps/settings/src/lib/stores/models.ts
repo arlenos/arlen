@@ -15,6 +15,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { writable, get, derived } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 
 /// A recommendation tier: three clear choices, hardware-picked.
 export type Tier = "fast" | "balanced" | "quality";
@@ -359,17 +360,50 @@ export async function importModel(): Promise<void> {
   models.update((list) => [...list, imported]);
 }
 
+/// One Hugging Face search hit as `ai_models_search_hf` returns it
+/// (`ai-model-manager::hf::HfHit`): the repository id and two counters, nothing
+/// about size, fit or task, which the hub does not say.
+interface HfHit {
+  id: string;
+  downloads: number;
+  likes: number;
+}
+
+/// A hit as a picker card. It is uncurated, so it lands behind the browse
+/// "Advanced" filter; it is not installed; the name is the repository's own part
+/// of the id. Size, fit and tasks stay empty rather than guessed.
+function hitToModel(h: HfHit): Model {
+  const name = h.id.split("/").pop() || h.id;
+  return {
+    id: `hf/${h.id}`,
+    name,
+    provider: "local",
+    kind: "local",
+    tasks: [],
+    installed: false,
+    baked: false,
+    imported: false,
+    advanced: true,
+    fromSearch: true,
+  };
+}
+
 /// Escalate the browse search to Hugging Face: the deliberate reach for the typed
-/// term, beyond the curated list. The mock appends a couple de-jargonized results
-/// and records that the reach succeeded; the curated list is the offline fallback.
+/// term, beyond the curated list. A refusal from a real host is reported as the
+/// hub being out of reach (the page's offline state), never covered by sample
+/// results; the two sample results are only for a session with no host at all.
 export async function searchHuggingFace(query: string): Promise<void> {
-  try {
-    const found = await invoke<Model[]>("ai_models_search_hf", { query });
-    models.update((list) => [...list, ...found]);
-    hfSearch.set({ reachable: true });
+  if (tauriAvailable) {
+    try {
+      const hits = await invoke<HfHit[]>("ai_models_search_hf", { query });
+      const found = hits.map(hitToModel);
+      models.update((list) => [...list.filter((m) => !m.fromSearch), ...found]);
+      hfSearch.set({ reachable: true });
+    } catch (e) {
+      console.warn("settings: Hugging Face search refused", e);
+      hfSearch.set({ reachable: false });
+    }
     return;
-  } catch {
-    // Mock the reach with two extra results.
   }
   const extra: Model[] = [
     { ...local("deepseek-r1-distill-7b", "DeepSeek R1 Distill 7B", 7.6, ["reasoning"], "fits", 9, 4.7), fromSearch: true },

@@ -66,13 +66,7 @@ EXCUSED: dict[str, str] = {}
 # with a reason rather than skipped silently: the check still prints them, it just
 # does not fail on them, so the debt stays visible and attributed. Keyed by
 # command name; remove the entry when the owner fixes it and the gate holds it shut.
-KNOWN_RETURN_MISMATCHES: dict[str, str] = {
-    "ai_models_search_hf": (
-        "the model picker's `Model` is the merged card shape the page builds from "
-        "several sources; the Hugging Face hit is only one of them. Reworking it is "
-        "arlen-ui's model-picker job, and its route is their live work."
-    ),
-}
+KNOWN_RETURN_MISMATCHES: dict[str, str] = {}
 
 
 def snake(name: str) -> str:
