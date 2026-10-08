@@ -8,6 +8,11 @@
   /// For a full-width surface message use a page-level pattern instead; this
   /// is the quiet in-content strip (a message's format refusal, a mock
   /// banner, a service-down line).
+  ///
+  /// Motion (design-system §6b): the act is arriving, so the strip lands once
+  /// when it mounts, settling the last few pixels into its place as it fades
+  /// in. A transform, so nothing around it moves twice. On `--duration-normal`,
+  /// which the theme zeroes under reduce motion, so it is then simply there.
   import { Info, OctagonAlert, TriangleAlert } from "@lucide/svelte";
 
   let {
@@ -49,6 +54,18 @@
     border-radius: var(--radius-input);
     font-size: var(--text-xs);
     line-height: 1.5;
+    animation: notice-land var(--duration-normal) var(--ease-out);
+  }
+  @keyframes notice-land {
+    from {
+      opacity: 0;
+      transform: translateY(-3px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .notice {
+      animation: none;
+    }
   }
   .notice :global(svg) {
     flex-shrink: 0;
