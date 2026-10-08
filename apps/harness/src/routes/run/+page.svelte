@@ -76,9 +76,6 @@
   function seconds(ms: number): string {
     return new Intl.NumberFormat($locale, { maximumFractionDigits: 1, minimumFractionDigits: ms < 10_000 ? 1 : 0 }).format(ms / 1000);
   }
-  function count(n: number): string {
-    return new Intl.NumberFormat($locale).format(n);
-  }
 </script>
 
 <Page title={$t("h.run.title")} description={$t("h.run.sub")}>
@@ -130,7 +127,7 @@
                 <span class="burn" aria-hidden={s.tokens === null}>
                   {#if s.tokens !== null && s.tokens > 0}
                     <span class="bar" style={`width:${(s.tokens / maxTokens) * 100}%`}></span>
-                    <span class="tok">{$t("h.run.tokens", { n: count(s.tokens) })}</span>
+                    <span class="tok">{$t("h.run.tokens", { n: s.tokens })}</span>
                   {/if}
                 </span>
                 <span class="time">
