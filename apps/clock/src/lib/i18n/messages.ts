@@ -52,6 +52,7 @@ const messages: Catalogs = {
     "c.ti.pause": "Pause",
     "c.ti.resume": "Resume",
     "c.ti.cancel": "Cancel",
+    "c.ti.remove": "Remove",
     "c.ti.none": "No timers running.",
 
     "c.fo.idle": "No session running.",
@@ -131,6 +132,7 @@ const messages: Catalogs = {
     "c.ti.pause": "Pausieren",
     "c.ti.resume": "Fortsetzen",
     "c.ti.cancel": "Abbrechen",
+    "c.ti.remove": "Entfernen",
     "c.ti.none": "Keine Timer laufen.",
 
     "c.fo.idle": "Keine Sitzung läuft.",
