@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   /// The transcript: the first-class verification source. Adjacent same-speaker
   /// segments fold into utterances; clicking one highlights it (the coarse
   /// click-to-transcript). Speaker labels are diarization DRAFTS (~20% wrong on
@@ -75,14 +76,24 @@
               }}
             />
           {:else if renamable && u.speaker}
-            <button
-              type="button"
-              class="utt-speaker renamable"
-              title={$t("mt.speaker.rename")}
-              onclick={() => beginRename(u.speaker)}
-            >
-              {speakerDisplay(u.speaker)}
-            </button>
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <button
+                    {...props}
+                    type="button"
+                    class="utt-speaker renamable"
+                    onclick={(e) => {
+                      (props.onclick as ((ev: MouseEvent) => void) | undefined)?.(e);
+                      beginRename(u.speaker);
+                    }}
+                  >
+                    {speakerDisplay(u.speaker)}
+                  </button>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.TooltipContent>{$t("mt.speaker.rename")}</Tooltip.TooltipContent>
+            </Tooltip.Root>
           {:else}
             <span class="utt-speaker">{speakerDisplay(u.speaker)}</span>
           {/if}
