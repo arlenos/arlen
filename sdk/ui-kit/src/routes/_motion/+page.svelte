@@ -8,7 +8,7 @@ SPDX-License-Identifier: AGPL-3.0-only
   primitive family, at rest, so a gesture can be looked at and frozen.
   `?flip=1` changes every control's state after load; `&at=<ms>` then freezes
   every running transition at that moment, for a proof frame mid-gesture.
-  `?reduce=1` sets `--duration-normal: 0ms` the way the shell's theme does
+  `?reduce=1` zeroes the three themed durations the way the shell's theme does
   under appearance.toml, so the reduced path renders without a shell.
   `?dark=1` paints the shell's ground.
 
@@ -20,6 +20,7 @@ SPDX-License-Identifier: AGPL-3.0-only
   import { Switch } from "$lib/components/ui/switch";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { Notice } from "$lib/components/ui/notice";
+  import { Button } from "$lib/components/ui/button";
   import {
     Collapsible,
     CollapsibleTrigger,
@@ -35,6 +36,11 @@ SPDX-License-Identifier: AGPL-3.0-only
     const q = new URLSearchParams(window.location.search);
     dark = q.get("dark") === "1";
     reduce = q.get("reduce") === "1";
+    // On the root, where the shell's theme writes them: `--duration-micro` is
+    // derived at :root, so a value set lower down would never reach it.
+    if (reduce) {
+      for (const d of ["fast", "normal", "slow"]) document.documentElement.style.setProperty(`--duration-${d}`, "0ms");
+    }
     if (q.get("flip") !== "1") return;
     await new Promise((r) => setTimeout(r, 400));
     flipped = true;
@@ -53,7 +59,7 @@ SPDX-License-Identifier: AGPL-3.0-only
   });
 </script>
 
-<div class="page" class:dark style={reduce ? "--duration-normal: 0ms" : ""}>
+<div class="page" class:dark>
   <h1>Motion{flipped ? ", flipped" : ""}{reduce ? ", reduced" : ""}</h1>
 
   <section>
@@ -103,6 +109,15 @@ SPDX-License-Identifier: AGPL-3.0-only
         <Notice tone="caution" text="This folder is shared with two other people." />
         <Notice text="Example pictures, not files on this machine." />
       {/if}
+    </div>
+  </section>
+
+  <section>
+    <h2>Button</h2>
+    <div class="row">
+      <Button id="motion-press">Save</Button>
+      <Button variant="outline">Cancel</Button>
+      <Button variant="ghost" size="sm">Undo</Button>
     </div>
   </section>
 </div>

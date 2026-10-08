@@ -24,9 +24,12 @@
      `--duration-medium` at 250. Fast and slow landed; the middle one never
      did.
 
-     `--duration-micro` has no field in the theme at all, so it stays a
-     literal - that is a schema gap, written up rather than papered over. */
-  --duration-micro:  100ms; /* tap/click feedback, scale-down */
+     `--duration-micro` has no field in the theme, so it is derived from the
+     themed fast one: two thirds of it, 100ms on this file's own 150. That
+     keeps the press as the quickest thing on screen, and it means a theme
+     that zeroes the durations for reduce motion zeroes this one too, which a
+     literal never did: every button press kept scaling (design-system §6b). */
+  --duration-micro:  calc(var(--duration-fast) * 2 / 3); /* tap/click feedback, scale-down */
   --duration-fast:   150ms; /* hover bg-shift, small transitions */
   --duration-normal: 250ms; /* popover entry, overlay fade */
   --duration-slow:   350ms; /* page transitions, larger moves */
