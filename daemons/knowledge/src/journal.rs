@@ -73,6 +73,31 @@ pub enum Fact {
     },
 }
 
+impl Fact {
+    /// A node upsert setting `props`, nothing set only on create.
+    pub fn node(label: &str, id: &str, props: &[(&str, Value)]) -> Self {
+        Fact::Node {
+            label: label.into(),
+            id: id.into(),
+            props: props.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+            on_create: BTreeMap::new(),
+        }
+    }
+
+    /// An endpoint-merged observation edge with no stamps and no properties: the
+    /// shape every `ACCESSED_*` / `ACTIVE_IN` edge has.
+    pub fn link(rel: &str, from: (&str, &str), to: (&str, &str)) -> Self {
+        Fact::Edge {
+            rel: rel.into(),
+            from: (from.0.into(), from.1.into()),
+            to: (to.0.into(), to.1.into()),
+            op_id: None,
+            stamps: Stamps::default(),
+            props: BTreeMap::new(),
+        }
+    }
+}
+
 /// Where a fact came from, recorded beside it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Origin {
@@ -83,6 +108,18 @@ pub struct Origin {
     pub valid_time_source: String,
     /// The raw event the fact was derived from, if any.
     pub event_id: Option<String>,
+}
+
+impl Origin {
+    /// A fact the promotion pipeline derived from raw event `event_id`, whose
+    /// valid time is the event's own.
+    pub fn event(event_id: &str) -> Self {
+        Origin {
+            provenance: "graph".into(),
+            valid_time_source: "event".into(),
+            event_id: Some(event_id.into()),
+        }
+    }
 }
 
 /// Create the journal table. Idempotent.
@@ -367,10 +404,12 @@ pub fn project(fact: &Fact) -> Result<String> {
 pub async fn commit_and_project(
     pool: &SqlitePool,
     graph: &crate::graph::GraphHandle,
-    facts: &[(Fact, Origin)],
+    facts: Vec<Fact>,
+    origin: &Origin,
 ) -> Result<()> {
+    let tagged: Vec<(Fact, Origin)> = facts.into_iter().map(|f| (f, origin.clone())).collect();
     let mut tx = pool.begin().await?;
-    record(&mut tx, facts).await?;
+    record(&mut tx, &tagged).await?;
     tx.commit().await?;
     project_pending(pool, graph).await?;
     Ok(())
