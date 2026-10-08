@@ -43,7 +43,6 @@ pub mod lcg;
 pub mod meeting;
 pub mod lifecycle;
 pub mod links;
-pub mod migration;
 pub mod permission;
 pub mod project;
 pub mod provenance;
