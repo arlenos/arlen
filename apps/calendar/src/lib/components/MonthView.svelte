@@ -16,6 +16,8 @@
     updateEvent,
     type AgendaEvent,
     type EventChanges,
+    justCreated,
+    landed,
   } from "$lib/stores/calendar";
   import EventPopover from "./EventPopover.svelte";
 
@@ -137,6 +139,7 @@
                   <button
                     type="button"
                     class="pill"
+                    class:landed={landed($justCreated, e)}
                     class:timed={e.time !== null}
                     class:dragging={drag?.moved && drag.event === e}
                     style="--cal: {colorOf($calendars, e)}"
@@ -324,5 +327,16 @@
   }
   .more:hover {
     color: var(--color-fg-primary);
+  }
+  /* A just-created event lands: it grows the last few percent into its slot as it
+     fades in, once, on --duration-normal (zeroed under reduced motion). */
+  .landed {
+    animation: event-land var(--duration-normal) var(--ease-out);
+  }
+  @keyframes event-land {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
   }
 </style>

@@ -510,6 +510,27 @@ function deleteRefusal(e: unknown): string {
   }
 }
 
+/// The event a create just asked for, so the grids can let it land with a
+/// gesture rather than appear. Matched by title and date, because live the
+/// event arrives later through the store watcher with a uid this side never
+/// saw; kept a few seconds for that, then cleared so a later re-render of the
+/// same event plays nothing.
+export const justCreated = writable<{ summary: string; date: string } | null>(null);
+let justCreatedTimer: ReturnType<typeof setTimeout> | undefined;
+function markCreated(draft: EventDraft): void {
+  justCreated.set({ summary: draft.summary, date: draft.date });
+  clearTimeout(justCreatedTimer);
+  justCreatedTimer = setTimeout(() => justCreated.set(null), 5000);
+}
+
+/// Whether an event drawn in a grid is the one a create just made.
+export function landed(mark: { summary: string; date: string } | null, e: AgendaEvent): boolean {
+  if (mark === null || e.date !== mark.date) return false;
+  // An untitled draft is stored as "(untitled)" by the fixture and arrives with
+  // an empty summary live; both are the event just made.
+  return e.summary === mark.summary || (mark.summary === "" && e.summary === "(untitled)");
+}
+
 /// Create one event. Live: the intended `calendar_create_event(draft)` writing
 /// a VEVENT into the store directory (the watcher re-reads, the daemon arms
 /// the reminder). Fixture: applied locally so the flow drives. Returns the
@@ -517,11 +538,13 @@ function deleteRefusal(e: unknown): string {
 export async function createEvent(draft: EventDraft): Promise<string | null> {
   try {
     await invoke("calendar_create_event", { draft });
+    markCreated(draft);
     return null;
   } catch (e) {
     let mocked = false;
     calendarMocked.update((m) => ((mocked = m), m));
     if (!mocked) return refusal(e);
+    markCreated(draft);
     agenda.update((a) => {
       if (!a) return a;
       const base: AgendaEvent = {
