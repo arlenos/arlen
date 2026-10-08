@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Badge } from "@arlen/ui-kit/components/ui/badge";
   /// The Timeline spine (KA-R2): day-grouped typed events with reconstructed
   /// session blocks, the scrub rail above, and the trust controls in the head
   /// (decision 5: the timeline is on by default ONLY because pause, export and
@@ -375,7 +376,7 @@
                 <span class="tl-verb">{$t(item.event.verb)}</span>
                 <span class="tl-object">
                   <span class="tl-object-text">{item.event.object}</span>
-                  {#if item.event.project}<span class="tl-chip">{item.event.project}</span>{/if}
+                  {#if item.event.project}<Badge variant="outline">{item.event.project}</Badge>{/if}
                 </span>
                 <span class="tl-source">{sourceName(item.event.source)}</span>
                 <span class="tl-time">{clock(item.event.at, $locale)}</span>
@@ -618,15 +619,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .tl-chip {
-    flex-shrink: 0;
-    padding: 0.0625rem 0.375rem;
-    border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    font-size: var(--text-2xs);
-    font-weight: 500;
-    color: color-mix(in srgb, var(--color-fg-primary) 65%, transparent);
   }
   .tl-source {
     font-size: var(--text-xs);
