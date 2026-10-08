@@ -1600,13 +1600,23 @@ mod module_reachability {
     }
 
     /// The module names a crate root declares, as `mod x;` or `pub mod x;`.
+    ///
+    /// Not one under `#[cfg(test)]` on the line above: a test-only module, such as
+    /// knowledge's retrieval baseline, is reached by `cargo test` and exists in no
+    /// build a caller could reach it from, so "nothing calls it" is its design.
     fn declared(root: &Path) -> Vec<String> {
         let Ok(text) = std::fs::read_to_string(root) else {
             return Vec::new();
         };
+        let mut previous = "";
         text.lines()
             .filter_map(|l| {
                 let l = l.trim();
+                let test_only = previous == "#[cfg(test)]";
+                previous = l;
+                if test_only {
+                    return None;
+                }
                 let rest = l.strip_prefix("pub mod ").or_else(|| l.strip_prefix("mod "))?;
                 let name = rest.strip_suffix(';')?;
                 name.chars()
