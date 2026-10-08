@@ -195,11 +195,16 @@
   <!-- The image fills the window: the decoded raster on a canvas, or a gradient
        placeholder on the mock/harness path. Same transform either way. -->
   {#if raster}
-    <canvas
-      bind:this={canvasEl}
-      class="photo raster"
-      style="transform: translate({tx}px, {ty}px) scale({zoom})"
-    ></canvas>
+    <!-- Keyed on the raster, so stepping to the next file mounts a fresh canvas
+         that fades in (the viewer's one moment, design-system 6b), while a turn
+         or a zoom repaints the same canvas and plays nothing. -->
+    {#key raster}
+      <canvas
+        bind:this={canvasEl}
+        class="photo raster arriving"
+        style="transform: translate({tx}px, {ty}px) scale({zoom})"
+      ></canvas>
+    {/key}
   {:else}
     <div class="photo" style="transform: translate({tx}px, {ty}px) scale({zoom})"></div>
   {/if}
@@ -258,6 +263,16 @@
     cursor: grab;
   }
 
+  /* Opacity only: the transform belongs to zoom and pan. On --duration-normal,
+     which the theme zeroes under reduced motion. */
+  .arriving {
+    animation: photo-in var(--duration-normal) var(--ease-out);
+  }
+  @keyframes photo-in {
+    from {
+      opacity: 0;
+    }
+  }
   .photo {
     position: absolute;
     inset: 0;
