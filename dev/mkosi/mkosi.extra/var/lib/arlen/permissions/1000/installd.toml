@@ -1,0 +1,20 @@
+# The install daemon's event-bus profile (app id: installd, pinned in
+# `sdk/permissions/src/identity.rs` from /usr/lib/arlen/libexec/arlen-installd).
+#
+# Under 1000 because installd is a user service: the bus looks a producer's
+# profile up under the producer's uid.
+#
+# One topic. After an install or an uninstall writes or removes a permission
+# profile, installd announces `permission.changed` so the knowledge daemon drops
+# its cached tokens and the shell refreshes what it shows. The event is built as a
+# struct literal (`daemons/installd/installd/src/event_emit.rs`), which the
+# publish scan could not read until 8 October, so this daemon had no profile and
+# under enforcement every one of those announcements was dropped at the bus while
+# installd logged a success: a narrowed or removed app kept its old grants in the
+# graph's cache until the next restart.
+[info]
+app_id = "installd"
+
+[event_bus]
+publish = ["permission.changed"]
+subscribe = []

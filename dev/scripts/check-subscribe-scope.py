@@ -100,7 +100,8 @@ COMPOSED at runtime (`format!("audit.ai.{}", ...)`, a string that does not exist
 in the source), one built as a STRUCT LITERAL rather than passed to an emit call
 (`r#type: "permission.changed"`), and one emitted by an SDK helper a plugin holds
 and the FRONTEND drives through a Tauri command, so there is no Rust call site at
-all.
+all. The struct literal has a static fix after all and has it now (`STRUCT_TOPIC`,
+8 October); the other two still have none.
 
 I tried the symmetric plugin pass for publishes and threw it away: crediting an
 app with every topic its plugin's helpers CAN emit demanded grants for things
@@ -428,6 +429,30 @@ PUBLISH_VIA_CALL = re.compile(
 DOTTED_LITERAL = re.compile(r'"(?P<topic>[a-z][a-z0-9_]*(?:\.[a-z0-9_*]+)+)"')
 
 
+#: An event built as a STRUCT LITERAL: `Event { r#type: "graph.rate_limited".into(), .. }`.
+#: The shape this file's docstring called invisible, and it was: the knowledge
+#: daemon emitted `graph.rate_limited` this way from S15 until 8 October with no
+#: profile granting it, so under enforcement every rate-limit alert was dropped at
+#: the bus. Read only outside test modules and test and fixture paths, because a
+#: test builds events to CONSUME them and a fixture is not a producer.
+STRUCT_TOPIC = re.compile(r'r#type\s*:\s*"(?P<topic>[a-z][a-z0-9_]*(?:\.[a-z0-9_*]+)+)"')
+
+#: Paths whose events are built to be consumed, never emitted.
+NOT_A_PRODUCER = ("/tests/", "/fixtures/", "/benches/")
+
+
+def without_test_modules(text: str) -> str:
+    """`text` with every `#[cfg(test)]` module cut out."""
+    out = text
+    while True:
+        m = re.search(r"#\[cfg\(test\)\]\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{", out)
+        if not m:
+            return out
+        body = body_of(out, m.start())
+        end = out.find(body, m.start()) + len(body)
+        out = out[: m.start()] + out[end:]
+
+
 def fn_bodies(text: str) -> dict[str, str]:
     """Every function in `text` by name, with its body."""
     out: dict[str, str] = {}
@@ -447,10 +472,14 @@ def publishes_of(directory: Path) -> set[str]:
     """
     found: set[str] = set()
     texts = []
+    producer_texts = []
     for f in directory.rglob("*.rs"):
         if any(s in str(f) for s in SKIP):
             continue
-        texts.append(f.read_text(encoding="utf-8", errors="replace"))
+        text = f.read_text(encoding="utf-8", errors="replace")
+        texts.append(text)
+        if not any(s in str(f) for s in NOT_A_PRODUCER):
+            producer_texts.append(without_test_modules(text))
 
     # Constants and function bodies are crate-wide: the emit and the definition
     # are routinely in different files (`sleep.rs` names the topic, `main.rs`
@@ -481,6 +510,10 @@ def publishes_of(directory: Path) -> set[str]:
             for lit in DOTTED_LITERAL.finditer(body):
                 if keep(lit.group("topic")):
                     found.add(lit.group("topic"))
+    for text in producer_texts:
+        for m in STRUCT_TOPIC.finditer(text):
+            if keep(m.group("topic")):
+                found.add(m.group("topic"))
     return found
 
 
