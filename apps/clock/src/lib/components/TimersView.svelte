@@ -73,12 +73,20 @@
             <span class="ti-remaining" class:paused={ti.paused}>{fmtDuration(remaining)}</span>
             <span class="ti-of">/ {fmtDuration(ti.duration_ms)}</span>
             <span class="ti-spacer"></span>
-            <Button variant="outline" size="sm" onclick={() => pauseTimer(ti.id, !ti.paused)}>
-              {ti.paused ? $t("c.ti.resume") : $t("c.ti.pause")}
-            </Button>
-            <Button variant="ghost" size="sm" class="text-muted-foreground" onclick={() => cancelTimer(ti.id)}>
-              {$t("c.ti.cancel")}
-            </Button>
+            <!-- A timer at zero has rung and stays in the daemon's list until it is
+                 taken away; pausing it means nothing, so it offers only that. -->
+            {#if !ti.paused && remaining === 0}
+              <Button variant="outline" size="sm" onclick={() => cancelTimer(ti.id)}>
+                {$t("c.ti.remove")}
+              </Button>
+            {:else}
+              <Button variant="outline" size="sm" onclick={() => pauseTimer(ti.id, !ti.paused)}>
+                {ti.paused ? $t("c.ti.resume") : $t("c.ti.pause")}
+              </Button>
+              <Button variant="ghost" size="sm" class="text-muted-foreground" onclick={() => cancelTimer(ti.id)}>
+                {$t("c.ti.cancel")}
+              </Button>
+            {/if}
           </div>
         {/each}
       </div>
