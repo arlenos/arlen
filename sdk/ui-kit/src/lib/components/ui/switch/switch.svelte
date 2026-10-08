@@ -64,14 +64,13 @@
     background: var(--control-bg-strong);
     padding: 0;
     flex-shrink: 0;
+    /* The flip has one gesture, the thumb's slide (design-system §6b), and
+       the track's colour changes with it. Both run on --duration-normal, the
+       one duration the theme zeroes when motion is reduced, so the end state
+       arrives at once rather than not at all. */
     transition:
-      transform var(--duration-micro) var(--ease-out),
-      background-color var(--duration-fast) var(--ease-out),
-      border-color var(--duration-fast) var(--ease-out);
-  }
-
-  .sw:active:not(:disabled) {
-    transform: scale(0.94);
+      background-color var(--duration-normal) var(--ease-out),
+      border-color var(--duration-normal) var(--ease-out);
   }
 
   /* Switch is a documented sizing-system outlier (see
@@ -115,7 +114,31 @@
     );
     background: var(--foreground);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-    transition: transform var(--duration-medium) var(--ease-out);
+    transition:
+      transform var(--duration-normal) var(--ease-out),
+      width var(--duration-normal) var(--ease-out);
+  }
+
+  /* Pressed, the thumb leans the way it is about to go: it widens toward the
+     other end, so the press is the first part of the slide rather than a
+     second gesture. The track stays where it is; nothing around it moves. */
+  .sw.default:active:not(:disabled) .thumb {
+    width: 17px;
+  }
+  .sw.sm:active:not(:disabled) .thumb {
+    width: 12px;
+  }
+  .sw.default.on:active:not(:disabled) .thumb {
+    transform: translateX(11px);
+  }
+  .sw.sm.on:active:not(:disabled) .thumb {
+    transform: translateX(8px);
+  }
+  :global([dir="rtl"]) .sw.default.on:active:not(:disabled) .thumb {
+    transform: translateX(-11px);
+  }
+  :global([dir="rtl"]) .sw.sm.on:active:not(:disabled) .thumb {
+    transform: translateX(-8px);
   }
 
   /* Thumb size = track height − 4 (1px border each side + 1px gap
@@ -156,9 +179,6 @@
     .sw,
     .thumb {
       transition: none;
-    }
-    .sw:active:not(:disabled) {
-      transform: none;
     }
   }
 </style>
