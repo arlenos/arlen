@@ -310,7 +310,6 @@ mod tests_admission {
 mod tests {
     use super::*;
     use crate::state::ActionMode;
-    use std::collections::BTreeSet;
 
     fn store(dir: &std::path::Path) -> StateStore {
         StateStore::open(dir).expect("open")
@@ -336,12 +335,11 @@ mod tests {
     fn an_admitted_writer_commits_and_persists() {
         let tmp = tempfile::tempdir().unwrap();
         let s = store(tmp.path());
-        let mut want = AiMasterSwitches {
+        let want = AiMasterSwitches {
             enabled: true,
             action_mode: ActionMode::Supervised,
             ..Default::default()
         };
-        want.autonomous_apps.insert("org.arlen.files".to_string());
         assert_eq!(
             handle_request(&s, "dev.arlen.settings", Request::SetAi(want.clone())),
             Response::Committed
@@ -386,7 +384,6 @@ mod tests {
     fn frames_round_trip() {
         let req = Request::SetAi(AiMasterSwitches {
             enabled: true,
-            autonomous_apps: BTreeSet::from(["a".to_string(), "b".to_string()]),
             ..Default::default()
         });
         let mut buf = Vec::new();

@@ -20,8 +20,7 @@
 //! shipped-unit checks to arrive at a name it already had.
 //!
 //! Today the AI's security-load-bearing settings (`enabled`,
-//! `access_level`, `executor_live`, `provider`, `action_mode`,
-//! `autonomous_apps`) live in `~/.config/arlen/ai.toml`, a plain
+//! `access_level`, `executor_live`, `provider`, `action_mode`) live in `~/.config/arlen/ai.toml`, a plain
 //! user-owned file any same-uid process can rewrite - and
 //! `executor_live`'s "human gate" IS that boolean, so flipping the
 //! file flips the gate. `same-uid-isolation-plan.md` Tier-A #1: a
