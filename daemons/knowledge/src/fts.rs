@@ -22,6 +22,20 @@ pub async fn create_fact_text_index(pool: &SqlitePool) -> Result<()> {
     sqlx::query("CREATE VIRTUAL TABLE IF NOT EXISTS fact_text USING fts5(node_id UNINDEXED, text)")
         .execute(pool)
         .await?;
+    sqlx::query(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS fact_trigram \
+         USING fts5(node_id UNINDEXED, text, tokenize = 'trigram')",
+    )
+    .execute(pool)
+    .await?;
+    // A database indexed before the trigram table existed: fill it once from the
+    // word index, which holds the same text. A no-op whenever the two agree.
+    sqlx::query(
+        "INSERT INTO fact_trigram (node_id, text) SELECT node_id, text FROM fact_text \
+         WHERE NOT EXISTS (SELECT 1 FROM fact_trigram LIMIT 1)",
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -32,15 +46,17 @@ pub async fn create_fact_text_index(pool: &SqlitePool) -> Result<()> {
 /// real path both run inside the promotion transaction, so the pair is atomic
 /// with the graph write.
 pub async fn upsert_fact_text(pool: &SqlitePool, node_id: &str, text: &str) -> Result<()> {
-    sqlx::query("DELETE FROM fact_text WHERE node_id = ?1")
-        .bind(node_id)
-        .execute(pool)
-        .await?;
-    sqlx::query("INSERT INTO fact_text (node_id, text) VALUES (?1, ?2)")
-        .bind(node_id)
-        .bind(text)
-        .execute(pool)
-        .await?;
+    for table in ["fact_text", "fact_trigram"] {
+        sqlx::query(&format!("DELETE FROM {table} WHERE node_id = ?1"))
+            .bind(node_id)
+            .execute(pool)
+            .await?;
+        sqlx::query(&format!("INSERT INTO {table} (node_id, text) VALUES (?1, ?2)"))
+            .bind(node_id)
+            .bind(text)
+            .execute(pool)
+            .await?;
+    }
     Ok(())
 }
 
@@ -53,10 +69,12 @@ pub async fn upsert_fact_text(pool: &SqlitePool, node_id: &str, text: &str) -> R
 /// rows, so the index only ever grew and a search spent part of its ranking on
 /// files that were not there.
 pub async fn delete_fact_text(pool: &SqlitePool, node_id: &str) -> Result<()> {
-    sqlx::query("DELETE FROM fact_text WHERE node_id = ?1")
-        .bind(node_id)
-        .execute(pool)
-        .await?;
+    for table in ["fact_text", "fact_trigram"] {
+        sqlx::query(&format!("DELETE FROM {table} WHERE node_id = ?1"))
+            .bind(node_id)
+            .execute(pool)
+            .await?;
+    }
     Ok(())
 }
 
@@ -84,14 +102,73 @@ pub async fn search_fact_text(pool: &SqlitePool, query: &str, limit: i64) -> Res
     if terms.is_empty() {
         return Ok(Vec::new());
     }
-    let ids = sqlx::query_scalar::<_, String>(
+    let mut ids = sqlx::query_scalar::<_, String>(
         "SELECT node_id FROM fact_text WHERE fact_text MATCH ?1 ORDER BY bm25(fact_text) LIMIT ?2",
     )
     .bind(terms.join(" "))
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    if (ids.len() as i64) < limit {
+        for id in search_inside_words(pool, query, limit).await? {
+            if (ids.len() as i64) >= limit {
+                break;
+            }
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
     Ok(ids)
+}
+
+/// The second pass, for a term that sits INSIDE a word: German writes
+/// "Stromrechnung" and "Rechnungsadresse" where English writes two, so a search
+/// for "Rechnung" against FTS5's `unicode61` words found neither. The trigram
+/// table matches any substring of three characters or more, case-insensitively.
+///
+/// Each term is first cut back to a stem ([`light_stem`]) so a plural or an
+/// inflected form still finds the word inside a compound: "Rechnungen" looks for
+/// "rechnung". Its hits come only AFTER the word index's, so an exact word match
+/// keeps its place and this only ever fills what the first pass left empty. A
+/// term too short to have a trigram is left out rather than matching everything;
+/// when no term is long enough, the pass asks nothing.
+async fn search_inside_words(pool: &SqlitePool, query: &str, limit: i64) -> Result<Vec<String>> {
+    let terms: Vec<String> = query
+        .split_whitespace()
+        .map(light_stem)
+        .filter(|t| t.chars().count() >= 3)
+        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .collect();
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(sqlx::query_scalar::<_, String>(
+        "SELECT node_id FROM fact_trigram WHERE fact_trigram MATCH ?1 \
+         ORDER BY bm25(fact_trigram) LIMIT ?2",
+    )
+    .bind(terms.join(" "))
+    .bind(limit)
+    .fetch_all(pool)
+    .await?)
+}
+
+/// A term cut back to what an inflected German or English form shares with its
+/// base, for the substring pass only. Deliberately crude: the longest common
+/// inflectional ending is dropped while at least four characters remain. Wrong
+/// cuts cost little here, because the pass is a substring match ranked after the
+/// exact one, and a stem that is too short is never produced.
+fn light_stem(term: &str) -> String {
+    let lower = term.to_lowercase();
+    const ENDINGS: [&str; 8] = ["ern", "en", "er", "es", "em", "e", "n", "s"];
+    for ending in ENDINGS {
+        if let Some(stem) = lower.strip_suffix(ending) {
+            if stem.chars().count() >= 4 {
+                return stem.to_string();
+            }
+        }
+    }
+    lower
 }
 
 #[cfg(test)]
@@ -155,6 +232,60 @@ mod tests {
 
         // A query of nothing but spaces has no terms and asks nothing.
         assert!(search_fact_text(&pool, "   ", 10).await.unwrap().is_empty());
+    }
+
+    /// German compounds: the word index sees "stromrechnung" as one token, so a
+    /// search for "Rechnung" used to find nothing. The substring pass finds it,
+    /// in a plural too, and ranks after an exact word match.
+    #[tokio::test]
+    async fn a_term_inside_a_compound_is_found_after_exact_words() {
+        let pool = mem_pool().await;
+        create_fact_text_index(&pool).await.unwrap();
+        upsert_fact_text(&pool, "strom", "/docs/Stromrechnung-2026.pdf Stromrechnung-2026.pdf docs")
+            .await
+            .unwrap();
+        upsert_fact_text(&pool, "exact", "/docs/rechnung.txt rechnung.txt docs").await.unwrap();
+        upsert_fact_text(&pool, "other", "/docs/urlaub.md urlaub.md docs").await.unwrap();
+
+        let hits = search_fact_text(&pool, "Rechnung", 10).await.unwrap();
+        assert_eq!(hits, vec!["exact".to_string(), "strom".to_string()], "exact word first");
+        let plural = search_fact_text(&pool, "Rechnungen", 10).await.unwrap();
+        assert!(plural.contains(&"strom".to_string()), "the plural finds the compound: {plural:?}");
+        assert!(!plural.contains(&"other".to_string()));
+        // A term with no trigram asks nothing of the substring pass.
+        assert!(search_fact_text(&pool, "zz", 10).await.unwrap().is_empty());
+        // The limit still holds across both passes.
+        assert_eq!(search_fact_text(&pool, "Rechnung", 1).await.unwrap(), vec!["exact".to_string()]);
+    }
+
+    /// A database indexed before the trigram table existed is filled from the
+    /// word index the first time the index is opened.
+    #[tokio::test]
+    async fn an_older_index_gains_its_trigrams_on_open() {
+        let pool = mem_pool().await;
+        sqlx::query("CREATE VIRTUAL TABLE fact_text USING fts5(node_id UNINDEXED, text)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO fact_text VALUES ('strom', 'Stromrechnung.pdf')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        create_fact_text_index(&pool).await.unwrap();
+        assert_eq!(search_fact_text(&pool, "rechnung", 10).await.unwrap(), vec!["strom".to_string()]);
+        // Opening again does not duplicate the backfill.
+        create_fact_text_index(&pool).await.unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT count(*) FROM fact_trigram").fetch_one(&pool).await.unwrap();
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn the_stem_drops_an_ending_but_keeps_four_characters() {
+        assert_eq!(light_stem("Rechnungen"), "rechnung");
+        assert_eq!(light_stem("Häuser"), "häus");
+        assert_eq!(light_stem("Akten"), "akte");
+        assert_eq!(light_stem("Notes"), "note");
+        assert_eq!(light_stem("Haus"), "haus");
     }
 
     #[tokio::test]
