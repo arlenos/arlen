@@ -1406,6 +1406,17 @@ async fn promote_presence_clear(
 /// presence which is ephemeral. Started/ended timestamps and metadata
 /// remain in the SQLite event row; the graph node carries the type as
 /// `action` and the user-facing label as `subject`.
+/// The smallest value read as microseconds since the epoch: March 1973. Every
+/// real record is later, and a timestamp in seconds or milliseconds for any date
+/// up to the year 5000 is smaller, so the bound separates the units cleanly.
+const MIN_PLAUSIBLE_MICROS: i64 = 100_000_000_000_000;
+
+/// An app-supplied timeline time, if it is one: `0` means "not set", and a
+/// value under [`MIN_PLAUSIBLE_MICROS`] is in a different unit.
+fn timeline_micros(v: i64) -> Option<i64> {
+    (v >= MIN_PLAUSIBLE_MICROS).then_some(v)
+}
+
 async fn promote_timeline_record(
     graph: &GraphHandle,
     event_id: &str,
@@ -1432,12 +1443,25 @@ async fn promote_timeline_record(
     // and finally fall back to the wall-clock timestamp from the
     // Event envelope. This keeps timeline queries time-ordered by the
     // *user-meaningful* moment rather than when the event arrived.
-    let ts = if p.ended_at != 0 {
-        p.ended_at
-    } else if p.started_at != 0 {
-        p.started_at
-    } else {
-        *_timestamp
+    //
+    // The two app-supplied fields are microseconds by contract (event.proto), but
+    // the TypeScript wrapper a web app calls hands over a bare `number`, and the
+    // number a browser has to hand is `Date.now()` - milliseconds. Taken raw,
+    // such a record would land in January 1970 and sort before everything else.
+    // A value too small to be microseconds since 1973 is refused for the
+    // envelope's own (daemon-stamped) time rather than guessed at.
+    let ts = match timeline_micros(p.ended_at).or_else(|| timeline_micros(p.started_at)) {
+        Some(t) => t,
+        None => {
+            if p.ended_at != 0 || p.started_at != 0 {
+                tracing::warn!(
+                    started_at = p.started_at,
+                    ended_at = p.ended_at,
+                    "timeline record times are not microseconds; using the event time"
+                );
+            }
+            *_timestamp
+        }
     };
 
     graph
@@ -3042,13 +3066,13 @@ mod shell_event_tests {
             label: "Build succeeded".into(),
             subject: "coffeeshop".into(),
             r#type: "build".into(),
-            started_at: 5_000_000,
-            ended_at: 9_500_000,
+            started_at: 1_700_000_000_000_000,
+            ended_at: 1_700_000_009_500_000,
             metadata: HashMap::new(),
         };
         let bytes = encode_timeline(&payload);
 
-        promote_timeline_record(&graph, "evt-timeline-1", &10_000_000, &bytes)
+        promote_timeline_record(&graph, "evt-timeline-1", &1_700_000_010_000_000, &bytes)
             .await
             .unwrap();
 
@@ -3061,7 +3085,7 @@ mod shell_event_tests {
             .await
             .unwrap();
         let row = rs.rows.first().expect("user action created");
-        assert_eq!(row[0].as_i64(), 9_500_000); // ended_at wins
+        assert_eq!(row[0].as_i64(), 1_700_000_009_500_000); // ended_at wins
         assert_eq!(row[1].as_str(), "build");
         // THE PAYLOAD'S SUBJECT, not its label. This asserted `"Build succeeded"`
         // until 9 September, which pinned a behaviour two other docs contradicted:
@@ -3109,6 +3133,33 @@ mod shell_event_tests {
             .await
             .unwrap();
         assert_eq!(rs.rows[0][0].as_i64(), 7_777_777);
+    }
+
+    #[tokio::test]
+    async fn timeline_record_in_milliseconds_takes_the_event_time() {
+        // What a web app passes when it hands `Date.now()` to a field documented
+        // as microseconds. Taken raw it would date the record to January 1970.
+        let (graph, _tmp) = setup().await;
+        let payload = TimelineRecordPayload {
+            app_id: "com.example.web".into(),
+            label: "Saved".into(),
+            subject: "/home/tim/a.md".into(),
+            r#type: "save".into(),
+            started_at: 1_700_000_000_000,
+            ended_at: 1_700_000_005_000,
+            metadata: HashMap::new(),
+        };
+        let bytes = encode_timeline(&payload);
+        promote_timeline_record(&graph, "evt-timeline-ms", &1_700_000_006_000_000, &bytes)
+            .await
+            .unwrap();
+        let rs = graph
+            .query_rows(
+                "MATCH (u:UserAction) WHERE u.category = 'timeline' RETURN u.timestamp".to_string(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rs.rows[0][0].as_i64(), 1_700_000_006_000_000);
     }
 
     fn encode_annotation_set(p: &AnnotationSetPayload) -> Vec<u8> {

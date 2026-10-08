@@ -40,7 +40,10 @@ export interface TimelineParams {
   label: string;
   subject: string;
   type: string;
+  /** Microseconds since Unix epoch, not `Date.now()` (milliseconds): use
+   *  `Date.now() * 1000`. Omit for point-in-time events. */
   started_at?: number;
+  /** Microseconds since Unix epoch. Omit for point-in-time events. */
   ended_at?: number;
   metadata?: Record<string, string>;
 }
