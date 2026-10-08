@@ -40,6 +40,20 @@ pub fn compositing_enabled(product_family: &str) -> bool {
     family == COMPOSITING_FAMILY
 }
 
+/// Whether this boot is a virtual machine, from `/proc/cpuinfo`.
+///
+/// Every x86 guest carries the `hypervisor` CPU flag and no bare-metal machine
+/// does; it is what the kernel itself reads to say "running under a hypervisor".
+/// A vendor list (QEMU, VirtualBox, "Microsoft Corporation"...) was the
+/// alternative, and the last entry shows why not: Microsoft is also the vendor of
+/// the Surface laptops, which would have been put on software rendering.
+pub fn in_vm(cpuinfo: &str) -> bool {
+    cpuinfo
+        .lines()
+        .filter(|l| l.starts_with("flags"))
+        .any(|l| l.split_whitespace().any(|f| f == "hypervisor"))
+}
+
 /// Where a Qt platform-theme plugin lives, across the distributions this has to
 /// work on. Debian multiarch first because that is what the image is.
 const QT_PLATFORM_THEME_DIRS: [&str; 3] = [
@@ -85,7 +99,7 @@ pub fn qt_platform_theme(plugin_dirs: &[std::path::PathBuf]) -> Option<&'static 
 /// Returned rather than applied so the set is one testable value: the script this
 /// replaces spread them over forty lines of `export`, where a missing one is
 /// invisible until something downstream reads the wrong socket.
-pub fn session_env(session_id: &str, product_family: &str) -> BTreeMap<String, String> {
+pub fn session_env(session_id: &str, product_family: &str, vm: bool) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     // NO SOCKET PINS. This exported all three - producer, consumer and knowledge -
     // at /run/arlen, "ahead of the XDG_RUNTIME_DIR default", back when those
@@ -105,9 +119,13 @@ pub fn session_env(session_id: &str, product_family: &str) -> BTreeMap<String, S
     // the units that need them, where the choice is visible.
     env.insert(crate::session_id::SESSION_ID_VAR.into(), session_id.into());
     env.insert("XDG_CURRENT_DESKTOP".into(), "arlen".into());
-    // Software GL, and the WebKit paths that cannot use it.
-    env.insert("LIBGL_ALWAYS_SOFTWARE".into(), "1".into());
-    env.insert("GALLIUM_DRIVER".into(), "llvmpipe".into());
+    // Software GL in a VM only. The VM's emulated GPU has no usable GL, and the
+    // pair was written for it - but it was unconditional, so the first session on
+    // real hardware would have run every surface on llvmpipe beside a working GPU.
+    if vm {
+        env.insert("LIBGL_ALWAYS_SOFTWARE".into(), "1".into());
+        env.insert("GALLIUM_DRIVER".into(), "llvmpipe".into());
+    }
     env.insert("GDK_BACKEND".into(), "wayland".into());
     // Qt's turn. Without this a Qt app takes its platform theme from Qt's own
     // guess, which on a session that is neither GNOME nor KDE is nothing - so
@@ -339,6 +357,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn software_gl_is_set_in_a_vm_and_left_alone_on_hardware() {
+        let vm = session_env("s", "", true);
+        assert_eq!(vm.get("LIBGL_ALWAYS_SOFTWARE").map(String::as_str), Some("1"));
+        assert_eq!(vm.get("GALLIUM_DRIVER").map(String::as_str), Some("llvmpipe"));
+        let hw = session_env("s", "", false);
+        assert!(!hw.contains_key("LIBGL_ALWAYS_SOFTWARE"), "a real GPU must not be bypassed");
+        assert!(!hw.contains_key("GALLIUM_DRIVER"));
+    }
+
+    #[test]
+    fn a_guest_is_told_apart_by_the_hypervisor_flag() {
+        let guest = "processor\t: 0\nflags\t\t: fpu vme sse2 hypervisor lahf_lm\n";
+        let metal = "processor\t: 0\nflags\t\t: fpu vme sse2 lahf_lm\nbugs\t\t: hypervisor_like\n";
+        assert!(in_vm(guest));
+        assert!(!in_vm(metal), "a word containing it is not the flag, and bugs is not flags");
+        assert!(!in_vm(""), "unreadable cpuinfo is treated as hardware");
+    }
+
+    #[test]
     fn the_session_is_named_arlen_because_two_subsystems_route_on_it() {
         // Not decoration and not only a label. Two things key off this exact
         // value and both fail SILENTLY without it:
@@ -356,7 +393,7 @@ mod tests {
         // GTK3 takes its theme from `org.gnome.desktop.interface`, not from the
         // settings file we write.
         assert_eq!(
-            session_env("s-1", "").get("XDG_CURRENT_DESKTOP").map(String::as_str),
+            session_env("s-1", "", true).get("XDG_CURRENT_DESKTOP").map(String::as_str),
             Some("arlen")
         );
     }
@@ -449,12 +486,12 @@ x y
         // `set_var` is process-wide and two tests over one variable race.
         std::env::remove_var("RUST_LOG");
         assert!(
-            !session_env("s-1", "").contains_key("RUST_LOG"),
+            !session_env("s-1", "", true).contains_key("RUST_LOG"),
             "an image that says nothing keeps the quiet release level"
         );
 
         std::env::set_var("RUST_LOG", "cosmic_comp=info");
-        let env = session_env("s-1", "");
+        let env = session_env("s-1", "", true);
         std::env::remove_var("RUST_LOG");
         assert_eq!(
             env.get("RUST_LOG").map(String::as_str),
@@ -467,7 +504,7 @@ x y
         // compositor a filter that parses to nothing and silently drop it back
         // to the default, which reads as "the passthrough is broken".
         std::env::set_var("RUST_LOG", "");
-        let env = session_env("s-1", "");
+        let env = session_env("s-1", "", true);
         std::env::remove_var("RUST_LOG");
         assert!(!env.contains_key("RUST_LOG"));
     }
@@ -479,7 +516,7 @@ x y
         // parallel runner - and the one that loses reads the other's value.
         std::env::remove_var(A11Y_SCREEN_READER);
         assert!(
-            !session_env("s-1", "").contains_key(A11Y_SCREEN_READER),
+            !session_env("s-1", "", true).contains_key(A11Y_SCREEN_READER),
             "an untouched login screen must say nothing, not 'off'"
         );
 
@@ -487,7 +524,7 @@ x y
         // list carries. A variable that reaches the session process and stops
         // there is a handoff that silently does nothing.
         std::env::set_var(A11Y_SCREEN_READER, "1");
-        let env = session_env("s-1", "");
+        let env = session_env("s-1", "", true);
         assert_eq!(env.get(A11Y_SCREEN_READER).map(String::as_str), Some("1"));
         assert!(import_list(&env).contains(&A11Y_SCREEN_READER.to_string()));
 
@@ -495,7 +532,7 @@ x y
         // turned it off here" indistinguishable from "nobody touched it", and
         // the session would then keep an on-flag they just cleared.
         std::env::set_var(A11Y_SCREEN_READER, "0");
-        let env = session_env("s-1", "");
+        let env = session_env("s-1", "", true);
         std::env::remove_var(A11Y_SCREEN_READER);
         assert_eq!(env.get(A11Y_SCREEN_READER).map(String::as_str), Some("0"));
     }
@@ -512,7 +549,7 @@ x y
         // Nothing may pin them here, because this environment reaches every
         // process the session starts and so beats any per-unit decision made
         // downstream.
-        let env = session_env("s-1", "");
+        let env = session_env("s-1", "", true);
         for var in [
             "ARLEN_KNOWLEDGE_SOCKET",
             "ARLEN_PRODUCER_SOCKET",
@@ -532,7 +569,7 @@ x y
         for family in ["", "QEMU", "Standard PC", "\n", "webkit"] {
             assert!(!compositing_enabled(family), "{family:?}");
             assert_eq!(
-                session_env("s", family)["WEBKIT_DISABLE_COMPOSITING_MODE"],
+                session_env("s", family, true)["WEBKIT_DISABLE_COMPOSITING_MODE"],
                 "1"
             );
         }
@@ -543,7 +580,7 @@ x y
         assert!(compositing_enabled("webkit-compositing"));
         // Trailing newline from the sysfs read, which is how it actually arrives.
         assert!(compositing_enabled("webkit-compositing\n"));
-        let env = session_env("s", "webkit-compositing");
+        let env = session_env("s", "webkit-compositing", true);
         assert!(!env.contains_key("WEBKIT_DISABLE_COMPOSITING_MODE"));
         // The OTHER flag is not the same lever and stays set: without it the
         // Tauri apps paint black under software GL, switch or no switch.
@@ -555,7 +592,7 @@ x y
         // The drift this replaces: two hand-kept lists, agreeing today for no
         // reason that survives the next variable. A forgotten import is a user
         // service reading the wrong socket, not an error.
-        let env = session_env("s", "");
+        let env = session_env("s", "", true);
         let imported = import_list(&env);
         for name in env.keys() {
             assert!(
@@ -568,7 +605,7 @@ x y
             "the shell cannot connect without the display"
         );
         // And the conditional one follows the condition rather than a second list.
-        let on = session_env("s", "webkit-compositing");
+        let on = session_env("s", "webkit-compositing", true);
         assert!(!import_list(&on).contains(&"WEBKIT_DISABLE_COMPOSITING_MODE".to_string()));
     }
 
@@ -577,7 +614,7 @@ x y
         // A set-but-empty DISPLAY sends cosmic-comp down the X11 path, where it
         // fails - so they cannot simply be assigned "".
         assert_eq!(MUST_BE_UNSET, ["DISPLAY", "WAYLAND_DISPLAY"]);
-        let env = session_env("s", "");
+        let env = session_env("s", "", true);
         for var in MUST_BE_UNSET {
             assert!(!env.contains_key(*var), "{var} must not be exported at all");
         }

@@ -143,7 +143,8 @@ fn say(message: &str) {
 
 fn main() -> std::process::ExitCode {
     let id = session_id(std::env::var(SESSION_ID_VAR).ok());
-    let mut env = session_env(&id, &dmi(PRODUCT_FAMILY));
+    let vm = arlen_session::env::in_vm(&std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default());
+    let mut env = session_env(&id, &dmi(PRODUCT_FAMILY), vm);
 
     // The C library's language, from the one the user chose.
     //
