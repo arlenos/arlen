@@ -10,18 +10,12 @@
   /// [accessibility] reduce_motion`, which the shell reads. The durations,
   /// easing, shadows and blur are local-only and the page says so on screen.
   import { onMount } from "svelte";
-  import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
-  import {
-    Collapsible,
-    CollapsibleTrigger,
-    CollapsibleContent,
-  } from "@arlen/ui-kit/components/ui/collapsible";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import ThemePreview from "$lib/components/appearance/ThemePreview.svelte";
   import { effective as colorsEffective } from "$lib/stores/themeColors";
@@ -99,25 +93,4 @@
 
 
 
-  /* The expander trigger (class rides the Collapsible root, so global). */
-  :global(.exp-trigger) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.5rem 0.25rem;
-    border: none;
-    background: transparent;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
-  }
-  :global(.exp-trigger:hover) {
-    color: var(--foreground);
-  }
-  :global(.exp-trigger svg) {
-    transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  :global(.exp-trigger[data-state="open"] svg) {
-    transform: rotate(90deg);
-  }
 </style>

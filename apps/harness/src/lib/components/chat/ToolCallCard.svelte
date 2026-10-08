@@ -2,11 +2,12 @@
   /// One tool call the assistant made while answering, as a full-width
   /// collapsible: a plain summary line on the surface, the raw tool name,
   /// arguments and result behind the chevron. Transparency-first, two layers.
-  import { Check, ChevronDown, LoaderCircle, X } from "@lucide/svelte";
+  import { Check, LoaderCircle, X } from "@lucide/svelte";
   import {
     Collapsible,
     CollapsibleTrigger,
     CollapsibleContent,
+    CollapsibleChevron,
   } from "@arlen/ui-kit/components/ui/collapsible";
   import type { ToolCall } from "$lib/stores/conversation";
   import { toolLabel } from "$lib/display";
@@ -44,7 +45,7 @@
       {/if}
       <span class="tc-label">{toolLabel(id, $t)}</span>
     </span>
-    <span class="tc-chevron"><ChevronDown size={14} strokeWidth={2} /></span>
+    <CollapsibleChevron from="down" size={14} />
   </CollapsibleTrigger>
   <CollapsibleContent>
     <div class="tc-detail">
@@ -89,9 +90,6 @@
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  :global(.tc-summary[data-state="open"]) .tc-chevron {
-    transform: rotate(180deg);
-  }
   .tc-left {
     display: flex;
     align-items: center;
@@ -121,11 +119,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .tc-chevron {
-    display: inline-flex;
-    flex-shrink: 0;
-    transition: transform var(--duration-fast) var(--ease-out);
   }
   .tc-detail {
     display: flex;

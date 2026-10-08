@@ -12,7 +12,6 @@
   /// Mock-vs-live: reads a fixture palette + holds overrides in the store until
   /// the coder exposes the resolved per-role palette + the per-field override
   /// writes (theme.toml layer 3). Affordance-only until then.
-  import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -21,6 +20,7 @@
     Collapsible,
     CollapsibleTrigger,
     CollapsibleContent,
+    CollapsibleChevron,
   } from "@arlen/ui-kit/components/ui/collapsible";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
@@ -110,7 +110,7 @@
 
       <Collapsible class="all-roles">
         <CollapsibleTrigger class="all-trigger">
-          <ChevronRight size={15} strokeWidth={2} />
+          <CollapsibleChevron />
           {$t("s.col.allRoles")}
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -213,12 +213,6 @@
   }
   :global(.all-trigger:hover) {
     color: var(--foreground);
-  }
-  :global(.all-trigger svg) {
-    transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  :global(.all-trigger[data-state="open"] svg) {
-    transform: rotate(90deg);
   }
 
   .contrast-row {

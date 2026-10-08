@@ -12,18 +12,12 @@
   /// (`theme_resolved_metrics` / `theme_set_metric`); the reasons the other five
   /// are a separate job, and why wiring only eleven would be worse than this, are
   /// in `$lib/stores/themeGeometry.ts`.
-  import { ChevronRight } from "lucide-svelte";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
-  import {
-    Collapsible,
-    CollapsibleTrigger,
-    CollapsibleContent,
-  } from "@arlen/ui-kit/components/ui/collapsible";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import ThemePreview from "$lib/components/appearance/ThemePreview.svelte";
   import { effective as colorsEffective } from "$lib/stores/themeColors";
@@ -116,25 +110,4 @@
   }
 
 
-  /* The expander triggers (class rides the Collapsible root, so global). */
-  :global(.exp-trigger) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.5rem 0.25rem;
-    border: none;
-    background: transparent;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
-  }
-  :global(.exp-trigger:hover) {
-    color: var(--foreground);
-  }
-  :global(.exp-trigger svg) {
-    transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  :global(.exp-trigger[data-state="open"] svg) {
-    transform: rotate(90deg);
-  }
 </style>
