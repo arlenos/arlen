@@ -362,7 +362,7 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
         {:else if dirty}
           <span class="ss-dirty">{$t("te.save.unsaved")}</span>
         {:else if savedAt}
-          <span class="ss-ok">{$t("te.save.saved")}</span>
+          <span class="ss-ok ss-saved">{$t("te.save.saved")}</span>
         {/if}
       </span>
     {/if}
@@ -527,6 +527,20 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   }
   .ss-ok {
     color: color-mix(in srgb, var(--color-fg-primary, #fafafa) 40%, transparent);
+  }
+  /* The save landing: "Saved" takes the place of "Unsaved" by settling in from a
+     step below, once, as the word mounts. It only mounts after a save, since
+     `savedAt` is empty until one happened. On --duration-normal, which the
+     theme zeroes under reduced motion. */
+  .ss-saved {
+    display: inline-block;
+    animation: saved-in var(--duration-normal) var(--ease-out);
+  }
+  @keyframes saved-in {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
   }
   /* `min-height` and wrap, for the one state on this bar that is a sentence.
      Everything else it shows is two words - "Gespeichert", "Nicht gespeichert" -
