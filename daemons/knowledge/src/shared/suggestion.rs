@@ -26,7 +26,6 @@ pub enum SuggestionStatus {
     Pending,
     Accepted,
     Rejected,
-    Expired,
 }
 
 impl MergeSuggestion {
@@ -51,21 +50,6 @@ impl MergeSuggestion {
     }
 }
 
-/// Action to take after accepting or rejecting a merge.
-#[derive(Debug)]
-pub enum MergeAction {
-    /// Delete source, keep target, re-point relations.
-    Merge {
-        delete_id: String,
-        keep_id: String,
-        update_relations: bool,
-    },
-    /// Keep both entities as separate (mark not-duplicate).
-    KeepBoth {
-        mark_not_duplicate: bool,
-    },
-}
-
 /// The graph-stored string for a suggestion status (matches the serde lowercase
 /// rename, so a persisted status round-trips with the pending-list query's filter).
 fn status_str(status: SuggestionStatus) -> &'static str {
@@ -73,19 +57,19 @@ fn status_str(status: SuggestionStatus) -> &'static str {
         SuggestionStatus::Pending => "pending",
         SuggestionStatus::Accepted => "accepted",
         SuggestionStatus::Rejected => "rejected",
-        SuggestionStatus::Expired => "expired",
     }
 }
 
-/// Parse a graph-stored status string back to the enum (inverse of [`status_str`]);
-/// an unrecognised value is treated as `Expired` (fail-closed to a non-actionable
-/// state, so a corrupt status can never be acted on as pending).
-fn status_from_str(s: &str) -> SuggestionStatus {
+/// Parse a graph-stored status string back to the enum (inverse of [`status_str`]).
+/// `None` for anything else, which the caller treats as a corrupt suggestion and
+/// so never acts on. There is no `expired`: a suggestion a person decided does not
+/// lapse (bitemporal-knowledge-graph.md §4.12), and an undecided one stays pending.
+fn status_from_str(s: &str) -> Option<SuggestionStatus> {
     match s {
-        "pending" => SuggestionStatus::Pending,
-        "accepted" => SuggestionStatus::Accepted,
-        "rejected" => SuggestionStatus::Rejected,
-        _ => SuggestionStatus::Expired,
+        "pending" => Some(SuggestionStatus::Pending),
+        "accepted" => Some(SuggestionStatus::Accepted),
+        "rejected" => Some(SuggestionStatus::Rejected),
+        _ => None,
     }
 }
 
@@ -98,9 +82,10 @@ fn status_from_str(s: &str) -> SuggestionStatus {
 pub struct SuggestionCore {
     /// The qualified shared type (e.g. `shared.Person`).
     pub entity_type: String,
-    /// The duplicate to fold away (deleted on merge).
+    /// The entity the suggestion was raised for.
     pub source_id: String,
-    /// The canonical entity kept on merge.
+    /// The existing entity it looks like. An accept links the two with `SAME_AS`
+    /// and keeps both nodes.
     pub target_id: String,
     /// Current lifecycle status.
     pub status: SuggestionStatus,
@@ -130,16 +115,15 @@ pub async fn fetch_suggestion(
     let entity_type = cell(0);
     let source_id = cell(1);
     let target_id = cell(2);
-    // A stored suggestion missing its pair or type is corrupt; treat as absent.
+    // A stored suggestion missing its pair, its type or a readable status is
+    // corrupt; treat it as absent, so it is never acted on.
+    let Some(status) = status_from_str(&cell(3)) else {
+        return Ok(None);
+    };
     if entity_type.is_empty() || source_id.is_empty() || target_id.is_empty() {
         return Ok(None);
     }
-    Ok(Some(SuggestionCore {
-        entity_type,
-        source_id,
-        target_id,
-        status: status_from_str(&cell(3)),
-    }))
+    Ok(Some(SuggestionCore { entity_type, source_id, target_id, status }))
 }
 
 /// Re-validate that a suggestion's stored pair is STILL a live duplicate, just
@@ -290,6 +274,7 @@ fn parse_candidate_rows(
 /// value, yields no suggestion (no query). The entity table must already exist (it
 /// does, since the entity was just written).
 pub async fn dedup_shared_entity_on_write(
+    pool: &sqlx::SqlitePool,
     graph: &crate::graph::GraphHandle,
     entity_type: &str,
     new_id: &str,
@@ -333,7 +318,12 @@ pub async fn dedup_shared_entity_on_write(
     let json = graph.query_rows_json(cypher).await?;
     let existing = parse_candidate_rows(&json);
     let suggestion = detect_duplicate(entity_type, new_id, new_data, &existing, created_by);
+    // A pair a person already said are different is never proposed again,
+    // however alike they look.
     if let Some(s) = &suggestion {
+        if crate::curation::cannot_link(pool, entity_type, &s.source_id, &s.target_id).await? {
+            return Ok(None);
+        }
         persist_suggestion(graph, s).await?;
     }
     Ok(suggestion)
@@ -367,22 +357,6 @@ pub fn detect_duplicate(
                 .unwrap_or(std::cmp::Ordering::Equal)
         })?;
     Some(MergeSuggestion::new(entity_type, new_id, &best, created_by))
-}
-
-/// Build the action for accepting a merge suggestion.
-pub fn accept_merge(suggestion: &MergeSuggestion) -> MergeAction {
-    MergeAction::Merge {
-        delete_id: suggestion.source_id.clone(),
-        keep_id: suggestion.target_id.clone(),
-        update_relations: true,
-    }
-}
-
-/// Build the action for rejecting a merge suggestion.
-pub fn reject_merge(_suggestion: &MergeSuggestion) -> MergeAction {
-    MergeAction::KeepBoth {
-        mark_not_duplicate: true,
-    }
 }
 
 /// Cypher to list pending suggestions.
@@ -429,30 +403,6 @@ mod tests {
         assert_eq!(s.target_id, "existing-1");
         assert_eq!(s.status, SuggestionStatus::Pending);
         assert!(!s.id.is_empty());
-    }
-
-    #[test]
-    fn test_accept_merge() {
-        let s = MergeSuggestion::new("shared.Person", "new-1", &candidate(), "com.test");
-        match accept_merge(&s) {
-            MergeAction::Merge { delete_id, keep_id, update_relations } => {
-                assert_eq!(delete_id, "new-1");
-                assert_eq!(keep_id, "existing-1");
-                assert!(update_relations);
-            }
-            _ => panic!("expected Merge"),
-        }
-    }
-
-    #[test]
-    fn test_reject_merge() {
-        let s = MergeSuggestion::new("shared.Person", "new-1", &candidate(), "com.test");
-        match reject_merge(&s) {
-            MergeAction::KeepBoth { mark_not_duplicate } => {
-                assert!(mark_not_duplicate);
-            }
-            _ => panic!("expected KeepBoth"),
-        }
     }
 
     fn person(email: &str) -> serde_json::Map<String, serde_json::Value> {
@@ -684,6 +634,7 @@ mod tests {
         // unique field is detected + persisted; a unique new one is not.
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let pool = crate::db::open(tmp.path().join("e.db").to_str().unwrap()).await.unwrap();
         let table = crate::write::entity_table_name("shared.Person");
         graph
             .write(format!(
@@ -703,6 +654,7 @@ mod tests {
 
         // A newly-written person sharing p-existing's email -> a persisted suggestion.
         let s = dedup_shared_entity_on_write(
+            &pool,
             &graph,
             "shared.Person",
             "p-new",
@@ -723,6 +675,7 @@ mod tests {
 
         // A unique new email -> no candidate, no suggestion.
         let none = dedup_shared_entity_on_write(
+            &pool,
             &graph,
             "shared.Person",
             "p-uniq",
@@ -732,6 +685,23 @@ mod tests {
         .await
         .unwrap();
         assert!(none.is_none(), "a non-duplicate produces no suggestion");
+
+        // A pair a person said are different is not proposed again.
+        crate::curation::record(
+            &pool,
+            &crate::curation::Command::CannotLink {
+                entity_type: "shared.Person".into(),
+                a: "p-existing".into(),
+                b: "p-again".into(),
+            },
+            "person",
+        )
+        .await
+        .unwrap();
+        let refused = dedup_shared_entity_on_write(&pool, &graph, "shared.Person", "p-again", &person("tim@x.org"), "c")
+            .await
+            .unwrap();
+        assert!(refused.is_none(), "a cannot_link pair is never suggested");
     }
 
     #[test]

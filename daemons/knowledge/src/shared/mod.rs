@@ -2,18 +2,17 @@
 //!
 //! First-party apps create them, third-party apps read (with permission)
 //! and create relations to them. Includes duplicate detection and merge
-//! suggestions.
+//! suggestions; an accepted one is a `SAME_AS` edge (`crate::curation`), never a
+//! merge of nodes.
 //!
 //! See `docs/architecture/SHARED-ENTITIES.md`.
 
 mod access;
 mod duplicate;
-mod merge;
 mod schemas;
 mod suggestion;
 
 pub use access::*;
 pub use duplicate::*;
-pub use merge::*;
 pub use schemas::*;
 pub use suggestion::*;

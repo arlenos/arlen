@@ -161,6 +161,14 @@ async fn run(
         }
     }
 
+    // A person's identity decisions, applied to the graph as it stands. They are
+    // commands in the record, so a graph rebuilt or rescanned since gets them back
+    // here (bitemporal-knowledge-graph.md §4.12).
+    match knowledge::curation::replay(&pool, &graph).await {
+        Ok(n) => info!(applied = n, "identity decisions replayed"),
+        Err(e) => warn!("could not replay identity decisions: {e}"),
+    }
+
     // Project watcher: scans configured directories and watches for changes.
     let project_graph = graph.clone();
     let project_pool = pool.clone();
