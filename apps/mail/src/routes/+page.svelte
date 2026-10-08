@@ -317,6 +317,18 @@
   }
   /// Bulk moves act on the CURRENT folder's members of each conversation -
   /// deleting a thread from the inbox does not eat your sent copy.
+  /// The rows an archive, a put-back or a delete is taking away, so the list
+  /// lets them go with a gesture; a row that disappears any other way (a folder
+  /// switch, a search) is not in here and goes at once. The selection at the
+  /// press IS those rows. Emptied once the gesture has had its time.
+  let leaving = $state<ReadonlySet<string>>(new Set());
+  let leavingTimer: ReturnType<typeof setTimeout> | undefined;
+  function letGo(): void {
+    leaving = new Set(selected);
+    clearTimeout(leavingTimer);
+    leavingTimer = setTimeout(() => (leaving = new Set()), 1000);
+  }
+
   function folderMembers(): string[] {
     const out: string[] = [];
     for (const id of selected)
@@ -325,6 +337,7 @@
   }
   async function archiveSelected(): Promise<void> {
     if (!$mailboxWritable) return;
+    letGo();
     writeFailed.set(null);
     // AWAIT, and keep the selection when any of them did not land. Firing and
     // clearing in the same breath emptied the reading pane over a refused
@@ -344,6 +357,7 @@
   /// because this exists.
   async function putBackSelected(): Promise<void> {
     if (!$mailboxWritable) return;
+    letGo();
     writeFailed.set(null);
     let all = true;
     for (const id of folderMembers()) all = (await moveMessage(id, "inbox")) && all;
@@ -371,6 +385,7 @@
     const ask = forever;
     forever = null;
     if (!ask) return;
+    letGo();
     writeFailed.set(null);
     let all = true;
     for (const id of ask.ids) all = (await deleteMessage(id)) && all;
@@ -388,6 +403,7 @@
       forever = { ids, subject: first?.subject ?? "" };
       return;
     }
+    letGo();
     // THE MAILBOX OWNS THE RULE, not this screen. It used to read "if the open
     // folder is called trash, delete for good, else move there" - true of the
     // sample, whose folder ids are the rail names, and never of a maildir, whose
@@ -583,6 +599,7 @@
           <MessageList
             {rows}
             {selected}
+            {leaving}
             folderKind={$folders.find((f) => f.id === selectedFolder)?.kind ?? null}
             onchange={selectionChanged}
             onopen={openOne}
