@@ -149,7 +149,9 @@
         <LiveRegion message={$t("s.know.statsUnavail")} assertive />
         <Row label={$t("s.know.statsUnavail")} description={$t("s.know.statsUnavail.desc")} id="kg-error">
           {#snippet control()}
-            <span title={error}><AlertCircle size={16} class="kg-error-icon" /></span>
+            <!-- The row says it in words; the host's own text is for the log, not a
+                 hover bubble in English over a translated row (§6.4). -->
+            <AlertCircle size={16} class="kg-error-icon" aria-hidden="true" />
           {/snippet}
         </Row>
       {:else if stats}

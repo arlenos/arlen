@@ -176,7 +176,6 @@
           type="button"
           class="item custom"
           onclick={commitFreeform}
-          title={$t("s.apick.addCustom")}
         >
           <Plus size={12} strokeWidth={2.5} class="custom-icon" />
           <span>

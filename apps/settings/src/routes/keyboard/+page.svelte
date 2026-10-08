@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { t, locale } from "$lib/i18n/messages";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
@@ -297,12 +298,20 @@
                 {layoutLabel(layout)}
               </span>
               {#if i === 0}
-                <span
-                  class="rounded-[var(--radius-chip)] bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
-                  title={$t("s.kbd.primaryHint")}
-                >
-                  {$t("s.kbd.primary")}
-                </span>
+                <!-- A badge takes the kit tooltip for its meaning (§6.4). -->
+                <Tooltip.Root>
+                  <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                      <span
+                        {...props}
+                        class="rounded-[var(--radius-chip)] bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
+                      >
+                        {$t("s.kbd.primary")}
+                      </span>
+                    {/snippet}
+                  </Tooltip.Trigger>
+                  <Tooltip.TooltipContent>{$t("s.kbd.primaryHint")}</Tooltip.TooltipContent>
+                </Tooltip.Root>
               {/if}
             </div>
             <div class="text-xs text-muted-foreground font-mono">

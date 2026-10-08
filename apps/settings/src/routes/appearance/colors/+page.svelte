@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { t, locale } from "$lib/i18n/messages";
   import { formatDecimal } from "@arlen/ui-kit/i18n";
   /// Colours: the theme's palette, editable per role. The common roles carry the
@@ -148,14 +149,21 @@
 {#snippet colorControl(role: ColorRole)}
   {@const val = $effective[role.key]}
   <span class="cf">
-    <label class="cf-swatch" style={`background:${val}`} title={$t("s.col.pick")}>
-      <input
-        type="color"
-        value={val}
-        oninput={(e) => setColorOverride(role.key, e.currentTarget.value)}
-        aria-label={$t("s.color.swatchAria", { role: $t(role.label) })}
-      />
-    </label>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <label {...props} class="cf-swatch" style={`background:${val}`}>
+            <input
+              type="color"
+              value={val}
+              oninput={(e) => setColorOverride(role.key, e.currentTarget.value)}
+              aria-label={$t("s.color.swatchAria", { role: $t(role.label) })}
+            />
+          </label>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.TooltipContent>{$t("s.col.pick")}</Tooltip.TooltipContent>
+    </Tooltip.Root>
     <input
       class="cf-hex"
       type="text"
