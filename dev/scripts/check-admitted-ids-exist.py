@@ -31,6 +31,10 @@ HOW IT DECIDES. It resolves what the image STAGES through the same rules
 
 An id no staged path can produce is reported, unless it is acknowledged below as a
 caller that is not packaged yet - which is a real and honest state, and different
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 from a typo in a scheme.
 
 WHAT IT DOES NOT CHECK. Debug lists (`DEV_ADMITTED`, `*_ADMITTED_DEV`) hold

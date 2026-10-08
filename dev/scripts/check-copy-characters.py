@@ -41,6 +41,10 @@ case-insensitively and with any whitespace between the words, because the way a
 wrong name comes back is somebody typing it from memory.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import subprocess

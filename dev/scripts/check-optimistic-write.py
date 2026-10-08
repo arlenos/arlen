@@ -83,6 +83,10 @@ to whoever knows what the action promised. Reverting on reflex is how a check
 meant to stop a lie ends up telling one.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

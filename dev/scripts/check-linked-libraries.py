@@ -40,6 +40,10 @@ lists what the FEATURE needs, not what the linker needs.
 Run: dev/scripts/check-linked-libraries.py [repo-root]
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import sys

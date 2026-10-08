@@ -34,6 +34,10 @@ touches `/proc/<pid>/exe`. That is a different call, so a known case sits in
 CARRIED with its reason until somebody makes it.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import sys
 from pathlib import Path
 

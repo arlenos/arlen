@@ -37,6 +37,10 @@ Three checks, and the middle one is what keeps the table honest:
                something that IS installed dials it
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import subprocess

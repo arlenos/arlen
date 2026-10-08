@@ -29,6 +29,10 @@ red on another lane's surface is a gate somebody turns off. Both of their rails
 have this defect today, and it is theirs to close.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import sys

@@ -41,6 +41,10 @@ exactly that. Guessing there would produce false reports on correct code, so the
 are printed as unchecked, which is a different statement from silence.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

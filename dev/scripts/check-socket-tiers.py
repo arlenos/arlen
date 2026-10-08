@@ -39,6 +39,10 @@ to `os_sdk::runtime::socket_path` never trips this: those functions carry no
 literal at all, which is the point of having one resolver.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

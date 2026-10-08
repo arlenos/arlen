@@ -37,6 +37,10 @@ is whether SOMETHING creates the tree, not what it resolves to on this machine.
 Run: dev/scripts/check-writable-paths-exist.py [repo-root]
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import os
 import pathlib
 import re

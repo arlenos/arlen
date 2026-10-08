@@ -31,6 +31,10 @@ ever gaining a package without a code change, and the list's job is to record th
 decision, not to freeze it.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import sys

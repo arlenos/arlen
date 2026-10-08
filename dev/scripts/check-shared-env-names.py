@@ -6,6 +6,10 @@
 
 A handoff across a process boundary is a contract with no compiler behind it. The
 greeter sets `ARLEN_A11Y_SCREEN_READER`, the session carries it into the systemd
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import list, and the shell reads it and writes the result to the user's config.
 Three crates that cannot dep each other for good reasons - the shell has no
 business linking the login screen, and the session daemon has no business linking

@@ -24,6 +24,10 @@ script with an opinion about it would be wrong within a week. It judges only tha
 the question was answered somewhere a reader can find it.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import sys

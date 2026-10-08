@@ -44,6 +44,10 @@ the directory has not been there since June, and the message can therefore say
 where the tree keeps that thing now instead of only that the note is wrong.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import os
 import re
 import sys

@@ -43,6 +43,7 @@ function check(name, ok, detail) {
 function installs(script, unit) {
   const py = `
 import importlib.util, pathlib, sys
+import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(${JSON.stringify(join(ROOT, "dev/scripts/check-shipped-units.py"))}))  # as running it would
 spec = importlib.util.spec_from_file_location("g", ${JSON.stringify(join(ROOT, "dev/scripts/check-shipped-units.py"))})
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)

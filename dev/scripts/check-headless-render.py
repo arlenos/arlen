@@ -33,6 +33,10 @@ whole population is five files. If that shape ever appears, tighten it then.
 
 from __future__ import annotations
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

@@ -56,6 +56,10 @@ What it does NOT cover, and each of these is a SKIP rather than a guess:
 
 from __future__ import annotations
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import importlib.util
 import re
 import sys

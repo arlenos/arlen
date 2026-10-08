@@ -45,6 +45,10 @@ not that every refusal in the system is honest.
 
 **The second rule is the same principle in the other medium: a process exit.**
 `arlen-run` refuses a launch by exiting non-zero, and the shell learns the reason
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 from a line beginning with `arlen-run` - nothing else. Nine argv-parse arms
 returned a bare `Err(exit::BAD_ARGS)` and printed nothing, so the launcher's front
 door was the one path that stops without a word: exit 64 with an empty stderr,

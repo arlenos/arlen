@@ -32,6 +32,10 @@ call site. Both halves are read: the literal passed to a helper counts, because
 the helper's own call is not a literal at all.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

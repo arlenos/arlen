@@ -40,6 +40,10 @@ So the scope here is narrow on purpose: **our own binaries, where "should it be
 there" has only one sensible answer** - the tree spawns it, so it has to be there.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

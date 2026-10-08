@@ -44,6 +44,10 @@ Shown to fail before being trusted: `dev/scripts/test-check-dbus-activation.mjs`
 plants a missing pointer and a dangling one.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import os
 import pathlib
 import re

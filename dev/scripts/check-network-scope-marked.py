@@ -25,6 +25,10 @@ A profile that scopes its network with `allowed_domains` needs no marker - it is
 already saying the narrow thing - and neither does one with no network at all.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import sys
 import tomllib
 from pathlib import Path

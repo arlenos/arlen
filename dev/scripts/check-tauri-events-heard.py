@@ -48,6 +48,10 @@ just answered. Two pollers, and the surface showed the older answer.
 
 So the reverse direction is a sweep rather than a gate, and the sweep is four
 lines: collect `.emit("name")` from every app's Rust, collect `listen("name")`
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 from every frontend in the TREE (not just that app's - `arlen://menu-action` is
 emitted by the shell and heard in the apps), and diff. Run it when something
 feels like it is not updating.

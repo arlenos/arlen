@@ -30,6 +30,10 @@ Added to `just checks` and given a positive control on 12 Aug, which is what
 changed that day - not whether it runs.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 from collections.abc import Callable
 import pathlib
 import os

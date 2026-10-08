@@ -37,6 +37,10 @@ Shown to fail before being trusted: `dev/scripts/test-check-window-capability.mj
 Usage: check-window-capability.py [repo-root]
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import json
 import re
 import sys

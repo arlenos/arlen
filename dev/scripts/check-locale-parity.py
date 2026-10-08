@@ -25,6 +25,10 @@ the English sentence passes, and only a person reading it, or a render at
 `?locale=de`, catches that.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import subprocess

@@ -23,6 +23,10 @@ direction that fails at runtime and is swallowed, which is why it needs a check
 rather than a boot.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import json
 import os
 import pathlib
