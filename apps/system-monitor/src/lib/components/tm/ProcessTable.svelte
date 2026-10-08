@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   /// The process table: the task-manager landing. A dense, sortable, heat-coloured
   /// list grouped into Apps / Background / System. The Arlen daemons + the AI agent
   /// sit in Background as ordinary rows. No verdict page.
@@ -293,6 +294,19 @@
   }
 </script>
 
+<!-- The "not measured" tag a column header carries in place of a total, with the
+     reason on the kit tooltip rather than a native title (§6.4). -->
+{#snippet unmeasured(reason: string)}
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      {#snippet child({ props })}
+        <span {...props} class="h-total unmeasured">{$t("tm.col.notMeasured")}</span>
+      {/snippet}
+    </Tooltip.Trigger>
+    <Tooltip.TooltipContent>{reason}</Tooltip.TooltipContent>
+  </Tooltip.Root>
+{/snippet}
+
 <svelte:window onkeydown={onFreezeKey} onkeyup={onFreezeKey} />
 
 <div class="pt" role="grid" data-frozen={frozen ? "yes" : "no"} aria-label={$t("tm.grid.label", { count: procIds.length })} bind:this={rootEl}>
@@ -304,8 +318,12 @@
     <span class="hcell" role="columnheader" aria-sort={ariaSort("status")}><button class="h" class:sorted={sortKey === "status"} aria-label={$t("tm.col.status")} onclick={() => sortBy("status")}>
       {$t("tm.col.status")}
     </button></span>
-    <span class="h access" role="columnheader" aria-label={$t("tm.col.access")} title={accessMeasured ? undefined : $t("tm.col.accessUnavailable")}>
-      {$t("tm.col.access")}{#if !accessMeasured}<span class="h-total unmeasured">{$t("tm.col.notMeasured")}</span>{/if}
+    <!-- "Not measured" says it in the header, once, and the kit tooltip on it
+         carries the reason; the rows below no longer repeat it in a native
+         bubble on every cell (design-system §6.4). The header's name is its
+         visible text, so a reader hears "not measured" too. -->
+    <span class="h access" role="columnheader">
+      {$t("tm.col.access")}{#if !accessMeasured}{@render unmeasured($t("tm.col.accessUnavailable"))}{/if}
     </span>
     <span class="hcell" role="columnheader" aria-sort={ariaSort("cpu")}><button class="h num" class:sorted={sortKey === "cpu"} aria-label={totalCpu ? $t("tm.col.withTotal", { col: $t("tm.col.cpu"), total: totalCpu }) : $t("tm.col.cpu")} onclick={() => sortBy("cpu")}>
       <span class="h-label">{$t("tm.col.cpu")} {#if sortKey === "cpu"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
@@ -319,13 +337,16 @@
       <span class="h-label">{$t("tm.col.disk")} {#if sortKey === "diskKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{totalDisk}</span>
     </button></span>
-    <span class="hcell" role="columnheader" aria-sort={ariaSort("netKBs")}><button class="h num" class:sorted={sortKey === "netKBs"} aria-label={totalNet ? $t("tm.col.withTotal", { col: $t("tm.col.network"), total: totalNet }) : $t("tm.col.network")} onclick={() => sortBy("netKBs")}>
+    <span class="hcell" role="columnheader" aria-sort={ariaSort("netKBs")}><button class="h num" class:sorted={sortKey === "netKBs"} aria-label={netMeasured ? (totalNet ? $t("tm.col.withTotal", { col: $t("tm.col.network"), total: totalNet }) : $t("tm.col.network")) : $t("tm.col.withTotal", { col: $t("tm.col.network"), total: $t("tm.col.notMeasured") })} onclick={() => sortBy("netKBs")}>
       <span class="h-label">{$t("tm.col.network")} {#if sortKey === "netKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <!-- The slot the other columns use for their live total says, for this one,
            that there is no total to give. Same place, so the eye reads it as an
            answer about the column rather than a stray label. -->
-      <span class="h-total" class:unmeasured={!netMeasured}
-        >{netMeasured ? totalNet : $t("tm.col.notMeasured")}</span>
+      {#if netMeasured}
+        <span class="h-total">{totalNet}</span>
+      {:else}
+        {@render unmeasured($t("tm.col.networkUnavailable"))}
+      {/if}
     </button></span>
   </div>
 
@@ -387,7 +408,7 @@
             <span>{$t(p.paused ? "tm.status.suspended" : STATUS_ID[p.status])}</span>
             {#if p.limited && !p.paused}<span class="limtag">{$t("tm.tag.limited")}</span>{/if}
           </div>
-          <div class="cell access" role="gridcell" title={accessMeasured ? undefined : $t("tm.col.accessUnavailable")}>
+          <div class="cell access" role="gridcell">
             {#if !accessMeasured}<span class="unknown">-</span>{/if}
             {#if accessMeasured && sensors.camera}<Camera size={13} strokeWidth={2} />{/if}
             {#if accessMeasured && sensors.mic}<Mic size={13} strokeWidth={2} />{/if}
@@ -406,7 +427,7 @@
                cgroup attribution, and `procmon.rs` says so and reports 0 - so
                printing "0" here would state that this process used no network,
                which nobody measured. A dash says the column has no answer. -->
-          <div class="cell num muted" role="gridcell" title={$t("tm.col.networkUnavailable")}
+          <div class="cell num muted" role="gridcell"
             >{netMeasured ? rate(p.netKBs) : "-"}</div>
         </div>
       {/if}
