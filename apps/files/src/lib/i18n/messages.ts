@@ -149,7 +149,7 @@ const messages: Catalogs = {
     "f.menu.newFromTemplate": "New from template",
     "f.menu.extractHere": "Extract here",
     "f.menu.compress": "Compress to archive",
-    "f.menu.moveToTrash": "Move to trash",
+    "f.menu.moveToTrash": "Remove",
     // The global menu the topbar renders for this app. Item labels the context
     // menu already names are reused verbatim (`f.menu.*`, `f.col.*`, `f.place.*`):
     // one act, one word, one entry to translate.
@@ -533,7 +533,7 @@ const messages: Catalogs = {
     "f.menu.newFromTemplate": "Neu aus Vorlage",
     "f.menu.extractHere": "Hier entpacken",
     "f.menu.compress": "Zu Archiv komprimieren",
-    "f.menu.moveToTrash": "In den Papierkorb",
+    "f.menu.moveToTrash": "Entfernen",
     "f.gm.file": "Datei",
     "f.gm.edit": "Bearbeiten",
     "f.gm.view": "Ansicht",
