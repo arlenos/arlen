@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ColorDot } from "@arlen/ui-kit/components/ui/color-dot";
   import { t } from "$lib/i18n/messages";
   import { initAppMenu, menuAction } from "$lib/menu";
   /// The screenshot annotate surface (SC-R2). A captured image on one canvas with
@@ -696,7 +697,7 @@
              every theme; the two neutrals are named for their role, because
              which of them is light and which is dark swaps with the theme and a
              colour word would be wrong half the time. -->
-        <button class="swatch" class:active={color === s.hex} style={`background:${s.hex}`} aria-label={$t("s.swatch", { name: $t(`s.swatch.${s.token.replace("--color-", "")}`) })} onclick={() => (color = s.hex)}></button>
+        <ColorDot size="pick" color={s.hex} label={$t("s.swatch", { name: $t(`s.swatch.${s.token.replace("--color-", "")}`) })} selected={color === s.hex} onclick={() => (color = s.hex)} />
       {/each}
     </div>
 
@@ -885,25 +886,8 @@
     gap: 0.25rem;
     padding: 0 0.125rem;
   }
-  .swatch {
-    width: 1.125rem;
-    height: 1.125rem;
-    border-radius: var(--radius-button);
-    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 25%, transparent);
-    padding: 0;
-  }
-  .swatch.active {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 1px;
-  }
-  /* Focus gets its OWN channel, because selection already took the outline. The
-     selected swatch could not show focus at all: an explicit `outline` also
-     suppresses the UA ring, so tabbing onto the one that is already chosen
-     changed nothing on screen. Found by the focus-ring probe once it stopped
-     mistaking an autofocused control for a ringless one. */
-  .swatch:focus-visible {
-    box-shadow: 0 0 0 2px var(--color-bg-app), 0 0 0 4px var(--color-fg-primary);
-  }
+  /* The pen colours are the kit's ColorDot: selection on the outline, focus on
+     its own ring, so the chosen colour still shows focus. */
   .size-bar {
     display: block;
     width: 14px;

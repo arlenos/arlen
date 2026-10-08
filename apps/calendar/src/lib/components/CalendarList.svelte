@@ -5,6 +5,7 @@
   /// calendar's row steps back rather than disappearing.
   import { Check, Plus } from "@lucide/svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { ColorDot } from "@arlen/ui-kit/components/ui/color-dot";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
@@ -80,15 +81,15 @@
           </Popover.Trigger>
           <Popover.Content class="w-auto p-2">
             <div class="palette">
-              {#each CALENDAR_PALETTE as c (c)}
-                <button
-                  type="button"
-                  class="swatch"
-                  class:on={c === cal.color}
-                  style="background: {c}"
-                  aria-label={c}
+              <!-- Named in words: these buttons used to be read out as their hex value. -->
+              {#each CALENDAR_PALETTE as c, i (c)}
+                <ColorDot
+                  size="pick"
+                  color={c}
+                  label={$t(`cal.color.name.${i}`)}
+                  selected={c === cal.color}
                   onclick={() => setCalendarColor(cal.id, c)}
-                ></button>
+                />
               {/each}
             </div>
           </Popover.Content>
@@ -174,8 +175,7 @@
     border-radius: var(--radius-chip, 4px);
   }
   .dot:focus-visible,
-  .name:focus-visible,
-  .swatch:focus-visible {
+  .name:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 1px;
   }
@@ -206,16 +206,7 @@
   }
   .palette {
     display: grid;
-    grid-template-columns: repeat(4, 1.4rem);
+    grid-template-columns: repeat(4, 1.25rem);
     gap: 0.35rem;
-  }
-  .swatch {
-    width: 1.4rem;
-    height: 1.4rem;
-    border: 2px solid transparent;
-    border-radius: var(--radius-chip, 4px);
-  }
-  .swatch.on {
-    border-color: var(--color-fg-primary, #fff);
   }
 </style>
