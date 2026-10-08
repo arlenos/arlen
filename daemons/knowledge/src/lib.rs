@@ -66,6 +66,7 @@ pub mod daemon;
 pub mod entity_precision;
 pub mod events;
 pub mod git_ingest;
+pub mod journal;
 pub mod library;
 pub mod list;
 pub mod prep;
