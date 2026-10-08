@@ -30,6 +30,9 @@ pub enum AlertKind {
     /// (canary-honeytools.md §2-§3). Proof of a likely prompt-injection, not a
     /// statistical deviation, so it is surfaced immediately and as critical.
     PolicyViolation,
+    /// The Knowledge daemon's writer dropped events it had accepted, because its
+    /// store refused writes long enough for the buffer to fill.
+    EventsDropped,
 }
 
 impl AlertKind {
@@ -42,6 +45,7 @@ impl AlertKind {
             AlertKind::AuditTampered => "audit-tampered",
             AlertKind::RateLimit => "rate-limit",
             AlertKind::PolicyViolation => "policy-violation",
+            AlertKind::EventsDropped => "events-dropped",
         }
     }
 }
@@ -115,6 +119,26 @@ impl Alert {
                 "The component '{app_id}' exceeded its Knowledge Graph query \
                  rate limit and was throttled. If you did not start a large \
                  task, this can indicate a runaway or compromised component."
+            ),
+            critical: false,
+        }
+    }
+
+    /// The Knowledge daemon reported `total` events dropped since it started.
+    ///
+    /// One key for the whole condition, not one per total, so the cooldown holds
+    /// it to a single notification while the store keeps refusing. Not critical:
+    /// nothing is at risk, but the history the person relies on has holes in it,
+    /// which is worth knowing before they go looking for something that is gone.
+    pub fn events_dropped(total: u64) -> Self {
+        Alert {
+            kind: AlertKind::EventsDropped,
+            key: AlertKind::EventsDropped.as_str().to_string(),
+            summary: "Activity history is incomplete".to_string(),
+            body: format!(
+                "The Knowledge Graph could not save part of what happened on this \
+                 machine. {total} recorded events were lost because the store \
+                 refused to save them; the daemon's log names why."
             ),
             critical: false,
         }
