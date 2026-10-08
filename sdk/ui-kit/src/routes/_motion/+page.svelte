@@ -18,6 +18,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { Switch } from "$lib/components/ui/switch";
+  import { Checkbox } from "$lib/components/ui/checkbox";
 
   let flipped = $state(false);
   let dark = $state(false);
@@ -56,6 +57,15 @@ SPDX-License-Identifier: AGPL-3.0-only
       <Switch value={flipped} size="sm" ariaLabel="small off to on" />
       <Switch value={!flipped} size="sm" ariaLabel="small on to off" />
       <Switch value={flipped} disabled ariaLabel="disabled" />
+    </div>
+  </section>
+
+  <section>
+    <h2>Checkbox</h2>
+    <div class="row">
+      <Checkbox checked={flipped} ariaLabel="unticked to ticked" />
+      <Checkbox checked={!flipped} ariaLabel="ticked to unticked" />
+      <Checkbox checked={flipped} disabled ariaLabel="disabled" />
     </div>
   </section>
 </div>
