@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Chip } from "@arlen/ui-kit/components/ui/chip";
   /// The faceted KG filter bar, revealed under the headerbar when Filter is on.
   /// A row of facet dropdowns (Project / Type / Time / Touched), each a
   /// multi-select of values with a graph count when one is known, builds a
@@ -7,7 +8,7 @@
   /// "Save" names the combo into the sidebar as a Smart Folder; "Clear" drops
   /// every facet and returns to the folder the filter opened over.
   import { get } from "svelte/store";
-  import { ChevronDown, X } from "lucide-svelte";
+  import { ChevronDown } from "lucide-svelte";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
   import Dialog from "@arlen/ui-kit/components/ui/dialog/dialog.svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
@@ -167,17 +168,12 @@
   {#if anyActive}
     <div class="facet-chips">
       {#each chips as chip (chip.group)}
-        <span class="facet-chip">
-          <span class="facet-chip-group">{chip.label}</span>
-          <span class="facet-chip-values">{chip.values}</span>
-          <button
-            class="facet-chip-x"
-            aria-label={$t("f.facet.removeAria", { label: chip.label })}
-            onclick={() => dropGroup(chip.group)}
-          >
-            <X size={11} strokeWidth={2.25} />
-          </button>
-        </span>
+        <Chip
+          prefix={chip.label}
+          label={chip.values}
+          removeLabel={$t("f.facet.removeAria", { label: chip.label })}
+          onremove={() => dropGroup(chip.group)}
+        />
       {/each}
     </div>
   {/if}
@@ -302,38 +298,6 @@
     margin: 0 -10px;
     padding: 8px 10px 0;
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
-  }
-  .facet-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 24px;
-    padding: 0 4px 0 9px;
-    border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    font-size: var(--text-xs);
-  }
-  .facet-chip-group {
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-  }
-  .facet-chip-values {
-    color: var(--foreground);
-  }
-  .facet-chip-x {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    border: none;
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .facet-chip-x:hover {
-    background: color-mix(in srgb, var(--foreground) 12%, transparent);
-    color: var(--foreground);
   }
 
   .facet-dialog {
