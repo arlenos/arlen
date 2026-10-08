@@ -20,6 +20,7 @@ SPDX-License-Identifier: AGPL-3.0-only
   import { Switch } from "$lib/components/ui/switch";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { Notice } from "$lib/components/ui/notice";
+  import { kt } from "$lib/i18n/messages.kit";
   import { Button } from "$lib/components/ui/button";
   import { SegmentedControl } from "$lib/components/ui/segmented-control";
   import Dialog from "$lib/components/ui/dialog/dialog.svelte";
@@ -116,9 +117,9 @@ SPDX-License-Identifier: AGPL-3.0-only
     <h2>Notice</h2>
     <div class="notices">
       {#if flipped}
-        <Notice tone="error" text="The file could not be saved, so the copy on disk is the old one." />
-        <Notice tone="caution" text="This folder is shared with two other people." />
-        <Notice text="Example pictures, not files on this machine." />
+        <Notice tone="error" text={$kt("k.motion.sample.error")} />
+        <Notice tone="caution" text={$kt("k.motion.sample.caution")} />
+        <Notice text={$kt("k.motion.sample.neutral")} />
       {/if}
     </div>
   </section>
