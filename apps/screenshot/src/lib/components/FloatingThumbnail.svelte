@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   /// The macOS-style floating-thumbnail handoff (screenshot-capture-plan.md §2):
@@ -92,19 +93,34 @@
   {#if sample}<div class="thumb-note"><Notice tone="neutral" text={$t("s.sampleShot")} /></div>{/if}
   {#if src}<img class="thumb-img" {src} alt={$t("s.screenCapture")} />{/if}
 
+  {#snippet thumbButton(label: string, Icon: typeof X, run: () => void)}
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <button
+            {...props}
+            class="thumb-btn"
+            aria-label={label}
+            onclick={(e) => {
+              (props.onclick as ((ev: MouseEvent) => void) | undefined)?.(e);
+              stop(e);
+              run();
+            }}
+          >
+            <Icon size={15} strokeWidth={2} />
+          </button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.TooltipContent>{label}</Tooltip.TooltipContent>
+    </Tooltip.Root>
+  {/snippet}
   <div class="thumb-actions" role="group" aria-label={$t("s.captureActions")}>
-    <button class="thumb-btn" title={$t("s.annotate")} aria-label={$t("s.annotate")} onclick={(e) => { stop(e); onAnnotate?.(); }}>
-      <Pencil size={15} strokeWidth={2} />
-    </button>
-    <button class="thumb-btn" title={$t("s.copy")} aria-label={$t("s.copy")} onclick={(e) => { stop(e); onCopy?.(); }}>
-      <Copy size={15} strokeWidth={2} />
-    </button>
-    <button class="thumb-btn" title={$t("s.save")} aria-label={$t("s.save")} onclick={(e) => { stop(e); onSave?.(); }}>
-      <Download size={15} strokeWidth={2} />
-    </button>
-    <button class="thumb-btn" title={$t("s.dismiss")} aria-label={$t("s.dismiss")} onclick={(e) => { stop(e); onDismiss?.(); }}>
-      <X size={15} strokeWidth={2} />
-    </button>
+    <!-- Icon-only actions over the capture: each is named for a reader and
+         labelled for the pointer by the kit tooltip, not the browser (§6.4). -->
+    {@render thumbButton($t("s.annotate"), Pencil, () => onAnnotate?.())}
+    {@render thumbButton($t("s.copy"), Copy, () => onCopy?.())}
+    {@render thumbButton($t("s.save"), Download, () => onSave?.())}
+    {@render thumbButton($t("s.dismiss"), X, () => onDismiss?.())}
   </div>
 
   <div class="thumb-timer">

@@ -680,7 +680,7 @@
     <!-- The loop variable is not `t`: that is the translator store, and shadowing
          it here made `$t` resolve to the tool instead. -->
     {#each TOOLS as tl (tl.kind)}
-      <Button variant={tool === tl.kind ? "secondary" : "ghost"} size="icon-sm" title={`${$t(tl.label)} (${tl.key})`} aria-label={$t(tl.label)} onclick={() => (tool = tl.kind)}>
+      <Button variant={tool === tl.kind ? "secondary" : "ghost"} size="icon-sm" tooltip={`${$t(tl.label)} (${tl.key})`} aria-label={$t(tl.label)} onclick={() => (tool = tl.kind)}>
         <tl.icon size={16} strokeWidth={1.75} />
       </Button>
     {/each}
@@ -701,20 +701,20 @@
     </div>
 
     {#each SIZES as sz (sz.v)}
-      <Button variant={size === sz.v ? "secondary" : "ghost"} size="icon-sm" title={$t(sz.label)} aria-label={$t(sz.label)} onclick={() => (size = sz.v)}>
+      <Button variant={size === sz.v ? "secondary" : "ghost"} size="icon-sm" tooltip={$t(sz.label)} aria-label={$t(sz.label)} onclick={() => (size = sz.v)}>
         <span class="size-bar" style={`height:${sz.v}px`}></span>
       </Button>
     {/each}
 
     <span class="sep" aria-hidden="true"></span>
 
-    <Button variant="ghost" size="icon-sm" title={$t("s.undoHint")} aria-label={$t("s.undo")} disabled={shapes.length === 0} onclick={undo}><Undo2 size={16} strokeWidth={1.75} /></Button>
-    <Button variant="ghost" size="icon-sm" title={$t("s.redoHint")} aria-label={$t("s.redo")} disabled={redoStack.length === 0} onclick={redo}><Redo2 size={16} strokeWidth={1.75} /></Button>
+    <Button variant="ghost" size="icon-sm" tooltip={$t("s.undoHint")} aria-label={$t("s.undo")} disabled={shapes.length === 0} onclick={undo}><Undo2 size={16} strokeWidth={1.75} /></Button>
+    <Button variant="ghost" size="icon-sm" tooltip={$t("s.redoHint")} aria-label={$t("s.redo")} disabled={redoStack.length === 0} onclick={redo}><Redo2 size={16} strokeWidth={1.75} /></Button>
 
     <span class="sep" aria-hidden="true"></span>
 
-    <Button variant="outline" size="sm" title={$t("s.copyHint")} onclick={copy}><Copy size={15} strokeWidth={1.75} /> {$t("s.copy")}</Button>
-    <Button variant="default" size="sm" title={$t("s.save")} onclick={save}><Download size={15} strokeWidth={1.75} /> {$t("s.save")}</Button>
+    <Button variant="outline" size="sm" tooltip={$t("s.copyHint")} onclick={copy}><Copy size={15} strokeWidth={1.75} /> {$t("s.copy")}</Button>
+    <Button variant="default" size="sm" tooltip={$t("s.save")} onclick={save}><Download size={15} strokeWidth={1.75} /> {$t("s.save")}</Button>
   </div>
 </div>
 
