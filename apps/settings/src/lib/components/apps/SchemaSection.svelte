@@ -10,8 +10,8 @@
     Collapsible,
     CollapsibleTrigger,
     CollapsibleContent,
+    CollapsibleChevron,
   } from "@arlen/ui-kit/components/ui/collapsible";
-  import { ChevronRight } from "lucide-svelte";
   import type { SettingsSection } from "$lib/appSettings";
   import { orderedItems, isVisible } from "$lib/appSettings";
   import SettingWidget from "./SettingWidget.svelte";
@@ -57,7 +57,7 @@
     {#if allAdvanced}
       <Collapsible class="expander">
         <CollapsibleTrigger class="exp-trigger">
-          <ChevronRight size={15} strokeWidth={2} />
+          <CollapsibleChevron />
           {section.label}
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -73,7 +73,7 @@
       {#if advanced.length > 0}
         <Collapsible class="expander">
           <CollapsibleTrigger class="exp-trigger">
-            <ChevronRight size={15} strokeWidth={2} />
+            <CollapsibleChevron />
             {$t("s.apps.advanced")}
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -116,11 +116,5 @@
   }
   :global(.exp-trigger:hover) {
     color: var(--foreground);
-  }
-  :global(.exp-trigger svg) {
-    transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  :global(.exp-trigger[data-state="open"] svg) {
-    transform: rotate(90deg);
   }
 </style>

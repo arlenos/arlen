@@ -4,11 +4,12 @@
   /// reason you are here), and every block carries the full trust-and-content
   /// half when open - a folded message never hides a warning silently, so a
   /// block with a notice says so on its folded line.
-  import { ChevronDown, TriangleAlert } from "@lucide/svelte";
+  import { TriangleAlert } from "@lucide/svelte";
   import {
     Collapsible,
     CollapsibleContent,
     CollapsibleTrigger,
+    CollapsibleChevron,
   } from "@arlen/ui-kit/components/ui/collapsible";
   import { Avatar, AvatarFallback } from "@arlen/ui-kit/components/ui/avatar";
   import { locale } from "$lib/i18n/messages";
@@ -45,7 +46,7 @@
           <TriangleAlert size={13} strokeWidth={2} class="warn" aria-hidden="true" />
         {/if}
         <span class="when">{m.date ? formatSent(m.date, $locale) : ""}</span>
-        <ChevronDown size={14} strokeWidth={2} class="chev" aria-hidden="true" />
+        <span class="chev"><CollapsibleChevron from="down" size={14} /></span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div class="block-body">
@@ -123,11 +124,8 @@
   }
   .thread :global(.chev) {
     flex-shrink: 0;
+    display: inline-flex;
     color: var(--color-fg-secondary, #a1a1aa);
-    transition: rotate var(--duration-fast, 150ms) ease;
-  }
-  .thread :global([data-state="open"]) :global(.chev) {
-    rotate: 180deg;
   }
   .block-body {
     display: flex;

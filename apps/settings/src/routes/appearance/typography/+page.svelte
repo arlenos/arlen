@@ -11,7 +11,6 @@
   /// Mock-vs-live: fonts + size are real config keys; line height + weights need
   /// the theme.toml override backend, and the font list is fixed (fc-list is a
   /// coder gap). Fixture-backed until those land.
-  import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -20,6 +19,7 @@
     Collapsible,
     CollapsibleTrigger,
     CollapsibleContent,
+    CollapsibleChevron,
   } from "@arlen/ui-kit/components/ui/collapsible";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import ThemePreview from "$lib/components/appearance/ThemePreview.svelte";
@@ -156,7 +156,7 @@
 
       <Collapsible class="expander">
         <CollapsibleTrigger class="exp-trigger">
-          <ChevronRight size={15} strokeWidth={2} />
+          <CollapsibleChevron />
           {$t("s.typo.weights")}
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -290,11 +290,5 @@
   }
   :global(.exp-trigger:hover) {
     color: var(--foreground);
-  }
-  :global(.exp-trigger svg) {
-    transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  :global(.exp-trigger[data-state="open"] svg) {
-    transform: rotate(90deg);
   }
 </style>
