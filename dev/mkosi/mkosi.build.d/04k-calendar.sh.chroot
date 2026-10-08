@@ -28,7 +28,7 @@ set -eu
 cache="${BUILDDIR:-/var/tmp/arlen-build}"
 export RUSTUP_HOME="$cache/rustup"
 export CARGO_HOME="$cache/cargo-home"
-export CARGO_TARGET_DIR="$cache/target-calendar-app"  # own dir; app is a separate workspace
+export CARGO_TARGET_DIR="$cache/target-apps"  # shared by every app phase: see 04-shell
 export CXXFLAGS="-include cstdint"
 export LIBGL_ALWAYS_SOFTWARE=1                     # llvmpipe, harmless at build time
 export npm_config_cache="$cache/npm"               # persist the npm cache across builds
