@@ -3,11 +3,11 @@
   /// The duplicate finder in place of the listing: byte-identical files grouped
   /// by content, with a keep/trash control per copy. The safety floor is visible
   /// here: exactly one copy per group stays kept (the last kept one cannot be
-  /// marked), the action is trash via a confirm, and the default keeps the
-  /// newest. The scan itself is the backend's (`scanDuplicates`); this reviews.
+  /// marked), the action is the trash, which asks nothing because it is
+  /// reversible (design-system 6.10, point 4; the toast after it says Ctrl+Z
+  /// puts them back), and the default keeps the newest. The scan itself is the backend's (`scanDuplicates`); this reviews.
   import { Loader2, Lock, Trash2 } from "lucide-svelte";
   import { entryIcon, formatSize, formatModified } from "@arlen/ui-kit/components/browser";
-  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   import {
@@ -30,8 +30,7 @@
   let {
     ontrash,
   }: {
-    /// Move the chosen copies to the trash (the page runs the op); called only
-    /// after the confirm.
+    /// Move the chosen copies to the trash (the page runs the op and its undo).
     ontrash?: (paths: string[]) => void;
   } = $props();
 
@@ -39,7 +38,6 @@
   const shortScope = $derived($duplicatesScope.replace(/^\/home\/[^/]+/, "~"));
   const dirOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
 
-  let confirming = $state(false);
 
   function entryOf(f: DupFile) {
     return { name: f.name, kind: "file" as const };
@@ -73,8 +71,7 @@
       <div class="dup-head-text">
         <span class="dup-title">{$t("f.dup.title", { scope: shortScope })}</span>
         <span class="dup-sub">
-          {$t("f.dup.groups", { count: groups.length })}
-          {#if $reclaimable > 0}, {$t("f.dup.reclaimable", { size: formatSize($reclaimable) })}{/if}
+          {$t("f.dup.groups", { count: groups.length })}{#if $reclaimable > 0}, {$t("f.dup.reclaimable", { size: formatSize($reclaimable) })}{/if}
         </span>
       </div>
       <div class="dup-actions">
@@ -82,7 +79,10 @@
         <button
           class="dup-btn primary"
           disabled={$markedPaths.length === 0}
-          onclick={() => (confirming = true)}
+          onclick={() => {
+            ontrash?.($markedPaths);
+            closeDuplicates();
+          }}
         >
           <Trash2 size={13} strokeWidth={2} />
           {$t("f.dup.trashCount", { count: $markedPaths.length })}
@@ -95,10 +95,8 @@
         {@const kept = keptCount(group, $trashMarks)}
         <div class="group">
           <div class="group-head">
-            {$t("f.dup.copies", { count: group.files.length })}
-            {#if groupReclaimable(group, $trashMarks) > 0}
-              , {$t("f.dup.reclaimable", { size: formatSize(groupReclaimable(group, $trashMarks)) })}
-            {/if}
+            <!-- On one line: a line break before the comma renders as a space before it. -->
+            {$t("f.dup.copies", { count: group.files.length })}{#if groupReclaimable(group, $trashMarks) > 0}, {$t("f.dup.reclaimable", { size: formatSize(groupReclaimable(group, $trashMarks)) })}{/if}
           </div>
           {#each group.files as file (file.path)}
             {@const Icon = entryIcon(entryOf(file))}
@@ -142,18 +140,6 @@
   {/if}
 </div>
 
-<ConfirmDialog
-  open={confirming}
-  title={$t("f.dup.dialogTitle")}
-  message={$t("f.dup.dialogBody", { count: $markedPaths.length, size: formatSize($reclaimable) })}
-  confirmLabel={$t("f.menu.moveToTrash")}
-  onConfirm={() => {
-    confirming = false;
-    ontrash?.($markedPaths);
-    closeDuplicates();
-  }}
-  onCancel={() => (confirming = false)}
-/>
 
 <style>
   .dup {
