@@ -3,9 +3,22 @@
 # Smithay-based Wayland compositor) - ranked hard part, it must drive the VM's
 # virtio-gpu under software GL (llvmpipe). Links the Debian Mesa/Wayland/libinput/
 # libseat/libdisplay-info system libs, so it builds here, not via cargo-zigbuild.
-# The compositor repo is mounted at $SRCDIR/compositor (BuildSources); it git-deps
-# arlen-theme from github (fetched over the build network). rustup was installed
-# by phase 2 into the shared cache.
+# The compositor repo is mounted at $SRCDIR/compositor (BuildSources). rustup was
+# installed by phase 2 into the shared cache.
+#
+# ITS TWO ARLEN DEPENDENCIES COME FROM THE MOUNTED TREE, not from github. The
+# compositor git-deps `arlen-theme` and `arlen-permissions` on the monorepo, and
+# with an empty cargo home (the build dir does not survive between builds on this
+# machine) that meant cloning the whole monorepo - 1.1 GB of history - for two
+# small crates. On 8 October it sat on `Updating git repository` for half an hour
+# at 130 KiB/s. The monorepo is already mounted at $SRCDIR/arlen, and building
+# against it is also the more honest image: the compositor links the same theme
+# and permissions code as every other component in it, local commits included,
+# rather than whatever was last pushed.
+#
+# Built from a COPY of the compositor source. The patch rewrites Cargo.lock, and
+# BuildSources is a read-write bind mount, so building in place would have edited
+# the compositor repository's real lockfile on the host.
 set -eu
 
 cache="${BUILDDIR:-/var/tmp/arlen-build}"
@@ -21,9 +34,19 @@ if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
 fi
 export PATH="$CARGO_HOME/bin:$PATH"
 
-cd "$SRCDIR/compositor"
-echo ">> cargo build cosmic-comp - Debian-native ($(cargo --version))"
-cargo build --release --bin cosmic-comp
+src="$cache/compositor-src"
+rm -rf "$src"
+mkdir -p "$src"
+# Everything but build output: the repo's own target/ can be gigabytes.
+tar -C "$SRCDIR/compositor" --exclude=./target --exclude=./.git -cf - . | tar -C "$src" -xf -
+cd "$src"
+arlen="https://github.com/arlenos/arlen"
+theme="$SRCDIR/arlen/sdk/theme"
+permissions="$SRCDIR/arlen/sdk/permissions"
+echo ">> cargo build cosmic-comp - Debian-native ($(cargo --version)), arlen crates from the mounted tree"
+cargo build --release --bin cosmic-comp \
+    --config "patch.\"$arlen\".arlen-theme.path=\"$theme\"" \
+    --config "patch.\"$arlen\".arlen-permissions.path=\"$permissions\""
 # Installed as `arlen-compositor`, not under the upstream fork's name, and this
 # is a security property rather than tidiness. `detect_tier` places a binary by
 # path prefix - /usr/bin/arlen- or /usr/lib/arlen/ - so `/usr/bin/cosmic-comp`
