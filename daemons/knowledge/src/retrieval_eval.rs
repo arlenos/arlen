@@ -150,7 +150,7 @@ async fn ingest() -> (sqlx::SqlitePool, GraphHandle, Vec<(String, String)>, temp
     let pool = db::open(dir.path().join("events.db").to_str().unwrap()).await.unwrap();
     let graph = crate::graph::spawn(dir.path().join("graph").to_str().unwrap()).unwrap();
     crate::fts::create_fact_text_index(&pool).await.unwrap();
-    let store = ProjectStore::new(graph.clone());
+    let store = ProjectStore::new(graph.clone(), pool.clone());
     let mut ids = Vec::new();
     for (name, root) in [("Steuer 2026", STEUER), ("Betriebssystem", OS), ("Urlaub", URLAUB)] {
         let p = Project::new_explicit(uuid::Uuid::now_v7(), name.into(), root.into());

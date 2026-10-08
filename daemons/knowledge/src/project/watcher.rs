@@ -354,9 +354,9 @@ impl ProjectWatcher {
 
 /// Entry point: run initial scan + live watcher.
 /// Designed to be spawned as a tokio task from `main.rs`.
-pub async fn run(graph: GraphHandle) -> anyhow::Result<()> {
+pub async fn run(graph: GraphHandle, pool: sqlx::SqlitePool) -> anyhow::Result<()> {
     let config = WatchConfig::load();
-    let store = Arc::new(ProjectStore::new(graph));
+    let store = Arc::new(ProjectStore::new(graph, pool));
     let watcher = Arc::new(ProjectWatcher::new(config, store));
 
     watcher.initial_scan().await?;
@@ -381,7 +381,7 @@ mod tests {
             max_depth: 3,
             auto_promote_threshold: 3,
         };
-        let store = Arc::new(ProjectStore::new(graph));
+        let store = Arc::new(ProjectStore::new(graph, crate::project::store::test_pool(graph_tmp.path()).await));
         // Leak graph_tmp so it lives for the test duration.
         std::mem::forget(graph_tmp);
         Arc::new(ProjectWatcher::new(config, store))
@@ -477,7 +477,7 @@ mod tests {
         let graph =
             crate::graph::spawn(graph_tmp.path().join("g").to_str().unwrap()).unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        let store = Arc::new(ProjectStore::new(graph));
+        let store = Arc::new(ProjectStore::new(graph, crate::project::store::test_pool(graph_tmp.path()).await));
         let w = Arc::new(ProjectWatcher::new(config, store));
 
         let count = w.initial_scan().await.unwrap();
@@ -574,17 +574,21 @@ mod tests {
 
         let w = setup(tmp.path()).await;
         w.initial_scan().await.unwrap();
+        let id = w
+            .store
+            .get_by_root_path(&project_dir.to_string_lossy())
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
 
         // Remove .project -- no other signals remain.
         fs::remove_file(project_dir.join(".project")).unwrap();
         w.handle_project_file_deleted(&project_dir).await.unwrap();
 
-        let p = w
-            .store
-            .get_by_root_path(&project_dir.to_string_lossy())
-            .await
-            .unwrap()
-            .unwrap();
+        // By id: an archived project is closed, and the root lookup reads only
+        // open ones.
+        let p = w.store.get_by_id(id).await.unwrap().unwrap();
         assert_eq!(p.status, ProjectStatus::Archived);
     }
 }

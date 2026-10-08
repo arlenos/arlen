@@ -73,7 +73,7 @@ pub async fn run(
     // and is populated here as nodes are promoted.
     crate::fts::create_fact_text_index(&pool).await?;
 
-    let project_store = ProjectStore::new(graph.clone()).with_clock(clock);
+    let project_store = ProjectStore::new(graph.clone(), pool.clone()).with_clock(clock);
 
     // Read once at startup. graph.toml hot-reload is a separate
     // sprint item — for now, threshold changes need a daemon
@@ -3450,7 +3450,7 @@ mod project_tests {
         let graph =
             crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         tokio::time::sleep(Duration::from_millis(500)).await;
-        let store = ProjectStore::new(graph.clone());
+        let store = ProjectStore::new(graph.clone(), crate::project::test_pool(tmp.path()).await);
         (graph, store, tmp)
     }
 
@@ -3650,10 +3650,9 @@ mod project_tests {
         assert!(project.last_accessed.is_none());
         store.create(&project).await.unwrap();
 
-        // link_file_to_project with a file outside the project still calls
-        // find_by_path_prefix which returns None, so last_accessed stays None.
-        // We need a file INSIDE the project, but the File node must exist too.
-        // Just call touch directly to verify it works.
+        // `last_accessed` is the latest access among the live member files, so
+        // it takes a member file to have one.
+        create_file_with_session(&_graph, &store, "/a/x.rs", "editor", "s", project.id).await;
         store.touch(project.id).await.unwrap();
 
         let p = store.get_by_id(project.id).await.unwrap().unwrap();
