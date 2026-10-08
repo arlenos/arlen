@@ -6,9 +6,11 @@
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { t, locale } from "$lib/i18n/messages";
+  import { cubicOut } from "svelte/easing";
   import type { Envelope, FolderKind } from "$lib/stores/mailbox";
 
   let {
+    leaving = new Set(),
     rows,
     selected,
     folderKind = null,
@@ -28,10 +30,40 @@
     onopen: (id: string) => void;
     onarchive: () => void;
     ondelete: () => void;
+    /// Rows an archive, a put-back or a delete is taking away; each leaves with
+    /// a gesture instead of vanishing.
+    leaving?: ReadonlySet<string>;
   } = $props();
 
   /// The shift-range anchor: the last row a plain or ctrl click landed on.
   let anchor = $state<string | null>(null);
+
+  // A message leaving the folder slides a step toward the side it went and fades,
+  // and its gap closes behind it in the second half, on `--duration-slow` from
+  // the root, where the shell's theme zeroes it under reduce motion. A Svelte
+  // transition needs a number, so the token is read here. Rows not taken away
+  // by an action leave in 0 ms, which is no gesture at all.
+  function slow(): number {
+    const v = getComputedStyle(document.documentElement).getPropertyValue("--duration-slow").trim();
+    const n = parseFloat(v);
+    if (!Number.isFinite(n)) return 0;
+    return v.endsWith("ms") ? n : n * 1000;
+  }
+  function leave(node: HTMLElement, id: string) {
+    if (!leaving.has(id)) return { duration: 0 };
+    const h = node.offsetHeight;
+    const cs = getComputedStyle(node);
+    const pt = parseFloat(cs.paddingTop);
+    const pb = parseFloat(cs.paddingBottom);
+    return {
+      duration: slow(),
+      easing: cubicOut,
+      css: (t: number) => {
+        const f = Math.min(1, t * 2);
+        return `opacity: ${t}; transform: translateX(${(1 - t) * 16}px); overflow: hidden; height: ${f * h}px; padding-top: ${f * pt}px; padding-bottom: ${f * pb}px`;
+      },
+    };
+  }
 
   let query = $state("");
   // All or unread only. Session state, deliberately not persisted: a filter a
@@ -139,6 +171,7 @@
         role="option"
         aria-selected={selected.has(e.id)}
         onclick={(ev) => clickRow(ev, e.id)}
+        out:leave={e.id}
       >
         <span class="dot" class:unread={e.unread} aria-hidden="true"></span>
         <span class="row-body">
