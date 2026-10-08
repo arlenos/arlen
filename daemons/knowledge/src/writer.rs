@@ -3,7 +3,8 @@ use crate::proto::Event;
 use anyhow::Result;
 use prost::Message;
 use sqlx::SqlitePool;
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::time;
@@ -17,6 +18,52 @@ const BATCH_SIZE_THRESHOLD: usize = 1_000;
 
 /// Write a batch after this duration even if `BATCH_SIZE_THRESHOLD` is not reached.
 const BATCH_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// First wait after a failed batch write; doubled per consecutive failure.
+const RETRY_BASE: Duration = Duration::from_millis(500);
+
+/// Longest wait between two attempts at a failing batch write.
+const RETRY_MAX: Duration = Duration::from_secs(30);
+
+/// Events this writer accepted from the bus and then lost for want of room:
+/// the overload tiers' drops. The figure the anomaly detector needs, because a
+/// store that silently loses part of what happened looks exactly like a quiet
+/// afternoon.
+static DROPPED: AtomicU64 = AtomicU64::new(0);
+
+/// How many events have been dropped since the daemon started.
+pub fn dropped_events() -> u64 {
+    DROPPED.load(Ordering::Relaxed)
+}
+
+/// When the next batch write may be tried. A write that fails leaves its batch
+/// in the buffer, and this keeps the retries from hammering a store that is
+/// already refusing - a full disk or a locked database does not clear in 500ms.
+#[derive(Debug, Default)]
+struct Retry {
+    failures: u32,
+    not_before: Option<Instant>,
+}
+
+impl Retry {
+    fn due(&self, now: Instant) -> bool {
+        self.not_before.is_none_or(|t| now >= t)
+    }
+
+    fn failed(&mut self, now: Instant) -> Duration {
+        self.failures = self.failures.saturating_add(1);
+        let wait = RETRY_BASE
+            .checked_mul(1u32 << (self.failures - 1).min(16))
+            .unwrap_or(RETRY_MAX)
+            .min(RETRY_MAX);
+        self.not_before = Some(now + wait);
+        wait
+    }
+
+    fn succeeded(&mut self) {
+        *self = Self::default();
+    }
+}
 
 /// Connect to the Event Bus as a consumer and stream events into `SQLite`.
 ///
@@ -35,8 +82,13 @@ pub async fn run(consumer_socket: &str, pool: SqlitePool) -> Result<()> {
     if paused.load(std::sync::atomic::Ordering::Relaxed) {
         info!("graph.toml [timeline] paused = true; events are read and discarded, nothing is stored");
     }
+    // Lives across reconnects: a batch that could not be written when the bus
+    // went away is still owed to the store, and dropping it with the
+    // connection would be the same loss as dropping it on a failed write.
+    let mut buffer: Vec<Event> = Vec::with_capacity(RING_BUFFER_CAPACITY);
+    let mut retry = Retry::default();
     loop {
-        match connect_and_consume(consumer_socket, &pool, &paused).await {
+        match connect_and_consume(consumer_socket, &pool, &paused, &mut buffer, &mut retry).await {
             Ok(()) => {
                 // Clean disconnect; Event Bus shut down intentionally.
                 info!("event bus disconnected, waiting to reconnect");
@@ -54,6 +106,8 @@ async fn connect_and_consume(
     consumer_socket: &str,
     pool: &SqlitePool,
     paused: &std::sync::atomic::AtomicBool,
+    buffer: &mut Vec<Event>,
+    retry: &mut Retry,
 ) -> Result<()> {
     let mut stream = UnixStream::connect(consumer_socket).await?;
     info!(socket = consumer_socket, "connected to event bus");
@@ -70,10 +124,9 @@ async fn connect_and_consume(
 
     info!("registered as consumer, starting event loop");
 
-    // The ring buffer: a Vec we treat as a circular queue.
-    // In practice we drain it on every batch write, so it acts more like
-    // a bounded staging area than a true circular buffer.
-    let mut buffer: Vec<Event> = Vec::with_capacity(RING_BUFFER_CAPACITY);
+    // The buffer is a bounded staging area, drained on every batch write that
+    // succeeds. It only fills toward RING_BUFFER_CAPACITY while writes are
+    // failing, which is the case the overload tiers in `admit` exist for.
     let mut interval = time::interval(BATCH_TIMEOUT);
 
     loop {
@@ -99,21 +152,21 @@ async fn connect_and_consume(
                         if !paused.load(std::sync::atomic::Ordering::Relaxed)
                             && !excluded(&event)
                         {
-                            admit(&mut buffer, event);
+                            admit(buffer, event);
                         }
                         if buffer.len() >= BATCH_SIZE_THRESHOLD {
-                            flush(&mut buffer, pool).await;
+                            flush(buffer, pool, retry).await;
                         }
                     }
                     Ok(None) => {
                         // Clean EOF: event bus closed the connection.
                         debug!("event bus closed connection");
-                        flush(&mut buffer, pool).await;
+                        flush(buffer, pool, retry).await;
                         return Ok(());
                     }
                     Err(e) => {
                         warn!("read error: {e}");
-                        flush(&mut buffer, pool).await;
+                        flush(buffer, pool, retry).await;
                         return Err(e);
                     }
                 }
@@ -122,7 +175,7 @@ async fn connect_and_consume(
             // Branch 2: the 500ms timer fired.
             _ = interval.tick() => {
                 if !buffer.is_empty() {
-                    flush(&mut buffer, pool).await;
+                    flush(buffer, pool, retry).await;
                 }
             }
         }
@@ -189,27 +242,50 @@ fn admit(buffer: &mut Vec<Event>, event: Event) {
     }) {
         buffer.swap_remove(pos);
         buffer.push(event);
-        debug!("dropped low-value eBPF event to make room");
+        let total = DROPPED.fetch_add(1, Ordering::Relaxed) + 1;
+        debug!(dropped_total = total, "dropped low-value eBPF event to make room");
         return;
     }
 
     // Tier 3: drop the incoming event
+    let total = DROPPED.fetch_add(1, Ordering::Relaxed) + 1;
     warn!(
         event_type = %event.r#type,
+        dropped_total = total,
         "ring buffer full, dropping incoming event"
     );
 }
 
-/// Write all buffered events to `SQLite` and clear the buffer.
-async fn flush(buffer: &mut Vec<Event>, pool: &SqlitePool) {
-    if buffer.is_empty() {
+/// Write all buffered events to `SQLite`, clearing the buffer only when the
+/// write succeeded.
+///
+/// It used to clear unconditionally, so one failed write - a full disk, a
+/// locked database - erased up to a thousand events behind a single log line.
+/// Now the batch stays, the next attempt waits out an exponential backoff, and
+/// what accumulates meanwhile meets the overload tiers in `admit`, which count
+/// what they finally drop.
+async fn flush(buffer: &mut Vec<Event>, pool: &SqlitePool, retry: &mut Retry) {
+    if buffer.is_empty() || !retry.due(Instant::now()) {
         return;
     }
     match db::write_batch(pool, buffer).await {
-        Ok(n) => debug!(count = n, "flushed batch to SQLite"),
-        Err(e) => error!("batch write failed: {e}"),
+        Ok(n) => {
+            debug!(count = n, "flushed batch to SQLite");
+            if retry.failures > 0 {
+                info!(count = n, after_failures = retry.failures, "batch write recovered");
+            }
+            retry.succeeded();
+            buffer.clear();
+        }
+        Err(e) => {
+            let wait = retry.failed(Instant::now());
+            error!(
+                held = buffer.len(),
+                retry_in_ms = wait.as_millis() as u64,
+                "batch write failed, keeping the batch: {e}"
+            );
+        }
     }
-    buffer.clear();
 }
 
 /// Read one length-prefixed protobuf Event from the stream.
@@ -250,6 +326,67 @@ mod tests {
             uid: 0,
             project_id: String::new(),
         }
+    }
+
+    #[test]
+    fn the_retry_wait_doubles_and_stops_at_the_cap() {
+        let now = Instant::now();
+        let mut r = Retry::default();
+        assert!(r.due(now));
+        assert_eq!(r.failed(now), RETRY_BASE);
+        assert_eq!(r.failed(now), RETRY_BASE * 2);
+        assert!(!r.due(now));
+        assert!(r.due(now + RETRY_BASE * 2));
+        for _ in 0..40 {
+            r.failed(now);
+        }
+        assert_eq!(r.failed(now), RETRY_MAX);
+        r.succeeded();
+        assert!(r.due(now));
+    }
+
+    #[tokio::test]
+    async fn a_failed_write_keeps_the_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = db::open(dir.path().join("events.db").to_str().unwrap())
+            .await
+            .unwrap();
+        pool.close().await;
+        let mut buffer = vec![make_event("file.opened", "ebpf"), make_event("file.opened", "ebpf")];
+        let mut retry = Retry::default();
+        flush(&mut buffer, &pool, &mut retry).await;
+        assert_eq!(buffer.len(), 2, "a failed write must not discard its batch");
+        assert_eq!(retry.failures, 1);
+        // Inside the backoff window nothing is attempted.
+        flush(&mut buffer, &pool, &mut retry).await;
+        assert_eq!(retry.failures, 1);
+    }
+
+    #[tokio::test]
+    async fn a_successful_write_clears_the_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = db::open(dir.path().join("events.db").to_str().unwrap())
+            .await
+            .unwrap();
+        let mut buffer = vec![make_event("file.opened", "ebpf")];
+        let mut retry = Retry {
+            failures: 3,
+            not_before: None,
+        };
+        flush(&mut buffer, &pool, &mut retry).await;
+        assert!(buffer.is_empty());
+        assert_eq!(retry.failures, 0);
+    }
+
+    #[test]
+    fn a_tier_three_drop_is_counted() {
+        let before = dropped_events();
+        let mut buffer = Vec::with_capacity(RING_BUFFER_CAPACITY);
+        for _ in 0..RING_BUFFER_CAPACITY {
+            buffer.push(make_event("app.action", "app:com.example"));
+        }
+        admit(&mut buffer, make_event("network.connection", "ebpf"));
+        assert!(dropped_events() > before);
     }
 
     #[test]
