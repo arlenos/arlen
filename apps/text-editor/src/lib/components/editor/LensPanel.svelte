@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Chip } from "@arlen/ui-kit/components/ui/chip";
   /// The KG-lens panel: the file's graph neighbourhood, surfaced automatically. This
   /// is the co-star, not a hidden sidebar - it is why the editor exists. Provenance
   /// (coarse lineage, honest fidelity), Related (inline contextual backlinks you act
@@ -140,13 +141,9 @@
       <p class="proj-name">{$t("te.lens.project.partOf", { name: $lens.project.name })}</p>
       <div class="proj-members">
         {#each $lens.project.members as m (m.path)}
-          {#if $lens.mocked}
-            <span class="proj-chip">{m.name}</span>
-          {:else}
-            <button type="button" class="proj-chip" onclick={() => openRelated(m.path)}>
-              {m.name}
-            </button>
-          {/if}
+          <!-- The sample lens names files that are not on this machine, so its chips
+               only label; the live ones open the member. -->
+          <Chip label={m.name} onclick={$lens.mocked ? undefined : () => openRelated(m.path)} />
         {/each}
       </div>
     </section>
@@ -265,16 +262,5 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem;
-  }
-  .proj-chip {
-    padding: 0.15rem 0.45rem;
-    border: none;
-    border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-  }
-  .proj-chip:hover {
-    color: var(--color-fg-primary);
   }
 </style>

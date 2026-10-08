@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Badge } from "@arlen/ui-kit/components/ui/badge";
   /// Access: what the AI can reach. The read tier and action mode in the
   /// same plain words the conversation surface uses (one datum, two
   /// contexts, kg-surface-allocation.md §3), then the AI's own grants
@@ -74,7 +75,7 @@
               <span class="none">no data</span>
             {:else}
               {#each p.reach as r (r)}
-                <span class="chip">{reachLabel(r)}</span>
+                <Badge variant="outline">{reachLabel(r)}</Badge>
               {/each}
             {/if}
           </span>
@@ -139,17 +140,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.375rem;
-  }
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    height: var(--height-tag, 20px);
-    padding: 0 0.5rem;
-    border-radius: var(--radius-chip);
-    font-size: var(--text-2xs);
-    font-weight: 500;
-    color: color-mix(in srgb, var(--foreground) 75%, transparent);
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
   }
   .none {
     font-size: var(--text-xs);
