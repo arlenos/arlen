@@ -42,6 +42,7 @@ pub mod fuse;
 pub mod graph;
 pub mod identity;
 pub mod lcg;
+pub mod mention;
 pub mod meeting;
 pub mod lifecycle;
 pub mod links;

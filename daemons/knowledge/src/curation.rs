@@ -36,8 +36,8 @@ pub enum Command {
     Split { entity_type: String, entity: String },
     /// `entity` is called `name`.
     Rename { entity_type: String, entity: String, name: String },
-    /// `mention` names no entity. Applied once mentions exist; recorded now so
-    /// the decision is not lost before then.
+    /// `mention` names no entity: every reference from it is closed, and again
+    /// each time a re-extraction brings it back (`crate::mention`).
     NotAnEntity { mention: String },
 }
 
@@ -222,8 +222,12 @@ pub async fn replay(pool: &SqlitePool, graph: &GraphHandle) -> Result<usize> {
                     escape_cypher(name)
                 )]
             }
-            // No mentions exist yet; the decision waits in the record for them.
-            Command::NotAnEntity { .. } => continue,
+            Command::NotAnEntity { mention } => {
+                if crate::mention::close_references(graph, mention).await.is_ok() {
+                    applied += 1;
+                }
+                continue;
+            }
         };
         for s in statements {
             // A decision about an entity that is not in this graph (yet, or any
@@ -342,6 +346,46 @@ mod tests {
         withdraw(&pool, second).await.unwrap();
         replay(&pool, &graph).await.unwrap();
         assert_eq!(live_links(&graph).await, 1);
+    }
+
+    /// `not_an_entity` outlives the extraction: the mention comes back with the
+    /// same id, its reference with it, and the replay closes it again.
+    #[tokio::test]
+    async fn not_an_entity_survives_a_re_extraction() {
+        use crate::mention::{refer, refers_to_table, upsert, Evidence, Mention};
+        let (pool, graph, _d) = setup().await;
+        let m = Mention {
+            source_id: "/notes/a.md".into(),
+            span: (0, 10),
+            text: "Anna Maier".into(),
+            label: "person".into(),
+            score: 9000,
+            extractor: "gliner".into(),
+            extractor_version: "1".into(),
+        };
+        let live = |graph: GraphHandle| async move {
+            let rel = refers_to_table(T);
+            graph
+                .query_rows(format!(
+                    "MATCH ()-[r:{rel}]->() WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN count(r)"
+                ))
+                .await
+                .unwrap()
+                .rows[0][0]
+                .as_i64()
+        };
+        upsert(&graph, &m).await.unwrap();
+        refer(&graph, &m, T, "anna-1", Evidence::Name).await.unwrap();
+        record(&pool, &Command::NotAnEntity { mention: m.id() }, "person").await.unwrap();
+        replay(&pool, &graph).await.unwrap();
+        assert_eq!(live(graph.clone()).await, 0);
+
+        // The extractor runs again and links again; the decision holds.
+        upsert(&graph, &m).await.unwrap();
+        refer(&graph, &m, T, "anna-1", Evidence::Name).await.unwrap();
+        assert_eq!(live(graph.clone()).await, 1);
+        replay(&pool, &graph).await.unwrap();
+        assert_eq!(live(graph.clone()).await, 0);
     }
 
     #[tokio::test]

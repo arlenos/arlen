@@ -281,6 +281,22 @@ const NODES: &[NodeSchema] = &[
             ("started_at", FieldType::Int),
         ],
     },
+    // A span of text an extractor read as naming something; it refers to an
+    // entity through a per-type `REFERS_TO` table, never by being one.
+    NodeSchema {
+        label: "Mention",
+        fields: &[
+            ("id", FieldType::Text),
+            ("source_id", FieldType::Text),
+            ("span_start", FieldType::Int),
+            ("span_end", FieldType::Int),
+            ("text", FieldType::Text),
+            ("label", FieldType::Text),
+            ("score", FieldType::Int),
+            ("extractor", FieldType::Text),
+            ("extractor_version", FieldType::Text),
+        ],
+    },
     NodeSchema {
         label: "ActionItem",
         fields: &[
@@ -506,7 +522,7 @@ mod tests {
         // `check-graph-schema-contract.py` excludes by name and reason (the
         // authority projection and the merge-suggestion queue). That gate is
         // what keeps this in step; the counts only catch an entry lost here.
-        assert_eq!(s.node_labels().count(), 18);
+        assert_eq!(s.node_labels().count(), 19);
         assert_eq!(s.edge_labels().count(), 23);
     }
 }
