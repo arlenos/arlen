@@ -130,18 +130,26 @@
   let scroller = $state<HTMLElement | null>(null);
   let suppressSync = 0;
 
-  function goTo(page: number): void {
+  /// Whether the theme lets things move: it zeroes `--duration-normal` under
+  /// reduce motion, and then a page turn is a jump.
+  function motionAllowed(): boolean {
+    return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--duration-normal")) > 0;
+  }
+  function goTo(page: number, glide = false): void {
     if (!$doc) return;
     current = clampPage(page, 0, $doc.pages);
     const el = scroller?.querySelector(`[data-page="${current}"]`);
     if (el) {
       suppressSync = Date.now() + 600;
-      el.scrollIntoView({ block: "start" });
+      el.scrollIntoView({ block: "start", behavior: glide && motionAllowed() ? "smooth" : "auto" });
     }
   }
+  /// Next and previous page are the reader's page turn, so the view glides the
+  /// one page instead of cutting to it; a jump from the sidebar or a search hit
+  /// stays a cut, since gliding across a hundred pages is waiting, not reading.
   function step(delta: number): void {
     if (!$doc) return;
-    goTo(clampPage(current, delta, $doc.pages));
+    goTo(clampPage(current, delta, $doc.pages), true);
   }
 
   function onScroll(): void {
