@@ -98,6 +98,24 @@ impl Fact {
     }
 }
 
+impl Fact {
+    /// An endpoint-merged edge whose properties are set on every observation
+    /// (`CONNECTED_TO`'s direction and last-seen time).
+    pub fn link_with(rel: &str, from: (&str, &str), to: (&str, &str), props: &[(&str, Value)]) -> Self {
+        let Fact::Edge { rel, from, to, op_id, stamps, .. } = Fact::link(rel, from, to) else {
+            unreachable!("link builds an edge")
+        };
+        Fact::Edge {
+            rel,
+            from,
+            to,
+            op_id,
+            stamps,
+            props: props.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+        }
+    }
+}
+
 /// Where a fact came from, recorded beside it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Origin {
