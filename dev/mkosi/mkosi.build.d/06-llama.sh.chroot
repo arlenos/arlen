@@ -33,7 +33,8 @@ cmake -S "$src" -B "$build" \
     -DLLAMA_CURL=OFF \
     -DGGML_NATIVE=OFF \
     -DBUILD_SHARED_LIBS=OFF
-cmake --build "$build" --target llama-server -j"$(nproc)"
+# ARLEN_CXX_JOBS from build-image.sh when the machine is shared, every core otherwise.
+cmake --build "$build" --target llama-server -j"${ARLEN_CXX_JOBS:-$(nproc)}"
 
 bin=$(find "$build" -type f -name 'llama-server' | head -1)
 [ -n "$bin" ] || { echo "!! llama-server not found after build" >&2; exit 1; }

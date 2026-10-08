@@ -201,7 +201,14 @@ writing_image=1
 # cargo/npm caches). A single --force rebuilds the OUTPUT but keeps the
 # incremental cache (only -ff drops it), so the slow Debian-rootfs assembly is
 # paid once, not on every build.
-( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes --cache-directory "$here/mkosi.cache" --build-directory "$builddir" "${verify_args[@]}" build --force )
+# How many jobs the build may run, passed into the chroot where the phases read
+# them: cargo honours CARGO_BUILD_JOBS by itself, the C++ phase reads
+# ARLEN_CXX_JOBS. Unset, both take every core. The machine this builds on is
+# shared, so the person running it sets them (8 October: cargo 4, C++ 2).
+job_env=()
+[ -n "${CARGO_BUILD_JOBS:-}" ] && job_env+=(--environment "CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS")
+[ -n "${ARLEN_CXX_JOBS:-}" ] && job_env+=(--environment "ARLEN_CXX_JOBS=$ARLEN_CXX_JOBS")
+( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes --cache-directory "$here/mkosi.cache" --build-directory "$builddir" "${job_env[@]}" "${verify_args[@]}" build --force )
 # The stamp becomes the image's only once the image exists, so a failed build
 # leaves the previous image with the previous stamp rather than a description of
 # a run that produced nothing.
