@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../i18n/messages.kit";
   /// Quick Settings tile primitive.
   ///
   /// Renders one cell in the QS panel grid. Holds two pieces of state
@@ -85,9 +86,7 @@
     children?: Snippet;
   } = $props();
 
-  const stripAriaLabel = $derived(
-    detailLabel || `Open details for ${label}`,
-  );
+  const stripAriaLabel = $derived(detailLabel || $kt("k.qs.openDetails", { label }));
 
   /// Right-click on either control reaches the same detail surface. Shared so
   /// the two halves of one tile do not answer the same gesture differently.
@@ -236,11 +235,6 @@
     color: inherit;
     font: inherit;
     text-align: inherit;
-    cursor: pointer;
-  }
-  .qs-tile-main:disabled,
-  .qs-tile-strip.is-interactive:disabled {
-    cursor: default;
   }
 
   /* One indicator per control, inset because the container owns the border and
@@ -366,10 +360,14 @@
     color: inherit;
     font: inherit;
     text-align: inherit;
-    cursor: pointer;
   }
-  .qs-tile-strip:not(.is-interactive) {
-    cursor: default;
+  /* The boundary §6.13 asks for: a tile that toggles and opens is two controls,
+     and a person tabbing needs to see that the second stop is a second thing.
+     One hairline across the card, on the interactive strip only; a passive
+     status line is part of the first control and gets none. The pointer stays
+     an arrow on both (§6.5). */
+  .qs-tile-strip.is-interactive {
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
   }
   .qs-tile-strip.is-interactive:hover {
     background: color-mix(in srgb, var(--foreground) 14%, transparent);
