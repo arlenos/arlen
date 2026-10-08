@@ -1543,7 +1543,6 @@ mod module_reachability {
         "daemons/transfer-daemon/request_socket",
         "daemons/knowledge/backup",
         "daemons/knowledge/lifecycle",
-        "daemons/knowledge/migration",
         "daemons/sentinel-detect/usb",
     ];
 
