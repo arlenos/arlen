@@ -137,7 +137,7 @@
           size="icon-sm"
           onclick={reset}
           aria-label={$t("s.bind.resetDefault")}
-          title={$t("s.bind.resetDefault")}
+          tooltip={$t("s.bind.resetDefault")}
         >
           <RotateCcw size={14} />
         </Button>
