@@ -3,6 +3,13 @@
   /// The topbar workspace strip. Three densities, picked by the
   /// host from the workspace count: pills (≤5), dots (≤9), and a
   /// plain "n / total" text readout beyond that.
+  ///
+  /// Motion (design-system §6b): the act is switching, so in the pill row the
+  /// active workspace is one highlight that slides from the old pill to the
+  /// new one, the same gesture as the kit's segmented control; in the dot
+  /// row the active dot grows in place. Both on `--duration-normal`, which the
+  /// theme zeroes under reduce motion. A press is the kit Button's press.
+  import { tick } from "svelte";
 
   import type { WorkspaceInfo } from "$lib/stores/workspaces.js";
   import { pillLabel, fullLabel } from "$lib/workspace/format.js";
@@ -19,12 +26,36 @@
     activeIndex: number;
     onActivate: (id: string) => void;
   } = $props();
+
+  // The sliding highlight in the pill row, measured from the active pill.
+  let pills = $state<HTMLButtonElement[]>([]);
+  let mark = $state<{ x: number; w: number } | null>(null);
+  let placed = $state(false);
+
+  function measure(): void {
+    const i = workspaces.findIndex((w) => w.active);
+    const el = i >= 0 ? pills[i] : null;
+    mark = el ? { x: el.offsetLeft, w: el.offsetWidth } : null;
+  }
+
+  $effect(() => {
+    void workspaces;
+    void mode;
+    tick().then(() => {
+      measure();
+      if (!placed && mark) requestAnimationFrame(() => (placed = true));
+    });
+  });
 </script>
 
 {#if mode === "pills"}
-  <div class="indicator" role="group" aria-label={$t("sh.ws.workspaces")}>
+  <div class="indicator pills" role="group" aria-label={$t("sh.ws.workspaces")}>
+    {#if mark}
+      <span class="pill-mark" class:placed aria-hidden="true" style="transform: translateX({mark.x}px); width: {mark.w}px"></span>
+    {/if}
     {#each workspaces as ws, i (ws.id)}
       <button
+        bind:this={pills[i]}
         class="pill"
         class:pill-active={ws.active}
         onclick={() => onActivate(ws.id)}
@@ -78,12 +109,34 @@
     font-weight: 500;
     line-height: 1;
     white-space: nowrap;
+    position: relative;
     transition:
       background-color var(--duration-fast, 150ms) ease,
-      color var(--duration-fast, 150ms) ease,
+      color var(--duration-normal, 250ms) var(--ease-out),
       transform var(--duration-micro, 100ms) ease;
     background: transparent;
     color: var(--foreground);
+  }
+
+  .indicator.pills {
+    position: relative;
+  }
+
+  /* One highlight for the active workspace, moved rather than redrawn. */
+  .pill-mark {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    height: var(--height-control-compact, 26px);
+    margin-top: calc(var(--height-control-compact, 26px) / -2);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    pointer-events: none;
+  }
+  .pill-mark.placed {
+    transition:
+      transform var(--duration-normal, 250ms) var(--ease-out),
+      width var(--duration-normal, 250ms) var(--ease-out);
   }
 
   .pill:hover {
@@ -92,26 +145,15 @@
 
   .pill:active {
     transform: scale(0.95);
-    transition: transform 50ms ease;
   }
 
   .pill-active {
-    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
     color: var(--color-accent);
-    animation: pill-activate var(--duration-micro, 100ms) ease forwards;
   }
 
+  /* The highlight under it carries the tint; hover only deepens it a little. */
   .pill-active:hover {
-    background: color-mix(in srgb, var(--color-accent) 26%, transparent);
-  }
-
-  @keyframes pill-activate {
-    from {
-      transform: scale(0.9);
-    }
-    to {
-      transform: scale(1);
-    }
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   }
 
   /* ── Dots ───────────────────────────────────────────────────────────── */
@@ -140,9 +182,9 @@
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 45%, transparent);
     transition:
-      width var(--duration-micro, 100ms) ease,
-      height var(--duration-micro, 100ms) ease,
-      background-color var(--duration-fast, 150ms) ease;
+      width var(--duration-normal, 250ms) var(--ease-out),
+      height var(--duration-normal, 250ms) var(--ease-out),
+      background-color var(--duration-normal, 250ms) var(--ease-out);
   }
 
   .dot-btn:hover .dot {
@@ -153,7 +195,6 @@
     width: 7px;
     height: 7px;
     background: var(--color-accent);
-    animation: dot-activate var(--duration-micro, 100ms) ease forwards;
   }
 
   .dot-btn:hover .dot-active {
@@ -162,15 +203,6 @@
       var(--color-accent) 85%,
       var(--color-fg-shell) 15%
     );
-  }
-
-  @keyframes dot-activate {
-    from {
-      transform: scale(0.7);
-    }
-    to {
-      transform: scale(1);
-    }
   }
 
   /* ── Text ───────────────────────────────────────────────────────────── */
