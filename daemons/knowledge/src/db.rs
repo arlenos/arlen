@@ -52,6 +52,10 @@ async fn create_schema(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await?;
 
+    // The fact journal lives in the same database, so the record and the raw
+    // events it was derived from share one file and one backup.
+    crate::journal::ensure_schema(pool).await?;
+
     debug!("schema ready");
     Ok(())
 }
