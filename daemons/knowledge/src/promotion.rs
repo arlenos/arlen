@@ -248,7 +248,7 @@ pub(crate) async fn close_orphaned_presences(graph: &GraphHandle, now: i64) -> R
 ///
 /// It stood above the const and the row alias below, separated from this function
 /// by a blank line, so rustdoc attached it to nothing at all.
-async fn run_pass(
+pub(crate) async fn run_pass(
     pool: &SqlitePool,
     graph: &GraphHandle,
     project_store: &ProjectStore,

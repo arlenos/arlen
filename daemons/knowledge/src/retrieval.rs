@@ -45,7 +45,14 @@ pub async fn retrieve(
         neighbours(graph, &keyword).await?
     };
     let fused = rrf_rank(&[keyword, graph_hits], K_RRF);
-    confirm_present(graph, &fused).await
+    // The caller's limit is a limit on the ANSWER, not on the keyword arm alone.
+    // It used to bound only the keyword search, so the fused list came back with
+    // up to `limit + MAX_NEIGHBOURS` ids, the neighbours of a single hit appended
+    // after it: the retrieval baseline (`retrieval_eval.rs`) asked for ten and got
+    // eleven, and every extra was a precision loss nobody had asked for.
+    let mut present = confirm_present(graph, &fused).await?;
+    present.truncate(usize::try_from(limit.max(0)).unwrap_or(0));
+    Ok(present)
 }
 
 /// The one-hop neighbours of `seeds`, ranked by how many of the seeds each one

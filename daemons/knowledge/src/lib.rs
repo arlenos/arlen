@@ -48,6 +48,8 @@ pub mod permission;
 pub mod project;
 pub mod provenance;
 pub mod retrieval;
+#[cfg(test)]
+mod retrieval_eval;
 pub mod timeline_config;
 pub mod revoke;
 pub mod quota;
