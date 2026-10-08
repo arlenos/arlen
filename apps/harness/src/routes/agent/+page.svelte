@@ -12,6 +12,8 @@
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { goto } from "$app/navigation";
   import ActivityTimeline from "$lib/components/agent/ActivityTimeline.svelte";
   import WarningsPanel from "$lib/components/agent/WarningsPanel.svelte";
   import ExplainPanel from "$lib/components/agent/ExplainPanel.svelte";
@@ -220,6 +222,11 @@
     </Section>
 
     <Section label={$t("h.agent.nowTab")} class="span-full">
+      <!-- The live view of a run (ai-transparency-surface.md §4b) is reached from
+           here, where a person already looks for what is happening now. -->
+      <div class="run-link">
+        <Button id="agent-open-run" variant="outline" size="sm" onclick={() => goto("/run")}>{$t("h.run.open")}</Button>
+      </div>
       <ExplainPanel
         {explanation}
         error={explainError}
@@ -230,3 +237,9 @@
     </Section>
   </SectionGrid>
 </Page>
+
+<style>
+  .run-link {
+    padding: 0.75rem 1rem 0;
+  }
+</style>
