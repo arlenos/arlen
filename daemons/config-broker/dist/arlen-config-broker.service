@@ -10,7 +10,7 @@ Type=simple
 
 # THE POINT OF THIS UNIT: the broker runs as its OWN uid, not the session
 # user's. The AI master switches (enabled, access_level, executor_live,
-# provider, action_mode, autonomous_apps) decide what the assistant may do, so
+# provider, action_mode) decide what the assistant may do, so
 # a same-uid process being able to rewrite them with one open() is exactly the
 # ambient authority `same-uid-isolation-plan.md` exists to remove. The user's
 # uid can TALK to the broker over the socket; it cannot write the state.

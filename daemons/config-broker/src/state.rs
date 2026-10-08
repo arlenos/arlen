@@ -11,7 +11,6 @@
 //! error the caller must refuse on - it must never silently widen
 //! authority.
 
-use std::collections::BTreeSet;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -24,8 +23,10 @@ use thiserror::Error;
 pub const MAX_ACCESS_LEVEL: u8 = 4;
 
 /// The agent's baseline action mode. Only the two user-settable
-/// values; autonomy-per-app rides `autonomous_apps`, and
-/// `executor_live` is the orthogonal master gate.
+/// values; `executor_live` is the orthogonal master gate. There is no
+/// per-app autonomy here: the per-app list was dropped on 8 October because
+/// nothing the agent does carries the app it acts for, so a granted app id
+/// matched no action ever (it comes back with an originating-app identity).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ActionMode {
@@ -71,9 +72,6 @@ pub struct AiMasterSwitches {
     /// The active provider id (empty = the daemon's configured
     /// default/ranking decides).
     pub provider: String,
-    /// Per-app autonomy grants (the apps allowed to act without the
-    /// per-action prompt).
-    pub autonomous_apps: BTreeSet<String>,
 }
 
 /// The user's accessibility settings.
@@ -136,7 +134,6 @@ impl Default for AiMasterSwitches {
             executor_live: false,
             action_mode: ActionMode::Suggest,
             provider: String::new(),
-            autonomous_apps: BTreeSet::new(),
         }
     }
 }
@@ -158,7 +155,6 @@ impl AiMasterSwitches {
             executor_live: false,
             action_mode: ActionMode::Suggest,
             provider: "ollama-default".to_string(),
-            autonomous_apps: BTreeSet::new(),
         }
     }
 
@@ -167,8 +163,8 @@ impl AiMasterSwitches {
     /// to the shipped defaults. Starts from [`shipped_default`](Self::shipped_default)
     /// and overrides each master switch the file actually declares
     /// (`[ai] enabled/access_level/provider`, `[agent] executor_live`); a field the
-    /// file omits keeps the shipped value. `action_mode`/`autonomous_apps` never
-    /// lived in `ai.toml`, so they always keep the shipped default. An unparseable
+    /// file omits keeps the shipped value. `action_mode` never
+    /// lived in `ai.toml`, so it always keeps the shipped default. An unparseable
     /// file yields the plain shipped default - the migration must never fail the
     /// seed, and the sanitiser still clamps an out-of-range `access_level`.
     pub fn from_ai_toml(ai_toml: &str) -> Self {
@@ -236,9 +232,6 @@ pub fn changed_security_keys(old: &AiMasterSwitches, new: &AiMasterSwitches) -> 
     if old.provider != new.provider {
         changed.push(format!("provider={}", new.provider));
     }
-    if old.autonomous_apps != new.autonomous_apps {
-        changed.push(format!("autonomous_apps={}", new.autonomous_apps.len()));
-    }
     changed
 }
 
@@ -247,7 +240,7 @@ pub fn changed_security_keys(old: &AiMasterSwitches, new: &AiMasterSwitches) -> 
 /// trail and is gated fail-closed (the escalation is refused if it
 /// cannot be recorded). A change that only REMOVES authority - the AI
 /// turned off, the executor gate closed, the read scope narrowed,
-/// autonomy revoked, the action mode dropped back to suggest, the
+/// the action mode dropped back to suggest, the
 /// provider cleared to the configured default - is NOT escalating: it
 /// rides the unconditional off-switch path (always applied, best-effort
 /// audit), so an attacker who takes down the audit daemon can never trap
@@ -261,11 +254,6 @@ pub fn escalates(old: &AiMasterSwitches, new: &AiMasterSwitches) -> bool {
         || (!old.executor_live && new.executor_live)
         || (new.access_level > old.access_level)
         || (old.action_mode == ActionMode::Suggest && new.action_mode == ActionMode::Supervised)
-        || new
-            .autonomous_apps
-            .difference(&old.autonomous_apps)
-            .next()
-            .is_some()
         || (new.provider != old.provider && !new.provider.is_empty())
 }
 
@@ -554,7 +542,6 @@ mod tests {
         assert_eq!(s.provider, shipped.provider); // ollama-default
         assert_eq!(s.executor_live, shipped.executor_live); // false
         assert_eq!(s.action_mode, shipped.action_mode); // never in ai.toml
-        assert!(s.autonomous_apps.is_empty());
     }
 
     #[test]
@@ -590,13 +577,11 @@ mod tests {
         assert_eq!(changed.len(), 2);
         assert!(changed.iter().any(|c| c == "executor_live=true"));
         assert!(changed.iter().any(|c| c == "access_level=4"));
-        // A repointed provider and a new autonomy grant are each recorded too.
+        // A repointed provider is recorded too.
         let mut new2 = base.clone();
         new2.provider = "http://evil.example".to_string();
-        new2.autonomous_apps.insert("com.foo".to_string());
         let changed2 = changed_security_keys(&base, &new2);
         assert!(changed2.iter().any(|c| c.starts_with("provider=")));
-        assert!(changed2.iter().any(|c| c.starts_with("autonomous_apps=")));
     }
 
     #[test]
@@ -615,11 +600,6 @@ mod tests {
         let sup = AiMasterSwitches { action_mode: ActionMode::Supervised, ..floor.clone() };
         assert!(escalates(&floor, &sup));
         assert!(!escalates(&sup, &floor));
-        // granting autonomy escalates; revoking it does not
-        let mut grant = floor.clone();
-        grant.autonomous_apps.insert("com.foo".to_string());
-        assert!(escalates(&floor, &grant));
-        assert!(!escalates(&grant, &floor));
         // a provider repoint to a concrete endpoint escalates; clearing it does not
         let p1 = AiMasterSwitches { provider: "ollama-default".to_string(), ..floor.clone() };
         let p2 = AiMasterSwitches { provider: "http://evil".to_string(), ..floor.clone() };
@@ -633,7 +613,6 @@ mod tests {
             executor_live: true,
             action_mode: ActionMode::Supervised,
             provider: "x".to_string(),
-            autonomous_apps: BTreeSet::from(["a".to_string()]),
         };
         assert!(!escalates(&open, &floor));
     }
@@ -660,23 +639,41 @@ mod tests {
         assert_eq!(got.access_level, 0);
         assert!(!got.executor_live);
         assert_eq!(got.action_mode, ActionMode::Suggest);
-        assert!(got.autonomous_apps.is_empty());
     }
 
     #[test]
     fn round_trips_a_full_state() {
         let tmp = tempfile::tempdir().unwrap();
         let s = store_in(tmp.path());
-        let mut want = AiMasterSwitches {
+        let want = AiMasterSwitches {
             enabled: true,
             access_level: 3,
             executor_live: true,
             action_mode: ActionMode::Supervised,
             provider: "ollama-default".to_string(),
-            autonomous_apps: BTreeSet::new(),
         };
-        want.autonomous_apps.insert("org.arlen.files".to_string());
         s.store_ai(&want).unwrap();
+        assert_eq!(s.load_ai().unwrap(), want);
+    }
+
+    /// A store written while the per-app autonomy list existed still loads, with
+    /// every other switch kept. The list is dropped, not migrated: no grant in it
+    /// ever matched an action, so nothing that worked stops working.
+    #[test]
+    fn a_store_from_before_the_autonomy_list_went_still_loads() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store_in(tmp.path());
+        let want = AiMasterSwitches { enabled: true, access_level: 2, ..Default::default() };
+        s.store_ai(&want).unwrap();
+        let path = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .find(|p| std::fs::read_to_string(p).map(|t| t.contains("access_level")).unwrap_or(false))
+            .expect("the store file");
+        let mut text = std::fs::read_to_string(&path).unwrap();
+        text = text.replace("access_level = 2", "access_level = 2\nautonomous_apps = [\"org.arlen.files\"]");
+        assert!(text.contains("autonomous_apps"), "{text}");
+        std::fs::write(&path, text).unwrap();
         assert_eq!(s.load_ai().unwrap(), want);
     }
 
@@ -797,7 +794,6 @@ mod tests {
         assert!(!d.enabled);
         assert!(!d.executor_live);
         assert_eq!(d.action_mode, ActionMode::Suggest);
-        assert!(d.autonomous_apps.is_empty());
     }
 
     #[test]

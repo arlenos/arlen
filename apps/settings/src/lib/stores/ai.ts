@@ -18,11 +18,8 @@ export interface AiSection {
   /// Knowledge-Graph read tier, 0..=4 (Minimal/Session/Project/Time/Full).
   /// Out-of-range fails closed to Minimal in the daemon.
   access_level?: number;
-  /// Baseline action mode: "suggest" | "supervised". Never "autonomous"
-  /// globally (per-app only, via autonomous_apps).
+  /// Baseline action mode: "suggest" | "supervised". Never "autonomous".
   action_mode?: string;
-  /// App ids allowed to act autonomously (per-app autonomy only).
-  autonomous_apps?: string[];
 }
 
 /// `[agent]` section: the autonomous-agent behaviour controls.

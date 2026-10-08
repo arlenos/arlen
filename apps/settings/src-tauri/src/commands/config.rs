@@ -119,10 +119,10 @@ fn write_file(file: ConfigFile, value: &toml::Value) -> Result<(), String> {
 ///
 /// So this is latent rather than broken, and it activates at the cutover. The
 /// visible form would be the AI page: it reads `ai.access_level`,
-/// `ai.action_mode`, `ai.autonomous_apps` and `agent.executor_live` through the
-/// whole-file store and writes all four through `setValue`, so after a reload
-/// each control could show the value that was in force before the last change.
-/// Those are the four switches where a wrong reading matters most.
+/// `ai.action_mode` and `agent.executor_live` through the whole-file store and
+/// writes all three through `setValue`, so after a reload each control could show
+/// the value that was in force before the last change. Those are the switches
+/// where a wrong reading matters most.
 ///
 /// Not fixed here, deliberately. The symmetric fix makes this broker-aware,
 /// which means making it async - every caller of a sync command changes - and
@@ -156,7 +156,6 @@ fn is_ai_switch_key(key: &str) -> bool {
             | "ai.access_level"
             | "ai.provider"
             | "ai.action_mode"
-            | "ai.autonomous_apps"
             | "agent.executor_live"
     )
 }
@@ -194,24 +193,6 @@ fn apply_ai_switch(
                 Some("supervised") => ActionMode::Supervised,
                 _ => return Err("ai.action_mode must be \"suggest\" or \"supervised\"".to_string()),
             }
-        }
-        "ai.autonomous_apps" => {
-            let arr = value.as_array().ok_or("ai.autonomous_apps must be an array")?;
-            let mut set = std::collections::BTreeSet::new();
-            for v in arr {
-                let app = v.as_str().ok_or("ai.autonomous_apps entries must be strings")?;
-                // Match the agent's setter validation so Settings cannot write an
-                // entry the agent would reject (an empty / control-char id).
-                let trimmed = app.trim();
-                if trimmed.is_empty() || trimmed.chars().any(char::is_control) {
-                    return Err(
-                        "ai.autonomous_apps entries must be non-empty and free of control characters"
-                            .to_string(),
-                    );
-                }
-                set.insert(trimmed.to_string());
-            }
-            switches.autonomous_apps = set;
         }
         other => return Err(format!("not an AI switch key: {other}")),
     }
@@ -612,13 +593,13 @@ mod tests {
             "ai.access_level",
             "ai.provider",
             "ai.action_mode",
-            "ai.autonomous_apps",
             "agent.executor_live",
         ] {
             assert!(is_ai_switch_key(k), "{k} is a broker-owned switch");
         }
         // Non-switch AI keys + other files' keys are NOT routed to the broker.
-        for k in ["provider.model", "provider.context_window", "ai.tool_routing", "theme.mode"] {
+        // `ai.autonomous_apps` is gone: dropped on 8 October, it is no switch.
+        for k in ["provider.model", "provider.context_window", "ai.tool_routing", "theme.mode", "ai.autonomous_apps"] {
             assert!(!is_ai_switch_key(k), "{k} stays in the file");
         }
     }
@@ -632,14 +613,11 @@ mod tests {
         apply_ai_switch(&mut s, "ai.provider", &serde_json::json!("ollama-default")).unwrap();
         apply_ai_switch(&mut s, "ai.action_mode", &serde_json::json!("supervised")).unwrap();
         apply_ai_switch(&mut s, "agent.executor_live", &serde_json::json!(true)).unwrap();
-        apply_ai_switch(&mut s, "ai.autonomous_apps", &serde_json::json!(["org.arlen.files"]))
-            .unwrap();
         assert!(s.enabled);
         assert_eq!(s.access_level, 3);
         assert_eq!(s.provider, "ollama-default");
         assert_eq!(s.action_mode, ActionMode::Supervised);
         assert!(s.executor_live);
-        assert!(s.autonomous_apps.contains("org.arlen.files"));
     }
 
     #[test]
@@ -652,10 +630,7 @@ mod tests {
         assert!(apply_ai_switch(&mut s, "ai.access_level", &serde_json::json!(-1)).is_err());
         assert!(apply_ai_switch(&mut s, "ai.access_level", &serde_json::json!(9999)).is_err());
         assert!(apply_ai_switch(&mut s, "ai.action_mode", &serde_json::json!("autonomous")).is_err());
-        assert!(apply_ai_switch(&mut s, "ai.autonomous_apps", &serde_json::json!("notarray")).is_err());
-        // An empty or control-char app id is rejected (matches the agent setter).
-        assert!(apply_ai_switch(&mut s, "ai.autonomous_apps", &serde_json::json!(["  "])).is_err());
-        assert!(apply_ai_switch(&mut s, "ai.autonomous_apps", &serde_json::json!(["bad\nid"])).is_err());
+        assert!(apply_ai_switch(&mut s, "ai.autonomous_apps", &serde_json::json!([])).is_err());
         // Nothing was mutated by the failed calls.
         assert_eq!(s, AiMasterSwitches::default());
     }

@@ -23,7 +23,6 @@
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { ChoiceList } from "@arlen/ui-kit/components/ui/choice-list";
-  import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { t } from "$lib/i18n/messages";
   import { ai } from "$lib/stores/ai";
@@ -117,7 +116,6 @@
     ["0", "3", "4"].includes(accessLevel) ? accessLevel : "3",
   );
   let actionMode = $state("suggest");
-  let autonomousApps = $state<string[]>([]);
   let executorLive = $state(false);
 
   // Live info for the two link cards, loaded from the daemon (IPC-caveat: keep
@@ -223,7 +221,6 @@
     enabled = ai.getValue<boolean>("ai.enabled") ?? false;
     accessLevel = String(ai.getValue<number>("ai.access_level") ?? 3);
     actionMode = ai.getValue<string>("ai.action_mode") ?? "suggest";
-    autonomousApps = ai.getValue<string[]>("ai.autonomous_apps") ?? [];
     executorLive = ai.getValue<boolean>("agent.executor_live") ?? false;
     await refreshStatus();
     await loadBehaviours();
@@ -242,9 +239,6 @@
   async function setActionMode(v: string) {
     actionMode = v;
     await ai.setValue("ai.action_mode", v);
-  }
-  async function persistAutonomousApps() {
-    await ai.setValue("ai.autonomous_apps", autonomousApps);
   }
   async function setExecutorLive(v: boolean) {
     executorLive = v;
@@ -307,21 +301,6 @@
       >
         {#snippet control()}
           <span class="meta">{$t("s.ai.enforced")}</span>
-        {/snippet}
-      </Row>
-      <Row
-        label={$t("s.ai.perApp")}
-        description={autonomousApps.length === 0
-          ? $t("s.ai.perApp.none")
-          : $t("s.ai.perApp.some")}
-        id="ai-autonomous-apps"
-      >
-        {#snippet below()}
-          <ChipList
-            bind:items={autonomousApps}
-            placeholder={$t("s.ai.perApp.placeholder")}
-            onchange={persistAutonomousApps}
-          />
         {/snippet}
       </Row>
     </Section>
