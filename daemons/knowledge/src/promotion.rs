@@ -364,12 +364,12 @@ async fn run_pass(
                 promote_focus_left(graph, id, timestamp, payload).await
             }
             "file.written" => {
-                promote_file_written(graph, id, timestamp, source, pid, payload).await
+                promote_file_written(pool, graph, id, timestamp, source, pid, payload).await
             }
             // The OS-observed app<->network edge family (KG-richness Thrust 1):
             // a connection becomes an App -> NetworkEndpoint CONNECTED_TO edge.
             "network.connect" | "network.accept" => {
-                promote_network_connection(graph, id, timestamp, payload).await
+                promote_network_connection(pool, graph, id, timestamp, payload).await
             }
             "app.presence.set" => {
                 promote_presence_set(graph, id, timestamp, pid, payload).await
@@ -383,13 +383,13 @@ async fn run_pass(
             // A finished terminal command block becomes a reserved Command node,
             // so ⌃R history spans sessions and survives a restart.
             "command.finished" => {
-                promote_command_finished(graph, timestamp, payload).await
+                promote_command_finished(pool, graph, id, timestamp, payload).await
             }
             "app.annotation.set" => {
                 promote_annotation_set(graph, timestamp, payload).await
             }
             "app.annotation.cleared" => promote_annotation_cleared(graph, payload).await,
-            "app.badge.set" => promote_badge_set(graph, id, timestamp, payload).await,
+            "app.badge.set" => promote_badge_set(pool, graph, id, timestamp, payload).await,
             // User interactions (toolbar / shortcut / menu) become UserAction
             // nodes, so the KG carries a native interaction history (the GAP-10
             // follow-up: previously these were queryable RAW events only). One
@@ -842,6 +842,7 @@ fn launch_app_id(source: &str, cgroup_id: u64) -> Option<String> {
 }
 
 async fn promote_file_written(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     timestamp: &i64,
@@ -869,26 +870,15 @@ async fn promote_file_written(
         format!("{source}:{pid}")
     };
 
-    let path_esc = escape_cypher(&path);
-    let app_id_esc = escape_cypher(&app_id);
-    let source_esc = escape_cypher(source);
-
-    graph
-        .write(format!(
-            "MERGE (a:App {{id: '{app_id_esc}'}}) SET a.name = '{source_esc}'"
-        ))
-        .await?;
-    graph
-        .write(format!(
-            "MERGE (f:File {{id: '{path_esc}'}}) SET f.path = '{path_esc}'"
-        ))
-        .await?;
-    graph
-        .write(format!(
-            "{} MERGE (f)-[:MODIFIED_BY]->(a)",
-            crate::cypher::match_two_nodes("f", "File", &path, "a", "App", &app_id)
-        ))
-        .await?;
+    // Through the fact journal (D11), like a file open.
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![
+        Fact::node("App", &app_id, &[("name", json!(source))]),
+        Fact::node("File", &path, &[("path", json!(path))]),
+        Fact::link("MODIFIED_BY", ("File", &path), ("App", &app_id)),
+    ];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     // Strong-signal derivation (KG-richness Thrust 3d): if a file the same app
     // read in the last minute is named as a source of this write (foo.md ->
@@ -972,6 +962,7 @@ async fn link_derived_from(
 /// private/incognito session is excluded upstream before promotion. An event
 /// missing the app id or the remote address is skipped (no dangling node).
 async fn promote_network_connection(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     timestamp: &i64,
@@ -983,24 +974,19 @@ async fn promote_network_connection(
         return Ok(());
     }
 
-    let addr_esc = escape_cypher(&p.remote_addr);
-    let proto_esc = escape_cypher(&p.protocol);
-    let dir_esc = escape_cypher(&p.direction);
-
-    graph
-        .write(crate::cypher::merge_node("a", "App", &p.app_id))
-        .await?;
-    graph
-        .write(format!(
-            "MERGE (e:NetworkEndpoint {{id: '{addr_esc}'}}) SET e.protocol = '{proto_esc}'"
-        ))
-        .await?;
-    graph
-        .write(format!(
-            "{} MERGE (a)-[c:CONNECTED_TO]->(e) SET c.direction = '{dir_esc}', c.last_seen = {timestamp}",
-            crate::cypher::match_two_nodes("a", "App", &p.app_id, "e", "NetworkEndpoint", &p.remote_addr)
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![
+        Fact::node("App", &p.app_id, &[]),
+        Fact::node("NetworkEndpoint", &p.remote_addr, &[("protocol", json!(p.protocol))]),
+        Fact::link_with(
+            "CONNECTED_TO",
+            ("App", &p.app_id),
+            ("NetworkEndpoint", &p.remote_addr),
+            &[("direction", json!(p.direction)), ("last_seen", json!(*timestamp))],
+        ),
+    ];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     debug!(event_id, app_id = %p.app_id, remote = %p.remote_addr, "promoted network connection");
     Ok(())
@@ -1464,7 +1450,9 @@ async fn promote_timeline_record(
 /// the Event envelope timestamp (the in-memory block carries no wall-clock start).
 /// String fields are escaped; the numeric fields are bare kernel/engine-sourced ints.
 async fn promote_command_finished(
+    pool: &SqlitePool,
     graph: &GraphHandle,
+    event_id: &str,
     timestamp: &i64,
     payload: &[u8],
 ) -> Result<()> {
@@ -1473,25 +1461,21 @@ async fn promote_command_finished(
     if p.id.is_empty() {
         return Ok(());
     }
-    let id_esc = escape_cypher(&p.id);
-    let command_esc = escape_cypher(&p.command);
-    let cwd_esc = escape_cypher(&p.cwd);
-    let origin_esc = escape_cypher(&p.origin);
-    let exit_code = p.exit_code;
-    let duration_ms = p.duration_ms;
-    let ran_at = *timestamp;
-
-    graph
-        .write(format!(
-            "MERGE (c:Command {{id: '{id_esc}'}})
-             SET c.command     = '{command_esc}',
-                 c.cwd         = '{cwd_esc}',
-                 c.exit_code   = {exit_code},
-                 c.duration_ms = {duration_ms},
-                 c.origin      = '{origin_esc}',
-                 c.ran_at      = {ran_at}"
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![Fact::node(
+        "Command",
+        &p.id,
+        &[
+            ("command", json!(p.command)),
+            ("cwd", json!(p.cwd)),
+            ("exit_code", json!(p.exit_code)),
+            ("duration_ms", json!(p.duration_ms)),
+            ("origin", json!(p.origin)),
+            ("ran_at", json!(*timestamp)),
+        ],
+    )];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     debug!(id = %p.id, command = %p.command, "promoted command.finished");
     Ok(())
@@ -1597,6 +1581,7 @@ async fn promote_annotation_cleared(graph: &GraphHandle, payload: &[u8]) -> Resu
 /// no new node type. AI queries can correlate badge spikes
 /// with build / test failures over time.
 async fn promote_badge_set(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     timestamp: &i64,
@@ -1618,18 +1603,19 @@ async fn promote_badge_set(
         }
     };
 
-    let id_esc = escape_cypher(event_id);
-    let app_esc = escape_cypher(&p.app_id);
-
-    graph
-        .write(format!(
-            "MERGE (u:UserAction {{id: '{id_esc}'}})
-             SET u.category = 'badge',
-                 u.action   = '{status_kind}',
-                 u.subject  = '{app_esc}',
-                 u.timestamp = {timestamp}"
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![Fact::node(
+        "UserAction",
+        event_id,
+        &[
+            ("category", json!("badge")),
+            ("action", json!(status_kind)),
+            ("subject", json!(p.app_id)),
+            ("timestamp", json!(*timestamp)),
+        ],
+    )];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     debug!(
         event_id,
@@ -1730,6 +1716,27 @@ mod shell_event_tests {
         let tmp = TempDir::new().unwrap();
         let pool = crate::db::open(tmp.path().join("j.db").to_str().unwrap()).await.unwrap();
         promote_file_opened(&pool, graph, event_id, timestamp, source, pid, session_id, payload).await
+    }
+
+    /// A scratch journal for a test that only looks at the graph a handler leaves.
+    /// The database file is leaked into the temp dir, which the OS clears.
+    async fn scratch() -> SqlitePool {
+        let tmp = TempDir::new().unwrap().keep();
+        crate::db::open(tmp.join("j.db").to_str().unwrap()).await.unwrap()
+    }
+
+    /// `promote_file_written` with a scratch journal of its own.
+    async fn promote_file_written_t(
+        graph: &GraphHandle,
+        event_id: &str,
+        timestamp: &i64,
+        source: &str,
+        pid: &i64,
+        payload: &[u8],
+    ) -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let pool = crate::db::open(tmp.path().join("j.db").to_str().unwrap()).await.unwrap();
+        promote_file_written(&pool, graph, event_id, timestamp, source, pid, payload).await
     }
 
     /// `promote_window_focused` with a scratch journal of its own.
@@ -1928,7 +1935,7 @@ mod shell_event_tests {
             };
             let mut buf = Vec::new();
             payload.encode(&mut buf).unwrap();
-            promote_file_written(&graph, &format!("wv{i}"), &200, "ebpf", &1234, &buf)
+            promote_file_written_t(&graph, &format!("wv{i}"), &200, "ebpf", &1234, &buf)
                 .await
                 .unwrap();
         }
@@ -2196,7 +2203,7 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
-        promote_file_written(&graph, "w", &ts, "pandoc", &9, &buf).await.unwrap();
+        promote_file_written_t(&graph, "w", &ts, "pandoc", &9, &buf).await.unwrap();
 
         let rs = graph
             .query_rows(
@@ -2246,7 +2253,7 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
-        promote_file_written(&graph, "w", &ts, "pandoc", &9, &buf).await.unwrap();
+        promote_file_written_t(&graph, "w", &ts, "pandoc", &9, &buf).await.unwrap();
 
         let rs = graph
             .query_rows(
@@ -2275,7 +2282,7 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
-        promote_file_written(&graph, "w1", &200, "build", &7, &buf)
+        promote_file_written_t(&graph, "w1", &200, "build", &7, &buf)
             .await
             .unwrap();
         let rs = graph
@@ -2289,7 +2296,7 @@ mod shell_event_tests {
         let cnt = rs.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap();
         assert_eq!(cnt, 1, "the write creates exactly one MODIFIED_BY edge");
         // Re-promoting the same write is idempotent (MERGE), not a second edge.
-        promote_file_written(&graph, "w1", &200, "build", &7, &buf)
+        promote_file_written_t(&graph, "w1", &200, "build", &7, &buf)
             .await
             .unwrap();
         let rs2 = graph
@@ -2317,7 +2324,7 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
-        promote_network_connection(&graph, "n1", &500, &buf)
+        promote_network_connection(&scratch().await, &graph, "n1", &500, &buf)
             .await
             .unwrap();
         let rs = graph
@@ -2342,7 +2349,7 @@ mod shell_event_tests {
         };
         let mut buf2 = Vec::new();
         payload2.encode(&mut buf2).unwrap();
-        promote_network_connection(&graph, "n2", &900, &buf2)
+        promote_network_connection(&scratch().await, &graph, "n2", &900, &buf2)
             .await
             .unwrap();
         let rs2 = graph
@@ -2366,7 +2373,7 @@ mod shell_event_tests {
         }
         .encode(&mut buf3)
         .unwrap();
-        promote_network_connection(&graph, "n3", &1000, &buf3)
+        promote_network_connection(&scratch().await, &graph, "n3", &1000, &buf3)
             .await
             .unwrap();
         let rs3 = graph
@@ -2622,7 +2629,7 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
-        promote_command_finished(&graph, &1_700_000_000, &buf)
+        promote_command_finished(&scratch().await, &graph, "ev", &1_700_000_000, &buf)
             .await
             .expect("command.finished promotes without error");
 
@@ -2644,7 +2651,7 @@ mod shell_event_tests {
         let empty = CommandFinishedPayload { id: String::new(), ..payload };
         let mut b2 = Vec::new();
         empty.encode(&mut b2).unwrap();
-        promote_command_finished(&graph, &1, &b2).await.unwrap();
+        promote_command_finished(&scratch().await, &graph, "ev", &1, &b2).await.unwrap();
         let count = graph
             .query_rows("MATCH (c:Command) RETURN count(*) AS c".into())
             .await
@@ -2758,7 +2765,7 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         err_badge.encode(&mut buf).unwrap();
-        promote_badge_set(&graph, "badge1", &900, &buf)
+        promote_badge_set(&scratch().await, &graph, "badge1", &900, &buf)
             .await
             .expect("an error badge promotes without error");
         let rs = graph
@@ -2783,7 +2790,7 @@ mod shell_event_tests {
         };
         let mut buf2 = Vec::new();
         ok_badge.encode(&mut buf2).unwrap();
-        promote_badge_set(&graph, "badge2", &901, &buf2).await.unwrap();
+        promote_badge_set(&scratch().await, &graph, "badge2", &901, &buf2).await.unwrap();
         let none = graph
             .query_rows("MATCH (u:UserAction {id: 'badge2'}) RETURN count(*) AS c".into())
             .await
