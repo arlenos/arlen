@@ -24,6 +24,8 @@
     ymd,
     type AgendaEvent,
     type EventChanges,
+    justCreated,
+    landed,
   } from "$lib/stores/calendar";
   import EventPopover from "./EventPopover.svelte";
 
@@ -261,6 +263,7 @@
               <button
                 type="button"
                 class="allday-pill"
+                class:landed={landed($justCreated, e)}
                 style="--cal: {colorOf($calendars, e)}"
                 {...props}>{e.summary}</button
               >
@@ -336,6 +339,7 @@
                   <button
                     type="button"
                     class="block"
+                    class:landed={landed($justCreated, b.event)}
                     class:dragging={isDragged && drag?.moved}
                    
                     style="top: {top}px; height: {height}px; left: calc({(b.col / b.cols) * 100}% + 2px); width: calc({100 / b.cols}% - 4px); --cal: {colorOf($calendars, b.event)}"
@@ -611,5 +615,16 @@
     bottom: 0;
     height: 6px;
     cursor: ns-resize;
+  }
+  /* A just-created event lands: it grows the last few percent into its slot as it
+     fades in, once, on --duration-normal (zeroed under reduced motion). */
+  .landed {
+    animation: event-land var(--duration-normal) var(--ease-out);
+  }
+  @keyframes event-land {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
   }
 </style>
