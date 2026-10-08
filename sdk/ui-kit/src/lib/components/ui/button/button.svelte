@@ -51,10 +51,17 @@
 		WithElementRef<HTMLAnchorAttributes> & {
 			variant?: ButtonVariant;
 			size?: ButtonSize;
+			/// A label shown on hover and focus through the kit tooltip. An
+			/// icon-only button needs one, and it is the only hover label a button
+			/// takes: `title` would draw the browser's own grey bubble, which
+			/// ignores the theme and never matches the kit's (design-system §6.4).
+			tooltip?: string;
 		};
 </script>
 
 <script lang="ts">
+	import * as Tooltip from "../tooltip/index.js";
+
 	let {
 		class: className,
 		variant = "default",
@@ -63,10 +70,42 @@
 		href = undefined,
 		type = "button",
 		disabled,
+		tooltip,
 		children,
 		...restProps
 	}: ButtonProps = $props();
+
+	/// The trigger's own handlers run first, then the caller's, so the tooltip
+	/// closes on a press and the press still does its work.
+	function merged(trigger: Record<string, unknown>): Record<string, unknown> {
+		const out: Record<string, unknown> = { ...restProps };
+		for (const [k, v] of Object.entries(trigger)) {
+			const mine = (restProps as Record<string, unknown>)[k];
+			if (k.startsWith("on") && typeof v === "function" && typeof mine === "function") {
+				out[k] = (e: Event) => {
+					(v as (e: Event) => void)(e);
+					(mine as (e: Event) => void)(e);
+				};
+			} else out[k] = v;
+		}
+		return out;
+	}
 </script>
+
+{#if tooltip}
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+			{#snippet child({ props })}
+				{@render body(merged(props))}
+			{/snippet}
+		</Tooltip.Trigger>
+		<Tooltip.TooltipContent>{tooltip}</Tooltip.TooltipContent>
+	</Tooltip.Root>
+{:else}
+	{@render body(restProps)}
+{/if}
+
+{#snippet body(attrs: Record<string, unknown>)}
 
 {#if href}
 	<a
@@ -77,7 +116,7 @@
 		aria-disabled={disabled}
 		role={disabled ? "link" : undefined}
 		tabindex={disabled ? -1 : undefined}
-		{...restProps}
+		{...attrs}
 	>
 		{@render children?.()}
 	</a>
@@ -88,8 +127,9 @@
 		class={cn(buttonVariants({ variant, size }), className)}
 		{type}
 		{disabled}
-		{...restProps}
+		{...attrs}
 	>
 		{@render children?.()}
 	</button>
 {/if}
+{/snippet}
