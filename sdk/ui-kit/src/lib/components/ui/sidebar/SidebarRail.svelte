@@ -15,7 +15,11 @@
      A 4px invisible strip in the tab order is a stop with nothing to look at,
      landing on the same action one Tab away. It stays reachable by keyboard
      through the trigger; the day an app ships the rail WITHOUT one, this is the
-     line to revisit. -->
+     line to revisit.
+
+     No tooltip either: the strip is found by its resize cursor, and a native
+     title bubble over a drag edge is noise (design-system §6.4, rule 3). The
+     accessible name stays. -->
 <button
   type="button"
   data-slot="sidebar-rail"
@@ -23,7 +27,6 @@
   aria-label={$kt("k.sidebar.toggle")}
   tabindex={-1}
   onclick={() => sidebar.toggle()}
-  title={$kt("k.sidebar.toggle")}
   class={cn(
     "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex",
     "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
