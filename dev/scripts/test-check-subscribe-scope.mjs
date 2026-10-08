@@ -147,6 +147,27 @@ console.log("subscribe scope:");
   check("the granted emit passes", r.code === 0);
 }
 {
+  // An event built as a struct literal: the knowledge daemon's
+  // `graph.rate_limited` went out this way with no grant until 8 October.
+  const prof = '[info]\napp_id = "dev.arlen.demo"\n\n[event_bus]\npublish = []\n';
+  const lit = 'let ev = Event { r#type: "graph.rate_limited".into(), ..Default::default() };\n';
+  let r = run({
+    [`${PROFILES}/dev.arlen.demo.toml`]: prof,
+    "apps/demo/src/emit.rs": `pub fn go() { ${lit} }\n`,
+  });
+  check(
+    "a struct-literal event the profile does not grant is caught",
+    r.code === 1 && r.out.includes("graph.rate_limited"),
+  );
+  r = run({
+    [`${PROFILES}/dev.arlen.demo.toml`]: prof,
+    "apps/demo/src/emit.rs": `pub fn go() {}\n#[cfg(test)]\nmod tests {\n  fn t() { ${lit} }\n}\n`,
+    "apps/demo/tests/it.rs": `fn t() { ${lit} }\n`,
+    "apps/demo/src/fixtures/ev.rs": `fn t() { ${lit} }\n`,
+  });
+  check("one in a test module, a tests/ or a fixtures/ path is not a producer", r.code === 0);
+}
+{
   // A Tauri window event is not a bus topic. The tree spells those with a
   // scheme (`arlen://x`, `terminal://frame`), and flagging them would send
   // somebody to add nonsense to a profile - the kind of false positive that
