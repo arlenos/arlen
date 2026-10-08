@@ -12,6 +12,7 @@
   import FileRow from "./FileRow.svelte";
 
   let {
+    arrived,
     entries,
     sortKey,
     ascending,
@@ -30,6 +31,8 @@
     onrowevent,
     onrename,
   }: {
+    /// Names of entries that just landed in this folder; each settles in once.
+    arrived?: ReadonlySet<string>;
     entries: FileEntry[];
     sortKey: SortKey;
     ascending: boolean;
@@ -166,6 +169,7 @@
         {columns}
         thumbnail={thumbnails?.get(thumbKey?.(entry) ?? "") ?? null}
         selected={selectedIndices.has(i)}
+        arrived={arrived?.has(entry.name) ?? false}
         focused={cursorIndex === i}
         renaming={renamingName === entry.name}
         onrowclick={(e) => onrowevent?.("click", i, e)}

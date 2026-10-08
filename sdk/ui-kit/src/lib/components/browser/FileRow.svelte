@@ -17,6 +17,7 @@
     id,
     entry,
     selected = false,
+    arrived = false,
     focused = false,
     renaming = false,
     now,
@@ -33,6 +34,9 @@
     id?: string;
     entry: FileEntry;
     selected?: boolean;
+    /// The entry just landed here (a copy or move into this folder finished):
+    /// the row settles into place once (design-system 6b, a per-app moment).
+    arrived?: boolean;
     /// The keyboard cursor sits here.
     focused?: boolean;
     /// The name shows as an inline edit field.
@@ -121,6 +125,7 @@
   class="file-row"
   class:cols-location={columns.middle === "location"}
   class:selected
+  class:arrived
   class:focused
   class:hidden-entry={entry.is_hidden}
   role="row"
@@ -214,6 +219,18 @@
   }
   .file-row:hover {
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  }
+  /* A file landing: the row fades in from a step above its place, once, on
+     --duration-slow, which the theme zeroes under reduced motion. Only rows that
+     just arrived take it, so opening a folder does not animate every row. */
+  .file-row.arrived {
+    animation: row-land var(--duration-slow) var(--ease-out);
+  }
+  @keyframes row-land {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
   }
   .file-row.selected {
     background: color-mix(in srgb, var(--color-accent, var(--primary)) 15%, transparent);

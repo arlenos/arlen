@@ -28,6 +28,7 @@
   import MillerColumns from "./MillerColumns.svelte";
 
   let {
+    arrived,
     controller,
     onactivate,
     onselection,
@@ -47,6 +48,9 @@
     browserLabel = "File browser",
     icon,
   }: {
+    /// Names of entries that just landed in the shown folder (the list view
+    /// settles each in once). The app owns which names those are.
+    arrived?: ReadonlySet<string>;
     /// The headless browser state; swapping it switches tabs.
     controller: BrowserState;
     /// A non-directory entry was activated (double-click or Enter).
@@ -529,6 +533,7 @@
     />
   {:else}
     <FileList
+      {arrived}
       entries={visible}
       sortKey={$sortKey}
       ascending={$ascending}
