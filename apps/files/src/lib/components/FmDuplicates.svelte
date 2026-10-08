@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   /// The duplicate finder in place of the listing: byte-identical files grouped
   /// by content, with a keep/trash control per copy. The safety floor is visible
   /// here: exactly one copy per group stays kept (the last kept one cannot be
@@ -105,10 +106,18 @@
             {@const locked = !marked && kept <= 1}
             <div class="row" class:marked>
               {#if locked}
-                <span class="mark keep locked" title={$t("f.dup.oneKept")}>
-                  <Lock size={11} strokeWidth={2} />
-                  {$t("f.dup.keep")}
-                </span>
+                <!-- A badge: why it cannot be changed is the kit tooltip's (§6.4). -->
+                <Tooltip.Root>
+                  <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                      <span {...props} class="mark keep locked">
+                        <Lock size={11} strokeWidth={2} />
+                        {$t("f.dup.keep")}
+                      </span>
+                    {/snippet}
+                  </Tooltip.Trigger>
+                  <Tooltip.TooltipContent>{$t("f.dup.oneKept")}</Tooltip.TooltipContent>
+                </Tooltip.Root>
               {:else}
                 <button
                   class="mark {marked ? 'trash' : 'keep'}"
