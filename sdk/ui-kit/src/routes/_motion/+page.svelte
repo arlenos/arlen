@@ -10,7 +10,7 @@ SPDX-License-Identifier: AGPL-3.0-only
   every running transition at that moment, for a proof frame mid-gesture.
   `?reduce=1` zeroes the three themed durations the way the shell's theme does
   under appearance.toml, so the reduced path renders without a shell.
-  `?dark=1` paints the shell's ground.
+  `?dark=1` paints the shell's ground. `?dialog=1` opens a dialog on the flip.
 
   Not linked from the demo index, and its labels stay in English: they
   describe the harness, not the product.
@@ -22,6 +22,7 @@ SPDX-License-Identifier: AGPL-3.0-only
   import { Notice } from "$lib/components/ui/notice";
   import { Button } from "$lib/components/ui/button";
   import { SegmentedControl } from "$lib/components/ui/segmented-control";
+  import Dialog from "$lib/components/ui/dialog/dialog.svelte";
 
   const views = [
     { value: "day", label: "Day" },
@@ -39,11 +40,13 @@ SPDX-License-Identifier: AGPL-3.0-only
   let flipped = $state(false);
   let dark = $state(false);
   let reduce = $state(false);
+  let dialog = $state(false);
 
   onMount(async () => {
     const q = new URLSearchParams(window.location.search);
     dark = q.get("dark") === "1";
     reduce = q.get("reduce") === "1";
+    dialog = q.get("dialog") === "1";
     // On the root, where the shell's theme writes them: `--duration-micro` is
     // derived at :root, so a value set lower down would never reach it.
     if (reduce) {
@@ -138,6 +141,13 @@ SPDX-License-Identifier: AGPL-3.0-only
   </section>
 </div>
 
+<Dialog open={flipped && dialog} onClose={() => (dialog = false)} ariaLabel="example dialog" size="sm">
+  <div class="dlg">
+    <h3>Delete permanently?</h3>
+    <p>This cannot be undone.</p>
+  </div>
+</Dialog>
+
 <style>
   .page {
     min-height: 100vh;
@@ -192,6 +202,18 @@ SPDX-License-Identifier: AGPL-3.0-only
     gap: 0.5rem;
     max-width: 30rem;
     min-height: 7.5rem;
+  }
+  .dlg {
+    padding: 1.25rem;
+  }
+  .dlg h3 {
+    margin: 0 0 0.4rem;
+    font-size: 0.95rem;
+  }
+  .dlg p {
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.7;
   }
   .row {
     display: flex;

@@ -6,6 +6,7 @@
   /// the frame, the modal radius and the dismiss behaviour, so confirm prompts,
   /// the conflict dialog, batch-rename and About all read as one surface.
   import type { Snippet } from "svelte";
+  import { cubicOut } from "svelte/easing";
   import { trapFocus } from "../../../keyboard/index.js";
 
   type Props = {
@@ -34,6 +35,30 @@
     dismissable = true,
     children,
   }: Props = $props();
+
+  // Motion (design-system §6b): the act is coming forward. The backdrop dims
+  // in and the card rises the last few pixels into place as it fades in, and
+  // both go back the same way when it closes. A Svelte transition needs a
+  // number, so the duration is read from `--duration-normal` on the root,
+  // where the shell's theme writes it and zeroes it under reduce motion; at 0
+  // the dialog is simply there and simply gone.
+  function themed(): number {
+    if (typeof document === "undefined") return 0;
+    const v = getComputedStyle(document.documentElement).getPropertyValue("--duration-normal").trim();
+    const n = parseFloat(v);
+    if (!Number.isFinite(n)) return 0;
+    return v.endsWith("ms") ? n : n * 1000;
+  }
+  function dim(_node: Element) {
+    return { duration: themed(), easing: cubicOut, css: (t: number) => `opacity: ${t}` };
+  }
+  function rise(_node: Element) {
+    return {
+      duration: themed(),
+      easing: cubicOut,
+      css: (t: number) => `opacity: ${t}; transform: translateY(${(1 - t) * 6}px) scale(${0.98 + t * 0.02})`,
+    };
+  }
 
   function onBackdropClick(e: MouseEvent): void {
     // Only the backdrop itself, never a click bubbled from the card.
@@ -69,8 +94,9 @@
 </script>
 
 {#if open}
-  <div class="dialog-backdrop" role="presentation" onclick={onBackdropClick}>
+  <div class="dialog-backdrop" role="presentation" onclick={onBackdropClick} transition:dim>
     <div
+      transition:rise
       use:trapFocus
       class="dialog-card dialog-{size}"
       role="dialog"
