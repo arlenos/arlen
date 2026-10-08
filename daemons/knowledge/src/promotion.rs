@@ -358,7 +358,7 @@ async fn run_pass(
                 promote_process_started(graph, timestamp, source, payload).await
             }
             "window.focused" => {
-                promote_window_focused(graph, id, timestamp, session_of(origin), payload).await
+                promote_window_focused(pool, graph, id, timestamp, session_of(origin), payload).await
             }
             "window.focus_left" => {
                 promote_focus_left(graph, id, timestamp, payload).await
@@ -594,51 +594,27 @@ async fn promote_file_opened(
     // Through the fact journal (D11): what this open makes true is recorded in
     // SQLite first and then projected, so the graph can be rebuilt from the record.
     // Projected before the reads below, which look at these edges.
-    use crate::journal::Fact;
+    use crate::journal::{Fact, Origin};
     use serde_json::json;
-    let node = |label: &str, id: &str, props: Vec<(&str, serde_json::Value)>| Fact::Node {
-        label: label.into(),
-        id: id.into(),
-        props: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
-        on_create: Default::default(),
-    };
-    let edge = |rel: &str, from: (&str, &str), to: (&str, &str)| Fact::Edge {
-        rel: rel.into(),
-        from: (from.0.into(), from.1.into()),
-        to: (to.0.into(), to.1.into()),
-        op_id: None,
-        stamps: Default::default(),
-        props: Default::default(),
-    };
     let mut facts = vec![
-        node("App", &app_id, vec![("name", json!(source))]),
-        node(
+        Fact::node("App", &app_id, &[("name", json!(source))]),
+        Fact::node(
             "File",
             &path,
-            vec![
+            &[
                 ("path", json!(path)),
                 ("last_accessed", json!(*timestamp)),
                 ("app_id", json!(app_id)),
                 ("last_cgroup_id", json!(cgroup_id)),
             ],
         ),
-        edge("ACCESSED_BY", ("File", &path), ("App", &app_id)),
+        Fact::link("ACCESSED_BY", ("File", &path), ("App", &app_id)),
     ];
     if !session_id.is_empty() {
-        facts.push(node("Session", session_id, vec![]));
-        facts.push(edge("ACCESSED_IN", ("File", &path), ("Session", session_id)));
+        facts.push(Fact::node("Session", session_id, &[]));
+        facts.push(Fact::link("ACCESSED_IN", ("File", &path), ("Session", session_id)));
     }
-    let origin = crate::journal::Origin {
-        provenance: "graph".into(),
-        valid_time_source: "event".into(),
-        event_id: Some(event_id.to_string()),
-    };
-    crate::journal::commit_and_project(
-        pool,
-        graph,
-        &facts.into_iter().map(|f| (f, origin.clone())).collect::<Vec<_>>(),
-    )
-    .await?;
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     // Session<->activity edge (KG-richness Thrust 1): link the file to the
     // focus/activity session it was accessed in, so the graph can answer "which
@@ -1036,6 +1012,7 @@ async fn promote_network_connection(
 /// creates or merges `App`, `Session`, and `Event` nodes with an
 /// `ACTIVE_IN` edge from App to Session.
 async fn promote_window_focused(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     timestamp: &i64,
@@ -1086,41 +1063,26 @@ async fn promote_window_focused(
         warn!(event_id, app_id, "window.focused carried no window title");
     }
 
-    let app_id_esc = escape_cypher(&app_id);
-    let event_id_esc = escape_cypher(event_id);
-    let title_esc = escape_cypher(&win_payload.window_title);
-
-    graph
-        .write(format!(
-            "MERGE (a:App {{id: '{app_id_esc}'}}) SET a.name = '{app_id_esc}'"
-        ))
-        .await?;
-
-    graph
-        .write(crate::cypher::merge_node_set(
-            "s",
-            "Session",
-            session_id,
-            &[("started_at", crate::cypher::SetValue::Int(*timestamp))],
-        ))
-        .await?;
-
-    graph
-        .write(format!(
-            "MERGE (e:Event {{id: '{event_id_esc}'}})
-             SET e.type = 'window.focused', e.timestamp = {timestamp},
-                 e.source = 'wayland', e.title = '{title_esc}',
-                 e.app_id = '{app_id_esc}'"
-        ))
-        .await?;
-
-    // Create the ACTIVE_IN edge: the focused app is active in this session.
-    graph
-        .write(format!(
-            "{} MERGE (a)-[:ACTIVE_IN]->(s)",
-            crate::cypher::match_two_nodes("a", "App", &app_id, "s", "Session", session_id)
-        ))
-        .await?;
+    // Through the fact journal (D11), like a file open.
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![
+        Fact::node("App", &app_id, &[("name", json!(app_id))]),
+        Fact::node("Session", session_id, &[("started_at", json!(*timestamp))]),
+        Fact::node(
+            "Event",
+            event_id,
+            &[
+                ("type", json!("window.focused")),
+                ("timestamp", json!(*timestamp)),
+                ("source", json!("wayland")),
+                ("title", json!(win_payload.window_title)),
+                ("app_id", json!(app_id)),
+            ],
+        ),
+        Fact::link("ACTIVE_IN", ("App", &app_id), ("Session", session_id)),
+    ];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     debug!(event_id, app_id = %app_id, "promoted window.focused");
     Ok(())
@@ -1768,6 +1730,19 @@ mod shell_event_tests {
         let tmp = TempDir::new().unwrap();
         let pool = crate::db::open(tmp.path().join("j.db").to_str().unwrap()).await.unwrap();
         promote_file_opened(&pool, graph, event_id, timestamp, source, pid, session_id, payload).await
+    }
+
+    /// `promote_window_focused` with a scratch journal of its own.
+    async fn promote_window_focused_t(
+        graph: &GraphHandle,
+        event_id: &str,
+        timestamp: &i64,
+        session_id: &str,
+        payload: &[u8],
+    ) -> Result<()> {
+        let tmp = TempDir::new().unwrap();
+        let pool = crate::db::open(tmp.path().join("j.db").to_str().unwrap()).await.unwrap();
+        promote_window_focused(&pool, graph, event_id, timestamp, session_id, payload).await
     }
 
     async fn setup() -> (GraphHandle, TempDir) {
@@ -2546,7 +2521,7 @@ mod shell_event_tests {
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
-        promote_window_focused(&graph, "win1", &500, "sess-1", &buf)
+        promote_window_focused_t(&graph, "win1", &500, "sess-1", &buf)
             .await
             .expect("window.focused promotes without error");
 
@@ -2593,7 +2568,7 @@ mod shell_event_tests {
             };
             let mut buf = Vec::new();
             payload.encode(&mut buf).unwrap();
-            promote_window_focused(&graph, event_id, &500, session, &buf)
+            promote_window_focused_t(&graph, event_id, &500, session, &buf)
                 .await
                 .expect("an app-less window.focused still promotes");
         }
