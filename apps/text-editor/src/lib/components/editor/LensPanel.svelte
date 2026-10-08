@@ -111,7 +111,7 @@
           {:else}
             <!-- `ref` is the path, `file` is the basename. Opening the basename
                  is the same non-openable-name bug the project chips had. -->
-            <button type="button" class="rel-item" title={link.ref} onclick={() => openRelated(link.ref)}>
+            <button type="button" class="rel-item" onclick={() => openRelated(link.ref)}>
               <span class="rel-file"><FileText size={13} strokeWidth={2} /> {link.file}</span>
               <!-- Only when there IS one. A live backlink has no snippet, because
                    `LINKS_TO` records that the document references this file and
@@ -143,7 +143,7 @@
           {#if $lens.mocked}
             <span class="proj-chip">{m.name}</span>
           {:else}
-            <button type="button" class="proj-chip" title={m.path} onclick={() => openRelated(m.path)}>
+            <button type="button" class="proj-chip" onclick={() => openRelated(m.path)}>
               {m.name}
             </button>
           {/if}
