@@ -24,10 +24,22 @@
 # turned on to expose.
 #
 # Read out of `daemons/knowledge` rather than assumed. The daemon emits nothing
-# else onto the bus; it is otherwise a consumer and a query server.
+# else onto the bus than what is listed; it is otherwise a consumer and a query server.
 [info]
 app_id = "knowledge"
 tier = "system"
 
 [event_bus]
-publish = ["project.created", "project.updated", "project.archived"]
+# `graph.rate_limited` and `graph.events_dropped` are the two reports the anomaly
+# detector reads off this daemon. The first was emitted since S15 and declared
+# nowhere: it was built as a struct literal, the one emit shape the publish scan
+# cannot read, so under enforcement every rate-limit alert was dropped at the bus
+# while the daemon logged a success. Both now go through `emit_event` with a named
+# constant, which the scan does read.
+publish = [
+    "project.created",
+    "project.updated",
+    "project.archived",
+    "graph.rate_limited",
+    "graph.events_dropped",
+]
