@@ -11,7 +11,17 @@ set -eu
 cache="${BUILDDIR:-/var/tmp/arlen-build}"
 export RUSTUP_HOME="$cache/rustup"
 export CARGO_HOME="$cache/cargo-home"
-export CARGO_TARGET_DIR="$cache/target-shell"   # separate workspace from the daemons
+# ONE TARGET DIRECTORY FOR ALL SEVENTEEN APP PHASES. Each used to have its own,
+# on the reasoning that each app is a separate workspace - which cargo handles in
+# a shared directory: it fingerprints every workspace apart, and these phases run
+# one after another, never at once. What the separate directories cost was the
+# shared dependencies (Tauri, WebKitGTK bindings, tao, muda) compiled and stored
+# seventeen times, about 1.6 GB each. Measured on 8 October: halfway through the
+# apps the build directory held 23 GB and the disk was filling for the whole
+# machine. What sharing must not have is two apps building a binary of the same
+# name, and none do (every app names its package `arlen-<app>`); each install
+# step finds its binary by that name.
+export CARGO_TARGET_DIR="$cache/target-apps"
 export CXXFLAGS="-include cstdint"
 export LIBGL_ALWAYS_SOFTWARE=1                   # llvmpipe, harmless at build time
 export npm_config_cache="$cache/npm"            # persist the npm cache across builds
