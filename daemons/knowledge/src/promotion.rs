@@ -372,10 +372,10 @@ async fn run_pass(
                 promote_network_connection(pool, graph, id, timestamp, payload).await
             }
             "app.presence.set" => {
-                promote_presence_set(graph, id, timestamp, pid, payload).await
+                promote_presence_set(pool, graph, id, timestamp, pid, payload).await
             }
             "app.presence.clear" => {
-                promote_presence_clear(graph, id, timestamp, payload).await
+                promote_presence_clear(pool, graph, id, timestamp, payload).await
             }
             "app.timeline.record" => {
                 promote_timeline_record(pool, graph, id, timestamp, payload).await
@@ -1308,6 +1308,7 @@ async fn link_file_to_project(
 /// presence queries (e.g. "what was I editing yesterday at 14:00") stay
 /// fast and the per-app metadata schemas don't pollute the graph schema.
 async fn promote_presence_set(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     timestamp: &i64,
@@ -1315,30 +1316,29 @@ async fn promote_presence_set(
     payload: &[u8],
 ) -> Result<()> {
     let p = PresenceSetPayload::decode(payload)?;
-    let id_esc = escape_cypher(event_id);
-    let activity_esc = escape_cypher(&p.activity);
-    let subject_esc = escape_cypher(&p.subject);
     // THE APP AND ITS PROCESS, which this row did not carry until 9 September.
     // Without the app id nothing pairs a set with its clear, so two apps'
     // intervals could not be told apart; without the pid the daemon cannot see
     // that a window went away without clearing, which is how an interval ends up
     // with no end. `inferred` is false here because this end - when it comes -
     // will be a reported one unless the sweep has to guess it.
-    let app_esc = escape_cypher(&p.app_id);
-    let pid = *pid;
 
-    graph
-        .write(format!(
-            "MERGE (u:UserAction {{id: '{id_esc}'}})
-             SET u.category = 'presence',
-                 u.action   = '{activity_esc}',
-                 u.subject  = '{subject_esc}',
-                 u.app_id   = '{app_esc}',
-                 u.pid      = {pid},
-                 u.inferred = false,
-                 u.timestamp = {timestamp}"
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![Fact::node(
+        "UserAction",
+        event_id,
+        &[
+            ("category", json!("presence")),
+            ("action", json!(p.activity)),
+            ("subject", json!(p.subject)),
+            ("app_id", json!(p.app_id)),
+            ("pid", json!(*pid)),
+            ("inferred", json!(false)),
+            ("timestamp", json!(*timestamp)),
+        ],
+    )];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     debug!(event_id, app_id = %p.app_id, activity = %p.activity, "promoted app.presence.set");
     Ok(())
@@ -1350,26 +1350,29 @@ async fn promote_presence_set(
 /// as its own `UserAction` so a query can reconstruct presence intervals
 /// (set timestamp .. clear timestamp).
 async fn promote_presence_clear(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     timestamp: &i64,
     payload: &[u8],
 ) -> Result<()> {
     let p = PresenceClearPayload::decode(payload)?;
-    let id_esc = escape_cypher(event_id);
-    let app_esc = escape_cypher(&p.app_id);
 
-    graph
-        .write(format!(
-            "MERGE (u:UserAction {{id: '{id_esc}'}})
-             SET u.category = 'presence',
-                 u.action   = 'clear',
-                 u.subject  = '{app_esc}',
-                 u.app_id   = '{app_esc}',
-                 u.inferred = false,
-                 u.timestamp = {timestamp}"
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![Fact::node(
+        "UserAction",
+        event_id,
+        &[
+            ("category", json!("presence")),
+            ("action", json!("clear")),
+            ("subject", json!(p.app_id)),
+            ("app_id", json!(p.app_id)),
+            ("inferred", json!(false)),
+            ("timestamp", json!(*timestamp)),
+        ],
+    )];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     debug!(event_id, app_id = %p.app_id, "promoted app.presence.clear");
     Ok(())
@@ -2962,7 +2965,7 @@ mod shell_event_tests {
         };
         let bytes = encode_presence_set(&payload);
 
-        promote_presence_set(&graph, "evt-presence-1", &1_000_000, &4242, &bytes)
+        promote_presence_set(&scratch().await, &graph, "evt-presence-1", &1_000_000, &4242, &bytes)
             .await
             .unwrap();
 
@@ -3065,7 +3068,7 @@ mod shell_event_tests {
         };
         let bytes = encode_presence_clear(&payload);
 
-        promote_presence_clear(&graph, "evt-presence-clear-1", &2_000_000, &bytes)
+        promote_presence_clear(&scratch().await, &graph, "evt-presence-clear-1", &2_000_000, &bytes)
             .await
             .unwrap();
 
