@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ColorDot } from "@arlen/ui-kit/components/ui/color-dot";
   /// A flat, dependency-free chart renderer for the closed chart types. Plain
   /// inline SVG scaled from the typed numeric series; monochrome (foreground at
   /// stepped opacities) to match the house style. No charting lib, no executable
@@ -104,7 +105,7 @@
 {#if series.length > 1}
   <div class="legend">
     {#each series as s, si (s.name)}
-      <span class="legend-item"><span class="swatch" style="background:{tint(si)}"></span>{s.name}</span>
+      <span class="legend-item"><ColorDot color={tint(si)} />{s.name}</span>
     {/each}
   </div>
 {/if}
@@ -131,11 +132,5 @@
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
-  }
-  .swatch {
-    width: 0.625rem;
-    height: 0.625rem;
-    border-radius: var(--radius-chip);
-    flex-shrink: 0;
   }
 </style>
