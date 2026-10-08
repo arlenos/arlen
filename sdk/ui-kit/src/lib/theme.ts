@@ -53,6 +53,16 @@ export function injectThemeVariables(css: CssVariables): void {
   style.textContent = lines.join("\n");
 
   document.documentElement.style.colorScheme = css.variant;
+  // AND THE ATTRIBUTE, which is what makes `theme-light.css` mean anything.
+  // Every app carried a `[data-theme="light"]` block and only Settings ever set
+  // the attribute - Settings owns the config and writes it itself - so in the
+  // other fourteen the block was a rule nothing could ever match. Setting it
+  // here, beside the variables it belongs with, makes the stylesheet the
+  // fallback it was written to be: the variables below cover the tokens the
+  // shell broadcasts, the block covers anything the app styles from the
+  // attribute directly.
+  if (css.variant === "light") document.documentElement.dataset.theme = "light";
+  else delete document.documentElement.dataset.theme;
 }
 
 /**
