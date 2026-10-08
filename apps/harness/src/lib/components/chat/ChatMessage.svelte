@@ -17,6 +17,7 @@
     Trash2,
   } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
+  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
@@ -51,6 +52,9 @@
     /// The current find-in-chat match, so the turn reads highlighted.
     highlighted?: boolean;
   } = $props();
+
+  /// Whether the permanent delete of this turn is being asked about.
+  let askDelete = $state(false);
 
   const isLast = $derived($messages[$messages.length - 1]?.id === message.id);
   const canRegenerate = $derived(
@@ -242,12 +246,27 @@
           <RotateCcw size={13} strokeWidth={2} />
         </IconAction>
       {/if}
-      <IconAction label={$t("h.msg.delete")} disabled={$busy} onclick={() => deleteTurn(message.id)}>
+      <IconAction label={$t("h.msg.delete")} disabled={$busy} onclick={() => (askDelete = true)}>
         <Trash2 size={13} strokeWidth={2} />
       </IconAction>
     </div>
   {/if}
 </div>
+
+<!-- A turn has no way back once it is gone, so it asks once and names what is
+     lost (design-system 6.10, point 4): for a question, the answer goes with it. -->
+<ConfirmDialog
+  open={askDelete}
+  title={$t("h.msg.deleteTitle")}
+  message={message.role === "user" ? $t("h.msg.deleteBodyQuestion") : $t("h.msg.deleteBodyAnswer")}
+  confirmLabel={$t("h.msg.deleteConfirm")}
+  variant="destructive"
+  onConfirm={() => {
+    askDelete = false;
+    deleteTurn(message.id);
+  }}
+  onCancel={() => (askDelete = false)}
+/>
 
 <style>
   .turn {
