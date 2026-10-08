@@ -1778,7 +1778,7 @@ async fn handle_write_request(
                 Ok(r) => r,
                 Err(e) => return format!("ERROR: {e}"),
             };
-            persist_relation(graph, &rel, &op_id).await
+            persist_relation(pool, graph, &rel, &op_id).await
         }
         WriteRequest::RetractRelation {
             from_type,
@@ -1801,7 +1801,7 @@ async fn handle_write_request(
                 Ok(r) => r,
                 Err(e) => return format!("ERROR: {e}"),
             };
-            persist_retract(graph, &rel, &op_id).await
+            persist_retract(pool, graph, &rel, &op_id).await
         }
         WriteRequest::CreateNode { node_type, id } => {
             // Token write scope (the same check entity create uses), then the
@@ -2375,7 +2375,12 @@ fn consent_grant_writer_admitted(app_id: &str) -> bool {
 /// filters becomes load-bearing when an unprivileged app links its own
 /// (anchored) nodes; that is the documented follow-up alongside app-relation
 /// support.
-async fn persist_relation(graph: &GraphHandle, rel: &RelationResult, op_id: &str) -> String {
+async fn persist_relation(
+    pool: &sqlx::SqlitePool,
+    graph: &GraphHandle,
+    rel: &RelationResult,
+    op_id: &str,
+) -> String {
     let from_label = rel
         .from_type
         .strip_prefix("system.")
@@ -2405,8 +2410,16 @@ async fn persist_relation(graph: &GraphHandle, rel: &RelationResult, op_id: &str
         // graph-drift.md §2 / GD-R1.
         let merge_key =
             content_merge_key(from_label, &rel.from_id, rel_type, to_label, &rel.to_id);
-        return persist_file_part_of(graph, from_label, to_label, &from_id, &to_id, op_id, &merge_key)
-            .await;
+        return persist_file_part_of(
+            pool,
+            graph,
+            from_label,
+            to_label,
+            (&rel.from_id, &rel.to_id),
+            op_id,
+            &merge_key,
+        )
+        .await;
     }
 
     // Atomic conditional create for a non-temporal relation. `created` = 1 only
@@ -2443,75 +2456,114 @@ async fn persist_relation(graph: &GraphHandle, rel: &RelationResult, op_id: &str
     }
 }
 
-/// Persist a `FILE_PART_OF` membership as a single-statement **close-then-append**
-/// (bitemporal-knowledge-graph.md §4.5).
+/// Serialises the agent's membership writes: each one READS the graph to decide
+/// what to record (is the pair already live, what does it supersede, what does a
+/// retract restore), then records and projects. Two of those interleaving could
+/// both decide to append. The promotion pipeline's own writes do not take it;
+/// they never assert or retract a membership through this path.
+static MEMBERSHIP_WRITE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// The provenance an agent membership write is journaled under.
+fn agent_write_origin() -> crate::journal::Origin {
+    crate::journal::Origin {
+        provenance: "agent".into(),
+        valid_time_source: "write".into(),
+        event_id: None,
+    }
+}
+
+/// Persist a `FILE_PART_OF` membership as a **close-then-append**
+/// (bitemporal-knowledge-graph.md §4.5), through the fact journal (D11).
 ///
-/// Because a file has a single live membership, this closes any currently-live
-/// `FILE_PART_OF` to a *different* project (the single-membership contradiction),
-/// then appends a freshly stamped edge — but only if no live edge for this exact
-/// `(from, to)` pair already exists (the idempotent re-assert). It is one Cypher
-/// statement, dispatched as one request the serial graph thread runs
-/// uninterrupted, so it is race-free precisely because it is one statement.
+/// A file has a single live membership, so this closes every live `FILE_PART_OF`
+/// from the file and appends a freshly stamped edge to the new project, unless a
+/// live edge for this exact pair already exists (the idempotent re-assert, `OK:
+/// exists`). The decision reads the graph under [`MEMBERSHIP_WRITE`]; the close
+/// and the append are then recorded as two facts in one SQLite transaction and
+/// projected. It used to be one Cypher statement and nothing else: a graph lost
+/// or rebuilt lost every membership the agent had asserted, because the record
+/// was the projection.
 ///
 /// Outcome strings are unchanged so the os-sdk client is not broken: a
-/// supersession still returns `OK: created` (a new live edge was created; the
-/// close is internal). The new edge records `superseded = old.op_id` (the closed
-/// edge's id) so a later one-unit compensation can re-open what it replaced
-/// (§4.6). `created_at`/`valid_at` are the server clock at persist; the
-/// caller-supplied `valid_at`/`origin`/`prov_beh` are a protocol follow-up, so
-/// `origin` defaults to the agent write socket's `agent` for now. The
-/// `exists`-disambiguation checks the LIVE edge: a closed edge is retained but is
-/// not a current membership.
+/// supersession still returns `OK: created`. The new edge records `superseded =
+/// old.op_id` so a later compensation can restore what it replaced (§4.6).
+/// `created_at`/`valid_at` are the server clock; `origin` is `agent`.
+///
+/// An empty `op_id` gets a derived one (`assert:<merge_key>:<now>`). The edge
+/// used to be created without one, but a journal edge is upserted by its `op_id`,
+/// and without one it would match the closed edge to the same project and clear
+/// its stamps, erasing the close. Nobody can retract by the derived id without
+/// having been told it, which is what an empty id already meant.
 async fn persist_file_part_of(
+    pool: &sqlx::SqlitePool,
     graph: &GraphHandle,
     from_label: &str,
     to_label: &str,
-    from_id: &str,
-    to_id: &str,
+    (from_raw, to_raw): (&str, &str),
     op_id: &str,
     merge_key: &str,
 ) -> String {
-    let now = crate::time::now().0;
-    let op_prop = if op_id.is_empty() {
-        String::new()
-    } else {
-        format!("op_id: '{}', ", escape_cypher(op_id))
-    };
-    // `merge_key` is a fixed-length lowercase-hex digest (no escaping needed; it
-    // contains no quote or backslash by construction), the content identity that
-    // makes two devices' assertion of the same fact converge (GD-R1).
-    let create_cypher = format!(
+    use crate::journal::{Fact, Stamps};
+    let _write = MEMBERSHIP_WRITE.lock().await;
+    let from_id = escape_cypher(from_raw);
+    let to_id = escape_cypher(to_raw);
+    let endpoints = format!(
         "MATCH (a:{from_label} {{id: '{from_id}'}}), (b:{to_label} {{id: '{to_id}'}}) \
-         OPTIONAL MATCH (a)-[old:FILE_PART_OF]->(c:Project) \
-           WHERE c.id <> '{to_id}' AND old.invalid_at IS NULL AND old.expired_at IS NULL \
-         SET old.invalid_at = {now}, old.expired_at = {now} \
-         WITH a, b, old \
-         OPTIONAL MATCH (a)-[live:FILE_PART_OF]->(b) \
-           WHERE live.invalid_at IS NULL AND live.expired_at IS NULL \
-         WITH a, b, old, live WHERE live IS NULL \
-         CREATE (a)-[:FILE_PART_OF {{ {op_prop}valid_at: {now}, invalid_at: NULL, \
-           created_at: {now}, expired_at: NULL, origin: 'agent', prov_beh: '', \
-           merge_key: '{merge_key}', \
-           superseded: CASE WHEN old IS NULL THEN NULL ELSE old.op_id END }}]->(b) \
-         RETURN count(*) AS created"
+         RETURN count(*) AS n"
     );
-    let created = match graph.query_rows(create_cypher).await {
-        Ok(rs) => row_count(&rs),
+    match graph.query_rows(endpoints).await {
+        Ok(rs) if row_count(&rs) > 0 => {}
+        Ok(_) => return "ERROR: relation endpoints not found".to_string(),
         Err(e) => return format!("ERROR: {e}"),
-    };
-    if created > 0 {
-        return "OK: created".to_string();
     }
-    // created == 0: a live membership for this exact pair already exists (the
-    // append was skipped) or an endpoint is missing. Disambiguate on the LIVE
-    // edge; a closed edge is retained but is not a current membership.
-    let edge_cypher = format!(
+    let live_pair = format!(
         "MATCH (a:{from_label} {{id: '{from_id}'}})-[r:FILE_PART_OF]->(b:{to_label} {{id: '{to_id}'}}) \
          WHERE r.invalid_at IS NULL AND r.expired_at IS NULL RETURN count(*) AS edge"
     );
-    match graph.query_rows(edge_cypher).await {
-        Ok(rs) if row_count(&rs) > 0 => "OK: exists".to_string(),
-        Ok(_) => "ERROR: relation endpoints not found".to_string(),
+    match graph.query_rows(live_pair).await {
+        Ok(rs) if row_count(&rs) > 0 => return "OK: exists".to_string(),
+        Ok(_) => {}
+        Err(e) => return format!("ERROR: {e}"),
+    }
+    let superseded_q = format!(
+        "MATCH (a:{from_label} {{id: '{from_id}'}})-[old:FILE_PART_OF]->(c:Project) \
+         WHERE c.id <> '{to_id}' AND old.invalid_at IS NULL AND old.expired_at IS NULL \
+         RETURN old.op_id LIMIT 1"
+    );
+    let superseded = match graph.query_rows(superseded_q).await {
+        Ok(rs) => rs
+            .rows
+            .first()
+            .and_then(|r| r.first())
+            .map(|c| c.as_str().to_string())
+            .filter(|s| !s.is_empty()),
+        Err(e) => return format!("ERROR: {e}"),
+    };
+
+    let now = crate::time::now().0;
+    let op = if op_id.is_empty() { format!("assert:{merge_key}:{now}") } else { op_id.to_string() };
+    let from = (from_label.to_string(), from_raw.to_string());
+    let facts = vec![
+        Fact::CloseFrom { rel: "FILE_PART_OF".into(), from: from.clone(), at: now },
+        Fact::Edge {
+            rel: "FILE_PART_OF".into(),
+            from,
+            to: (to_label.to_string(), to_raw.to_string()),
+            op_id: Some(op),
+            stamps: Stamps { valid_at: Some(now), created_at: Some(now), ..Stamps::default() },
+            props: [
+                ("origin", serde_json::Value::from("agent")),
+                ("prov_beh", serde_json::Value::from("")),
+                ("merge_key", serde_json::Value::from(merge_key)),
+                ("superseded", superseded.map_or(serde_json::Value::Null, serde_json::Value::from)),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+        },
+    ];
+    match crate::journal::commit_and_project(pool, graph, facts, &agent_write_origin()).await {
+        Ok(()) => "OK: created".to_string(),
         Err(e) => format!("ERROR: {e}"),
     }
 }
@@ -2567,7 +2619,12 @@ async fn persist_create_node(graph: &GraphHandle, label: &str, id: &str) -> Stri
 /// single statement runs on the serial graph thread, so a concurrent retract of
 /// the same edge cannot double-close: the second sees no live edge and reports
 /// `absent`.
-async fn persist_retract(graph: &GraphHandle, rel: &RelationResult, op_id: &str) -> String {
+async fn persist_retract(
+    pool: &sqlx::SqlitePool,
+    graph: &GraphHandle,
+    rel: &RelationResult,
+    op_id: &str,
+) -> String {
     if op_id.is_empty() {
         return "ERROR: retract requires an op_id".to_string();
     }
@@ -2581,6 +2638,7 @@ async fn persist_retract(graph: &GraphHandle, rel: &RelationResult, op_id: &str)
     if rel_type != "FILE_PART_OF" {
         return "ERROR: relation does not support op-id retract".to_string();
     }
+    let _write = MEMBERSHIP_WRITE.lock().await;
     let from_label = rel
         .from_type
         .strip_prefix("system.")
@@ -2655,25 +2713,60 @@ async fn persist_retract(graph: &GraphHandle, rel: &RelationResult, op_id: &str)
     // records that the system re-believed it at the undo instant. The superseded
     // edge keeps its own closed intervals, so a transaction-time read still shows
     // the move was believed until the undo.
-    let close_stmt = format!(
-        "MATCH (a:{from_label} {{id: '{from_id}'}})-[r:{rel_type} {{op_id: '{op}'}}]->(b:{to_label} {{id: '{to_id}'}}) \
-         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
-         SET r.invalid_at = {now}, r.expired_at = {now}"
-    );
-    let reopen_stmt = format!(
+    // Through the fact journal (D11), as two facts in one record: close this op's
+    // edge, and append the restore when it superseded something. They used to run
+    // as one graph transaction; the record is now the unit, and a projection that
+    // fails part-way is finished by the next one, since both facts are idempotent.
+    // What to restore is read here, under the same lock the assert takes.
+    use crate::journal::{Fact, Stamps};
+    let restore_q = format!(
         "MATCH (a:{from_label} {{id: '{from_id}'}})-[r:{rel_type} {{op_id: '{op}'}}]->(:Project) \
          WHERE r.superseded IS NOT NULL \
          MATCH (a)-[old:FILE_PART_OF]->(p:Project) WHERE old.op_id = r.superseded \
-         WITH a, old, p LIMIT 1 \
-         OPTIONAL MATCH (a)-[live:FILE_PART_OF]->(p) \
-           WHERE live.invalid_at IS NULL AND live.expired_at IS NULL \
-         WITH a, p, old, live WHERE live IS NULL \
-         CREATE (a)-[:FILE_PART_OF {{ op_id: 'reopen:{op}', valid_at: old.valid_at, invalid_at: NULL, \
-           created_at: {now}, expired_at: NULL, \
-           origin: CASE WHEN old.origin IS NULL THEN 'agent' ELSE old.origin END, \
-           prov_beh: '', merge_key: old.merge_key, superseded: NULL }}]->(p)"
+         RETURN p.id, old.valid_at, old.origin, old.merge_key LIMIT 1"
     );
-    if let Err(e) = graph.transaction(vec![close_stmt, reopen_stmt]).await {
+    let restore = match graph.query_rows(restore_q).await {
+        Ok(rs) => rs.rows.first().map(|r| {
+            (
+                r[0].as_str().to_string(),
+                r[1].as_i64(),
+                Some(r[2].as_str().to_string()).filter(|o| !o.is_empty()),
+                r[3].as_str().to_string(),
+            )
+        }),
+        Err(e) => return format!("ERROR: {e}"),
+    };
+    let mut facts = vec![Fact::Close { rel: rel_type.to_string(), op_id: op_id.to_string(), at: now }];
+    if let Some((project, valid_at, origin, merge_key)) = restore {
+        let live_q = format!(
+            "MATCH (a:{from_label} {{id: '{from_id}'}})-[live:FILE_PART_OF]->(p:Project {{id: '{}'}}) \
+             WHERE live.invalid_at IS NULL AND live.expired_at IS NULL RETURN count(*) AS n",
+            escape_cypher(&project)
+        );
+        let already_live = match graph.query_rows(live_q).await {
+            Ok(rs) => row_count(&rs) > 0,
+            Err(e) => return format!("ERROR: {e}"),
+        };
+        if !already_live {
+            facts.push(Fact::Edge {
+                rel: "FILE_PART_OF".into(),
+                from: (from_label.to_string(), rel.from_id.clone()),
+                to: ("Project".into(), project),
+                op_id: Some(format!("reopen:{op_id}")),
+                stamps: Stamps { valid_at: Some(valid_at), created_at: Some(now), ..Stamps::default() },
+                props: [
+                    ("origin", serde_json::Value::from(origin.unwrap_or_else(|| "agent".into()))),
+                    ("prov_beh", serde_json::Value::from("")),
+                    ("merge_key", serde_json::Value::from(merge_key)),
+                    ("superseded", serde_json::Value::Null),
+                ]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
+            });
+        }
+    }
+    if let Err(e) = crate::journal::commit_and_project(pool, graph, facts, &agent_write_origin()).await {
         return format!("ERROR: {e}");
     }
     if was_live {
@@ -6159,6 +6252,7 @@ mod tests {
     #[tokio::test]
     async fn persist_relation_links_existing_nodes() {
         let (graph, _tmp) = spawn_test_graph().await;
+        let (jp, _jt) = spawn_test_pool().await;
         graph
             .write("CREATE (f:File {id: 'f1', path: '/x', app_id: 'test', last_accessed: 0})".into())
             .await
@@ -6168,7 +6262,7 @@ mod tests {
             .await
             .unwrap();
 
-        let resp = persist_relation(&graph, &file_part_of("f1", "p1"), "op-1").await;
+        let resp = persist_relation(&jp, &graph, &file_part_of("f1", "p1"), "op-1").await;
         assert_eq!(resp, "OK: created", "the first link creates the edge");
 
         // The edge is actually present, exactly once.
@@ -6200,7 +6294,7 @@ mod tests {
 
         // A second create is an idempotent no-op reported as `exists`, and does
         // not duplicate the edge (the conditional create is strict).
-        let again = persist_relation(&graph, &file_part_of("f1", "p1"), "op-2").await;
+        let again = persist_relation(&jp, &graph, &file_part_of("f1", "p1"), "op-2").await;
         assert_eq!(again, "OK: exists", "a repeat link reports exists, not created");
         let rows = graph
             .query_rows(
@@ -6212,9 +6306,50 @@ mod tests {
         assert_eq!(rows.rows[0][0].as_i64(), 1, "no duplicate edge after a repeat");
     }
 
+    /// The point of journaling the agent's memberships: a graph rebuilt from the
+    /// record arrives at the same memberships, the superseded one closed, the
+    /// current one live. They used to exist only in the graph.
+    #[tokio::test]
+    async fn agent_memberships_survive_a_rebuild_from_the_journal() {
+        let (jp, _jt) = spawn_test_pool().await;
+        let nodes = [
+            "CREATE (f:File {id: 'f1', path: '/x', app_id: 'test', last_accessed: 0})",
+            "CREATE (p:Project {id: 'p1'})",
+            "CREATE (p:Project {id: 'p2'})",
+        ];
+        let (graph, _tmp) = spawn_test_graph().await;
+        for n in nodes {
+            graph.write(n.into()).await.unwrap();
+        }
+        assert_eq!(persist_relation(&jp, &graph, &file_part_of("f1", "p1"), "op-1").await, "OK: created");
+        assert_eq!(persist_relation(&jp, &graph, &file_part_of("f1", "p2"), "op-2").await, "OK: created");
+
+        let (fresh, _tmp2) = spawn_test_graph().await;
+        for n in nodes {
+            fresh.write(n.into()).await.unwrap();
+        }
+        crate::journal::set_projected_seq(&jp, 0).await.unwrap();
+        crate::journal::project_pending(&jp, &fresh).await.unwrap();
+        let rs = fresh
+            .query_rows(
+                "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF]->(p:Project) \
+                 RETURN p.id, r.op_id, r.invalid_at IS NULL, r.superseded ORDER BY p.id"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rs.rows.len(), 2, "both memberships rebuilt: {:?}", rs.rows);
+        assert_eq!(rs.rows[0][0].as_str(), "p1");
+        assert!(!rs.rows[0][2].as_bool(), "p1 is closed");
+        assert_eq!(rs.rows[1][0].as_str(), "p2");
+        assert!(rs.rows[1][2].as_bool(), "p2 is live");
+        assert_eq!(rs.rows[1][3].as_str(), "op-1", "and remembers what it superseded");
+    }
+
     #[tokio::test]
     async fn persist_relation_supersedes_a_live_membership_to_another_project() {
         let (graph, _tmp) = spawn_test_graph().await;
+        let (jp, _jt) = spawn_test_pool().await;
         graph
             .write("CREATE (f:File {id: 'f1', path: '/x', app_id: 'test', last_accessed: 0})".into())
             .await
@@ -6222,11 +6357,11 @@ mod tests {
         graph.write("CREATE (p:Project {id: 'p1'})".into()).await.unwrap();
         graph.write("CREATE (p:Project {id: 'p2'})".into()).await.unwrap();
 
-        assert_eq!(persist_relation(&graph, &file_part_of("f1", "p1"), "op-1").await, "OK: created");
+        assert_eq!(persist_relation(&jp, &graph, &file_part_of("f1", "p1"), "op-1").await, "OK: created");
         // A membership to a DIFFERENT project supersedes the first: it closes the
         // p1 edge and appends the p2 edge in one statement, still reporting created.
         assert_eq!(
-            persist_relation(&graph, &file_part_of("f1", "p2"), "op-2").await,
+            persist_relation(&jp, &graph, &file_part_of("f1", "p2"), "op-2").await,
             "OK: created",
             "a supersession still reports created (the close is internal)"
         );
@@ -6288,6 +6423,7 @@ mod tests {
         // identical, so a future cross-device union dedups them to one membership.
         async fn write_on_a_replica(op_id: &str) -> (GraphHandle, tempfile::TempDir, String) {
             let (graph, tmp) = spawn_test_graph().await;
+            let (jp, _jt) = spawn_test_pool().await;
             graph
                 .write(
                     "CREATE (f:File {id: 'f1', path: '/x', app_id: 't', last_accessed: 0})".into(),
@@ -6295,7 +6431,7 @@ mod tests {
                 .await
                 .unwrap();
             graph.write("CREATE (p:Project {id: 'p1'})".into()).await.unwrap();
-            assert_eq!(persist_relation(&graph, &file_part_of("f1", "p1"), op_id).await, "OK: created");
+            assert_eq!(persist_relation(&jp, &graph, &file_part_of("f1", "p1"), op_id).await, "OK: created");
             let row = graph
                 .query_rows(
                     "MATCH (:File {id: 'f1'})-[r:FILE_PART_OF]->(:Project {id: 'p1'}) \
@@ -6369,18 +6505,19 @@ mod tests {
         // p1 -> p2, retracting the p2 membership must re-open p1, not leave f1 in
         // neither project.
         let (graph, _tmp) = spawn_test_graph().await;
+        let (jp, _jt) = spawn_test_pool().await;
         graph
             .write("CREATE (f:File {id: 'f1', path: '/x', app_id: 'test', last_accessed: 0})".into())
             .await
             .unwrap();
         graph.write("CREATE (p:Project {id: 'p1'})".into()).await.unwrap();
         graph.write("CREATE (p:Project {id: 'p2'})".into()).await.unwrap();
-        assert_eq!(persist_relation(&graph, &file_part_of("f1", "p1"), "op-1").await, "OK: created");
-        assert_eq!(persist_relation(&graph, &file_part_of("f1", "p2"), "op-2").await, "OK: created");
+        assert_eq!(persist_relation(&jp, &graph, &file_part_of("f1", "p1"), "op-1").await, "OK: created");
+        assert_eq!(persist_relation(&jp, &graph, &file_part_of("f1", "p2"), "op-2").await, "OK: created");
 
         // Retract the superseding p2 membership.
         assert_eq!(
-            persist_retract(&graph, &file_part_of("f1", "p2"), "op-2").await,
+            persist_retract(&jp, &graph, &file_part_of("f1", "p2"), "op-2").await,
             "OK: retracted"
         );
 
@@ -6461,7 +6598,7 @@ mod tests {
         // second reopen edge: the live-edge guard skips the CREATE because a live
         // edge to p1 already exists, and the close is an idempotent `absent`.
         assert_eq!(
-            persist_retract(&graph, &file_part_of("f1", "p2"), "op-2").await,
+            persist_retract(&jp, &graph, &file_part_of("f1", "p2"), "op-2").await,
             "OK: absent"
         );
         let still = graph
@@ -6482,6 +6619,7 @@ mod tests {
     #[tokio::test]
     async fn persist_retract_closes_only_the_op_id_edge() {
         let (graph, _tmp) = spawn_test_graph().await;
+        let (jp, _jt) = spawn_test_pool().await;
         graph
             .write("CREATE (f:File {id: 'f1', path: '/x', app_id: 'test', last_accessed: 0})".into())
             .await
@@ -6492,12 +6630,12 @@ mod tests {
             .unwrap();
 
         // Create the edge under op-1.
-        assert_eq!(persist_relation(&graph, &file_part_of("f1", "p1"), "op-1").await, "OK: created");
+        assert_eq!(persist_relation(&jp, &graph, &file_part_of("f1", "p1"), "op-1").await, "OK: created");
 
         // A retract under a *different* op_id matches nothing: the edge is the
         // caller's own only when the op_id matches, so this is an idempotent
         // no-op and the edge survives.
-        let miss = persist_retract(&graph, &file_part_of("f1", "p1"), "op-other").await;
+        let miss = persist_retract(&jp, &graph, &file_part_of("f1", "p1"), "op-other").await;
         assert_eq!(miss, "OK: absent", "a non-matching op_id retracts nothing");
         let rows = graph
             .query_rows(
@@ -6508,7 +6646,7 @@ mod tests {
         assert_eq!(rows.rows[0][0].as_i64(), 1, "the edge survives a wrong-op retract");
 
         // The matching op_id closes exactly that edge.
-        let hit = persist_retract(&graph, &file_part_of("f1", "p1"), "op-1").await;
+        let hit = persist_retract(&jp, &graph, &file_part_of("f1", "p1"), "op-1").await;
         assert_eq!(hit, "OK: retracted", "the owning op_id closes its edge");
         // The edge is RETAINED (closed, not deleted): the row still exists for
         // audit, but it is no longer live.
@@ -6530,13 +6668,14 @@ mod tests {
         assert_eq!(live.rows[0][0].as_i64(), 0, "no live edge remains after the retract");
 
         // Retracting again is an idempotent success (no live edge with this op_id).
-        let again = persist_retract(&graph, &file_part_of("f1", "p1"), "op-1").await;
+        let again = persist_retract(&jp, &graph, &file_part_of("f1", "p1"), "op-1").await;
         assert_eq!(again, "OK: absent", "a repeat retract is an idempotent no-op");
     }
 
     #[tokio::test]
     async fn persist_retract_refuses_a_relation_without_op_id_column() {
         let (graph, _tmp) = spawn_test_graph().await;
+        let (jp, _jt) = spawn_test_pool().await;
         // ACCESSED_BY carries no op_id column, so it has no precise per-operation
         // key; a retract of it must be refused rather than risk a bare delete.
         let rel = RelationResult {
@@ -6546,7 +6685,7 @@ mod tests {
             to_id: "a1".into(),
             relation_type: "ACCESSED_BY".into(),
         };
-        let resp = persist_retract(&graph, &rel, "op-1").await;
+        let resp = persist_retract(&jp, &graph, &rel, "op-1").await;
         assert_eq!(resp, "ERROR: relation does not support op-id retract");
     }
 
@@ -6688,13 +6827,14 @@ mod tests {
     #[tokio::test]
     async fn persist_relation_reports_absent_endpoint() {
         let (graph, _tmp) = spawn_test_graph().await;
+        let (jp, _jt) = spawn_test_pool().await;
         graph
             .write("CREATE (f:File {id: 'f1', path: '/x', app_id: 'test', last_accessed: 0})".into())
             .await
             .unwrap();
         // No Project node exists, so the MATCH binds nothing and the checked
         // persistence must report not-found rather than a silent success.
-        let resp = persist_relation(&graph, &file_part_of("f1", "missing"), "").await;
+        let resp = persist_relation(&jp, &graph, &file_part_of("f1", "missing"), "").await;
         assert_eq!(resp, "ERROR: relation endpoints not found");
     }
 
