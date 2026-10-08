@@ -15,6 +15,19 @@ set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
 
+# The build directory is named, and lives OUTSIDE the repository.
+#
+# Named, because mkosi keeps a build directory only when it exists or is given -
+# with neither, every build started from an empty cargo home and cloned every git
+# dependency again (8 October: thirty minutes on one clone at 130 KiB/s).
+#
+# Outside the tree, because it holds cargo's registry sources: in `mkosi.builddir`
+# the gates that walk the filesystem read third-party crates as our code and went
+# red on tokio's ignored tests and a NUL byte in a ron fixture. A cache is not
+# source, so it goes where caches go.
+builddir="${XDG_CACHE_HOME:-$HOME/.cache}/arlen/mkosi-builddir"
+mkdir -p "$builddir"
+
 # Refuse before forty minutes of work rather than after. `systemd-repart`
 # pre-populates the whole root filesystem under /var/tmp to size the partition,
 # so the last step of the build is also its hungriest - and it is where the disk
@@ -27,24 +40,17 @@ here=$(cd "$(dirname "$0")" && pwd)
 # deliberately checked against /var/tmp and not the output directory: on this
 # machine they are the same filesystem, and on one where they are not, the
 # staging copy is the half that runs out.
-NEED_GB=20
+NEED_GB=25
 free_gb=$(df -BG --output=avail /var/tmp | tail -1 | tr -dc '0-9')
 if [ "${free_gb:-0}" -lt "$NEED_GB" ]; then
     echo "!! ${free_gb} GB free on the filesystem holding /var/tmp, and this build wants ${NEED_GB} GB." >&2
     echo "   It would run for about forty minutes and then fail populating the root partition." >&2
     echo "   Two caches are safe to drop, in this order:" >&2
     echo "     rm -rf $(cd "$here/../.." && pwd)/target/debug/incremental   # pure scratch, no recompile" >&2
-    echo "     rm -rf $here/mkosi.builddir                                 # costs a full in-container rebuild" >&2
+    echo "     rm -rf $builddir/*/target*   # the compiled apps and daemons; keeps the fetched sources" >&2
     exit 1
 fi
 
-# The build directory has to EXIST for mkosi to keep it. mkosi uses `mkosi.builddir`
-# when the directory is there and a throwaway one when it is not, and the space
-# hint above tells a person to delete it - after which every build started from
-# an empty cargo home and cloned every git dependency again. Measured on
-# 8 October: a build sat thirty minutes on one clone at 130 KiB/s. Deleting it
-# stays a valid way to free space; this only brings back the cache it held.
-mkdir -p "$here/mkosi.builddir"
 
 # A build that dies part-way leaves the half-written arlen.raw behind, and the
 # next verify run boots it without complaint. That happened on 10 Aug: the disk
@@ -195,7 +201,7 @@ writing_image=1
 # cargo/npm caches). A single --force rebuilds the OUTPUT but keeps the
 # incremental cache (only -ff drops it), so the slow Debian-rootfs assembly is
 # paid once, not on every build.
-( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes --cache-directory "$here/mkosi.cache" "${verify_args[@]}" build --force )
+( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes --cache-directory "$here/mkosi.cache" --build-directory "$builddir" "${verify_args[@]}" build --force )
 # The stamp becomes the image's only once the image exists, so a failed build
 # leaves the previous image with the previous stamp rather than a description of
 # a run that produced nothing.
