@@ -768,6 +768,17 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                     .emit("arlen://workspace-overlay-open", ());
             }
 
+            overlay::Event::WorkspaceMoveRefused { output, target } => {
+                // Version 2. The compositor refused to move a window to
+                // workspace `target` (0-based) on `output`; the indicator
+                // answers by showing the target and settling back, so the
+                // keystroke does not go silently nowhere.
+                let _ = state.app_handle.emit(
+                    "arlen://workspace-move-refused",
+                    serde_json::json!({ "output": output, "target": target }),
+                );
+            }
+
             overlay::Event::LayoutModeChanged { mode } => {
                 let (mode_str, mode_u8) = match mode {
                     wayland_client::WEnum::Value(overlay::LayoutModeType::Tiling) => ("tiling", 1u8),
@@ -1009,7 +1020,7 @@ pub fn start(app_handle: AppHandle, sender: Arc<ShellOverlaySender>) {
 
         let qh = event_queue.handle();
 
-        let overlay_proxy = match globals.bind::<OverlayProxy, AppData, ()>(&qh, 1..=1, ()) {
+        let overlay_proxy = match globals.bind::<OverlayProxy, AppData, ()>(&qh, 1..=2, ()) {
             Ok(p) => p,
             Err(e) => {
                 log::warn!(

@@ -9,6 +9,10 @@
   /// new one, the same gesture as the kit's segmented control; in the dot
   /// row the active dot grows in place. Both on `--duration-normal`, which the
   /// theme zeroes under reduce motion. A press is the kit Button's press.
+  ///
+  /// `peekIndex` borrows the same motion to answer a refused move: while it is
+  /// set, the highlight goes to that workspace instead of the active one, and
+  /// clearing it brings the highlight back. No second animation, no text.
   import { tick } from "svelte";
 
   import type { WorkspaceInfo } from "$lib/stores/workspaces.js";
@@ -18,12 +22,15 @@
     workspaces,
     mode,
     activeIndex,
+    peekIndex = null,
     onActivate,
   }: {
     workspaces: WorkspaceInfo[];
     mode: "pills" | "dots" | "text";
     /// Index of the active workspace, -1 when none is flagged.
     activeIndex: number;
+    /// A workspace to show in place of the active one for a moment, or null.
+    peekIndex?: number | null;
     onActivate: (id: string) => void;
   } = $props();
 
@@ -32,8 +39,11 @@
   let mark = $state<{ x: number; w: number } | null>(null);
   let placed = $state(false);
 
+  /// Which workspace the highlight is on: the peeked one while there is one.
+  const shownIndex = $derived(peekIndex ?? workspaces.findIndex((w) => w.active));
+
   function measure(): void {
-    const i = workspaces.findIndex((w) => w.active);
+    const i = shownIndex;
     const el = i >= 0 ? pills[i] : null;
     mark = el ? { x: el.offsetLeft, w: el.offsetWidth } : null;
   }
@@ -41,6 +51,7 @@
   $effect(() => {
     void workspaces;
     void mode;
+    void shownIndex;
     tick().then(() => {
       measure();
       if (!placed && mark) requestAnimationFrame(() => (placed = true));
@@ -75,14 +86,14 @@
         aria-label={fullLabel(ws, i)}
         aria-pressed={ws.active}
       >
-        <span class="dot" class:dot-active={ws.active}></span>
+        <span class="dot" class:dot-active={i === shownIndex}></span>
       </button>
     {/each}
   </div>
 {:else}
   <div class="indicator" role="group" aria-label={$t("sh.ws.workspaces")}>
     <span class="ws-text">
-      {activeIndex >= 0 ? activeIndex + 1 : 1} / {workspaces.length}
+      {(peekIndex ?? activeIndex) >= 0 ? (peekIndex ?? activeIndex) + 1 : 1} / {workspaces.length}
     </span>
   </div>
 {/if}
