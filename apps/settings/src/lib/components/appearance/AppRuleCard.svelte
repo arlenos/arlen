@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { t } from "$lib/i18n/messages";
   /// Per-app notification rule card. Expandable row that exposes the
@@ -118,26 +119,18 @@
           {$t("s.rule.forcePriority")}
           <span class="row-hint">{$t("s.rule.forcePriorityHint")}</span>
         </span>
-        <div class="prio-pills">
-          <button
-            type="button"
-            class="prio-pill"
-            class:selected={rule.priority === undefined}
-            onclick={() => onchange({ priority: undefined })}
-          >
-            {$t("s.rule.auto")}
-          </button>
-          {#each PRIORITIES as p}
-            <button
-              type="button"
-              class="prio-pill"
-              class:selected={rule.priority === p}
-              onclick={() => onchange({ priority: p })}
-            >
-              {p}
-            </button>
-          {/each}
-        </div>
+        <!-- One of five, so the kit's single-select row; the priority names are
+             words in the catalogue now, not the config's own keys. -->
+        <SegmentedControl
+          size="compact"
+          ariaLabel={$t("s.rule.forcePriority")}
+          value={rule.priority ?? "auto"}
+          options={[
+            { value: "auto", label: $t("s.rule.auto") },
+            ...PRIORITIES.map((p) => ({ value: p, label: $t(`s.rule.prio.${p}`) })),
+          ]}
+          onchange={(v) => onchange({ priority: v === "auto" ? undefined : (v as (typeof PRIORITIES)[number]) })}
+        />
       </div>
     </div>
   {/if}
@@ -258,33 +251,4 @@
     color: color-mix(in srgb, var(--foreground) 48%, transparent);
   }
 
-  .prio-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-  .prio-pill {
-    height: 24px;
-    padding: 0 0.55rem;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    font-size: var(--text-2xs);
-    font-weight: 500;
-    text-transform: capitalize;
-    transition:
-      background-color 120ms ease,
-      border-color 120ms ease,
-      color 120ms ease;
-  }
-  .prio-pill:hover {
-    background: color-mix(in srgb, var(--foreground) 9%, transparent);
-    color: var(--foreground);
-  }
-  .prio-pill.selected {
-    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
-    border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
-    color: var(--foreground);
-  }
 </style>
