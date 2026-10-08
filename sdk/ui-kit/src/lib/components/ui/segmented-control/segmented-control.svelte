@@ -4,7 +4,14 @@
   /// page. Bindable `value` + `onchange`, forwards `id` for deep-link/search.
   /// An option with an `icon` renders as a compact glyph pill (toolbar
   /// view switchers); its label becomes the accessible name and tooltip.
-  import type { Component } from "svelte";
+  ///
+  /// Motion (design-system §6b): the act is choosing, so the selection is one
+  /// indicator that slides from the old choice to the new one on
+  /// `--duration-normal`, behind the labels. It is measured from the chosen
+  /// pill, so it fits labels of any width and follows a resize; the first
+  /// placement does not slide. Reduce motion zeroes the duration and the
+  /// indicator then simply moves.
+  import { tick, type Component } from "svelte";
   import * as Tooltip from "../tooltip";
 
   /// Any icon component taking size/strokeWidth (a Lucide icon from
@@ -41,6 +48,39 @@
 
   // Button refs for roving-focus keyboard navigation.
   let btns = $state<HTMLButtonElement[]>([]);
+
+  // The sliding indicator: where the chosen pill sits inside the group.
+  let group = $state<HTMLDivElement | null>(null);
+  let mark = $state<{ x: number; y: number; w: number; h: number } | null>(null);
+  let placed = $state(false);
+
+  function measure(): void {
+    const i = options.findIndex((o) => o.value === value);
+    const el = i >= 0 ? btns[i] : null;
+    if (!el) {
+      mark = null;
+      return;
+    }
+    mark = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
+  }
+
+  $effect(() => {
+    void value;
+    void options;
+    void btns.length;
+    tick().then(() => {
+      measure();
+      // Let the first placement land before transitions apply.
+      if (!placed) requestAnimationFrame(() => (placed = true));
+    });
+  });
+
+  $effect(() => {
+    if (!group || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(group);
+    return () => ro.disconnect();
+  });
 
   // Roving tabindex: exactly one radio is tabbable — the selected one, or the
   // first when nothing is selected yet (the WAI-ARIA radio-group pattern).
@@ -84,7 +124,15 @@
   }
 </script>
 
-<div class="seg {className ?? ''}" class:compact={size === "compact"} {id} role="radiogroup" aria-label={ariaLabel}>
+<div bind:this={group} class="seg {className ?? ''}" class:compact={size === "compact"} {id} role="radiogroup" aria-label={ariaLabel}>
+  {#if mark}
+    <span
+      class="seg-mark"
+      class:placed
+      aria-hidden="true"
+      style="transform: translate({mark.x}px, {mark.y}px); width: {mark.w}px; height: {mark.h}px"
+    ></span>
+  {/if}
   {#each options as opt, i (opt.value)}
     {#if opt.icon}
       {@const Icon = opt.icon}
@@ -132,6 +180,7 @@
 
 <style>
   .seg {
+    position: relative;
     display: inline-flex;
     gap: 2px;
     padding: 2px;
@@ -144,7 +193,26 @@
     border: 1px solid var(--control-border);
   }
 
+  /* The one selection, drawn once and moved, rather than a background that
+     jumps from pill to pill. It sits under the labels. */
+  .seg-mark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-sizing: border-box;
+    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
+    background: color-mix(in srgb, var(--foreground) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+    pointer-events: none;
+  }
+  .seg-mark.placed {
+    transition:
+      transform var(--duration-normal) var(--ease-out),
+      width var(--duration-normal) var(--ease-out);
+  }
+
   .seg-pill {
+    position: relative;
     appearance: none;
     border: 1px solid transparent;
     background: transparent;
@@ -174,8 +242,6 @@
   }
 
   .seg-pill.active {
-    background: color-mix(in srgb, var(--foreground) 15%, transparent);
-    border-color: color-mix(in srgb, var(--foreground) 30%, transparent);
     color: var(--foreground);
   }
 
