@@ -242,7 +242,8 @@ impl ProjectStore {
     async fn journal(&self, facts: Vec<crate::journal::Fact>) -> Result<()> {
         let origin = crate::journal::Origin {
             provenance: crate::provenance::Provenance::Graph.as_key().to_string(),
-            valid_time_source: String::new(),
+            // Detection saw the project and its files where they are now.
+            valid_time_source: "observed".into(),
             event_id: None,
         };
         crate::journal::commit_and_project(&self.pool, &self.graph, facts, &origin).await

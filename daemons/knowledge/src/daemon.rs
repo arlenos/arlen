@@ -2467,7 +2467,9 @@ static MEMBERSHIP_WRITE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(
 fn agent_write_origin() -> crate::journal::Origin {
     crate::journal::Origin {
         provenance: "agent".into(),
-        valid_time_source: "write".into(),
+        // The agent asserts a membership now; nothing states when it became
+        // true, and the stamp says so.
+        valid_time_source: "ingest_fallback".into(),
         event_id: None,
     }
 }

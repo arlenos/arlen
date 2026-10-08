@@ -152,20 +152,33 @@ impl Fact {
 pub struct Origin {
     /// The provenance key (`provenance.rs`): `graph`, `agent`, `user`...
     pub provenance: String,
-    /// What fixed the valid time: `event`, `git`, `file`... (§3.1). Empty when
-    /// the fact carries no valid time.
+    /// What fixed the valid time, one of [`VALID_TIME_SOURCES`]
+    /// (bitemporal-knowledge-graph.md §3.1). Empty when the fact carries no valid
+    /// time; [`record`] refuses anything else.
     pub valid_time_source: String,
     /// The raw event the fact was derived from, if any.
     pub event_id: Option<String>,
 }
 
+/// Where a valid time may come from, and nothing else (§3.1):
+/// - `observed`: the event is its own evidence (a focus, an open, a command);
+/// - `source_field`: the source states the time (git author date, a mail `Date`);
+/// - `text_extracted`: a date read out of content;
+/// - `ingest_fallback`: nothing better existed, and the fact says so.
+///
+/// A closed list on purpose. The column used to take whatever a writer passed,
+/// and two writers passed `event` and `write`, which name where a fact came from
+/// rather than how its time was known. An import that wants a new source has to
+/// add it here, where the next reader of the table will see it.
+pub const VALID_TIME_SOURCES: [&str; 4] = ["observed", "source_field", "text_extracted", "ingest_fallback"];
+
 impl Origin {
     /// A fact the promotion pipeline derived from raw event `event_id`, whose
-    /// valid time is the event's own.
+    /// valid time is the event's own: it was observed.
     pub fn event(event_id: &str) -> Self {
         Origin {
             provenance: "graph".into(),
-            valid_time_source: "event".into(),
+            valid_time_source: "observed".into(),
             event_id: Some(event_id.into()),
         }
     }
@@ -196,6 +209,16 @@ pub async fn ensure_schema(pool: &SqlitePool) -> Result<()> {
     )
     .execute(pool)
     .await?;
+    // The two names written before the list was closed, mapped once: `event` was
+    // the promotion pipeline (observed), `write` the agent's own assertion, which
+    // carries no time of its own (ingest_fallback).
+    sqlx::query(
+        "UPDATE facts SET valid_time_source = CASE valid_time_source \
+           WHEN 'event' THEN 'observed' WHEN 'write' THEN 'ingest_fallback' END \
+         WHERE valid_time_source IN ('event', 'write')",
+    )
+    .execute(pool)
+    .await?;
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     )
@@ -209,6 +232,10 @@ pub async fn ensure_schema(pool: &SqlitePool) -> Result<()> {
 /// all.
 pub async fn record(tx: &mut Transaction<'_, Sqlite>, facts: &[(Fact, Origin)]) -> Result<()> {
     for (fact, origin) in facts {
+        let source = origin.valid_time_source.as_str();
+        if !source.is_empty() && !VALID_TIME_SOURCES.contains(&source) {
+            bail!("journal valid_time_source {source:?} is not one of {VALID_TIME_SOURCES:?}");
+        }
         let q = sqlx::query(
             "INSERT INTO facts (op, label, id, from_label, from_id, to_label, to_id,
                                 props, on_create, valid_at, invalid_at, created_at,
@@ -656,7 +683,7 @@ mod tests {
     }
 
     fn origin() -> Origin {
-        Origin { provenance: "graph".into(), valid_time_source: "event".into(), event_id: Some("e1".into()) }
+        Origin { provenance: "graph".into(), valid_time_source: "observed".into(), event_id: Some("e1".into()) }
     }
 
     #[tokio::test]
@@ -855,6 +882,21 @@ mod tests {
         assert_eq!(rs.rows[0][0].as_i64(), 3, "e2 journaled twice counts once");
         assert_eq!(rs.rows[0][1].as_i64(), 10);
         assert_eq!(rs.rows[0][2].as_i64(), 30);
+    }
+
+    /// A valid-time source outside the four is refused, so a new import cannot
+    /// slip in a name of its own.
+    #[tokio::test]
+    async fn an_unknown_valid_time_source_is_refused() {
+        let (pool, _dir) = pool().await;
+        let bad = Origin { valid_time_source: "event".into(), ..origin() };
+        let mut tx = pool.begin().await.unwrap();
+        let err = record(&mut tx, &[(Fact::node("App", "a", &[]), bad)]).await.unwrap_err();
+        assert!(err.to_string().contains("not one of"), "{err}");
+        for ok in VALID_TIME_SOURCES.iter().copied().chain([""]) {
+            let o = Origin { valid_time_source: ok.into(), ..origin() };
+            record(&mut tx, &[(Fact::node("App", "a", &[]), o)]).await.unwrap();
+        }
     }
 
     #[test]
