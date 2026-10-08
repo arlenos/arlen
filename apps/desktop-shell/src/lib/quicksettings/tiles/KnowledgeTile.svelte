@@ -138,12 +138,13 @@
     width: 100%;
   }
 
-  /* Chart container — rendered as the BaseTile children snippet,
-     so it lands in `.qs-tile-body` below the head. Padding pulls
-     the line in from the tile edges so it doesn't kiss the rounded
-     corners. */
+  /* Chart container, rendered as the BaseTile children snippet, so it lands in
+     `.qs-tile-body`, which already insets its content 12px from the tile edges.
+     Only the vertical padding is this tile's own: a second 12px here pushed the
+     line, and the empty message below, in twice as far as every other tile's
+     status line. */
   .kg-chart {
-    padding: 4px 12px 12px 12px;
+    padding: 4px 0 12px;
     height: 28px;
     width: 100%;
     box-sizing: border-box;
@@ -168,7 +169,7 @@
   /* Empty-state body — same vertical footprint as the chart so the
      tile height stays constant whether or not data is showing. */
   .kg-empty {
-    padding: 4px 12px 12px 12px;
+    padding: 4px 0 12px;
     height: 28px;
     width: 100%;
     box-sizing: border-box;
