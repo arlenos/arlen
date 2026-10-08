@@ -38,6 +38,14 @@ if [ "${free_gb:-0}" -lt "$NEED_GB" ]; then
     exit 1
 fi
 
+# The build directory has to EXIST for mkosi to keep it. mkosi uses `mkosi.builddir`
+# when the directory is there and a throwaway one when it is not, and the space
+# hint above tells a person to delete it - after which every build started from
+# an empty cargo home and cloned every git dependency again. Measured on
+# 8 October: a build sat thirty minutes on one clone at 130 KiB/s. Deleting it
+# stays a valid way to free space; this only brings back the cache it held.
+mkdir -p "$here/mkosi.builddir"
+
 # A build that dies part-way leaves the half-written arlen.raw behind, and the
 # next verify run boots it without complaint. That happened on 10 Aug: the disk
 # filled during `systemd-repart`, the copy failed, and a 4.4G image was sitting
