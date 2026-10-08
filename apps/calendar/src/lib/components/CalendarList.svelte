@@ -6,6 +6,7 @@
   import { Check, Plus } from "@lucide/svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { ColorDot } from "@arlen/ui-kit/components/ui/color-dot";
+  import { Chip } from "@arlen/ui-kit/components/ui/chip";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
@@ -42,9 +43,9 @@
     <Notice tone="error" class="mb-1.5" text={$colorFailed} />
   {/if}
   <div class="sets">
-    <button type="button" class="set-chip" onclick={() => applySet(null)}>{$t("cal.sets.all")}</button>
+    <Chip label={$t("cal.sets.all")} onclick={() => applySet(null)} />
     {#each $calendarSets as set (set.name)}
-      <button type="button" class="set-chip" onclick={() => applySet(set)}>{set.name}</button>
+      <Chip label={set.name} onclick={() => applySet(set)} />
     {/each}
     <IconAction label={$t("cal.sets.save")} onclick={() => (naming = true)}>
       <Plus size={13} strokeWidth={2} />
@@ -113,32 +114,15 @@
 {/if}
 
 <style>
+  .sets :global(.chip) {
+    max-width: 8rem;
+  }
   .sets {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.3rem;
     padding: 0 0.5rem 0.35rem;
-  }
-  .set-chip {
-    max-width: 8rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 0.15rem 0.55rem;
-    border: none;
-    border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, currentColor 8%, transparent);
-    font: inherit;
-    font-size: var(--text-2xs, 11px);
-    color: inherit;
-  }
-  .set-chip:hover {
-    background: color-mix(in srgb, currentColor 14%, transparent);
-  }
-  .set-chip:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 1px;
   }
   .set-name {
     padding: 0 0.5rem 0.4rem;

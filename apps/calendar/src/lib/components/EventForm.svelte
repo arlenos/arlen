@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Badge } from "@arlen/ui-kit/components/ui/badge";
   /// Creating an event, in a calendar's own form language: the title is the
   /// headline (borderless, focused, a placeholder - not a labelled field), and
   /// under it icon-led rows the way every calendar since forever writes them -
@@ -272,10 +273,10 @@
     {#if anyParsed && parsed}
       <p class="parsed" aria-live="polite">
         <span class="p-label">{$t("cal.parsed")}</span>
-        {#if parsed.date}<span class="p-chip">{dayLabel(parsed.date, $locale)}</span>{/if}
-        {#if parsed.time}<span class="p-chip">{parsed.time}{#if parsed.endTime}&#8211;{parsed.endTime}{/if}</span>{/if}
-        {#if parsed.location}<span class="p-chip">{parsed.location}</span>{/if}
-        {#if parsed.calendar}<span class="p-chip">/{parsed.calendar}</span>{/if}
+        {#if parsed.date}<Badge variant="outline">{dayLabel(parsed.date, $locale)}</Badge>{/if}
+        {#if parsed.time}<Badge variant="outline">{parsed.time}{#if parsed.endTime}&#8211;{parsed.endTime}{/if}</Badge>{/if}
+        {#if parsed.location}<Badge variant="outline">{parsed.location}</Badge>{/if}
+        {#if parsed.calendar}<Badge variant="outline">/{parsed.calendar}</Badge>{/if}
       </p>
     {/if}
 
@@ -472,13 +473,6 @@
   }
   .p-label {
     color: var(--color-fg-secondary, #a3a3a3);
-  }
-  .p-chip {
-    padding: 0.1rem 0.45rem;
-    border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    color: color-mix(in srgb, var(--color-fg-primary) 80%, transparent);
-    font-variant-numeric: tabular-nums;
   }
   .row {
     display: flex;
