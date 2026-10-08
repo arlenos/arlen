@@ -24,6 +24,7 @@
       <Chip
         label={m.truncated ? $t("h.composer.shortened", { name: m.name }) : m.name}
         tooltip={m.path}
+        removeLabel={$t("h.composer.removeFile", { name: m.name })}
         onremove={() => onremove(m.path)}
       >
         {#snippet lead()}<Paperclip size={12} strokeWidth={2} />{/snippet}
