@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ChoiceList } from "@arlen/ui-kit/components/ui/choice-list";
   import { t, locale } from "$lib/i18n/messages";
   import { readsAsInternal } from "$lib/errors";
   import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
@@ -17,17 +18,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import {
-    Bell,
-    BellOff,
-    Coffee,
-    Moon,
-    Sunrise,
-    Volume2,
-    Trash2,
-    AlertTriangle,
-    Sparkles,
-  } from "lucide-svelte";
+  import { Coffee, Sunrise, Trash2, Sparkles } from "lucide-svelte";
 
   import {
     notifications,
@@ -137,13 +128,10 @@
 
   // ── DND ─────────────────────────────────────────────────────────────
 
-  const DND_PILLS: { mode: DndMode; icon: typeof BellOff }[] = [
-    { mode: "off", icon: Bell },
-    { mode: "priority", icon: AlertTriangle },
-    { mode: "alarms", icon: Volume2 },
-    { mode: "total", icon: BellOff },
-    { mode: "scheduled", icon: Moon },
-  ];
+  /// The five modes, in order of how much gets through. One choice with a line
+  /// of consequence each, so the kit's ChoiceList: every trade-off visible at
+  /// once, one tab stop, arrows between (thread seven).
+  const DND_MODES: DndMode[] = ["off", "priority", "alarms", "total", "scheduled"];
 
   async function setDndMode(mode: DndMode) {
     await notifications.setValue("dnd.mode", mode);
@@ -329,26 +317,16 @@
       <!-- ── DO NOT DISTURB ────────────────────────────────── -->
       <Section label={$t("s.notif.dnd")}>
         <div class="dnd-section">
-          <div class="dnd-pills">
-            {#each DND_PILLS as pill}
-              {@const Icon = pill.icon}
-              {@const meta = DND_MODE_LABELS[pill.mode]}
-              {@const active = dndMode === pill.mode}
-              <button
-                type="button"
-                class="dnd-pill"
-                class:active
-                aria-pressed={active}
-                onclick={() => setDndMode(pill.mode)}
-              >
-                <span class="dnd-pill-icon"
-                  ><Icon size={14} strokeWidth={2} /></span
-                >
-                <span class="dnd-pill-title">{$t(meta.title)}</span>
-                <span class="dnd-pill-hint">{$t(meta.hint)}</span>
-              </button>
-            {/each}
-          </div>
+          <ChoiceList
+            ariaLabel={$t("s.notif.dnd")}
+            value={dndMode}
+            options={DND_MODES.map((m) => ({
+              value: m,
+              label: $t(DND_MODE_LABELS[m].title),
+              description: $t(DND_MODE_LABELS[m].hint),
+            }))}
+            onchange={(v) => setDndMode(v as DndMode)}
+          />
 
           {#if expiresLabel}
             <div class="expires-banner">
@@ -506,18 +484,15 @@
         </Row>
         <Row label={$t("s.notif.animation")} id="toast-animation">
           {#snippet control()}
-            <div class="seg">
-              {#each ["slide", "fade", "none"] as a (a)}
-                <button
-                  type="button"
-                  class="seg-pill"
-                  class:active={(toast.animation ?? "slide") === a}
-                  onclick={() => setToastAnimation(a as ToastAnimation)}
-                >
-                  {a}
-                </button>
-              {/each}
-            </div>
+            <!-- The kit row: this was a `.seg` with no styles behind it, so it
+                 rendered as the three config keys run together ("slidefadenone"). -->
+            <SegmentedControl
+              size="compact"
+              ariaLabel={$t("s.notif.animation")}
+              value={toast.animation ?? "slide"}
+              options={["slide", "fade", "none"].map((v) => ({ value: v, label: $t(`s.notif.anim.${v}`) }))}
+              onchange={(v) => setToastAnimation(v as ToastAnimation)}
+            />
           {/snippet}
         </Row>
       </Section>
@@ -719,57 +694,6 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-  }
-  .dnd-pills {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 6px;
-  }
-  .dnd-pill {
-    display: grid;
-    grid-template-columns: 24px 1fr;
-    grid-template-rows: auto auto;
-    grid-column-gap: 8px;
-    grid-row-gap: 1px;
-    align-items: center;
-    text-align: start;
-    padding: 0.5rem 0.625rem;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--foreground) 4%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
-    transition:
-      background-color 120ms ease,
-      border-color 120ms ease;
-  }
-  .dnd-pill:hover:not(.active) {
-    background: color-mix(in srgb, var(--foreground) 7%, transparent);
-  }
-  .dnd-pill.active {
-    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-    border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
-  }
-  .dnd-pill-icon {
-    grid-row: span 2;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: var(--radius-chip);
-    color: color-mix(in srgb, var(--foreground) 65%, transparent);
-  }
-  .dnd-pill.active .dnd-pill-icon {
-    color: var(--color-accent);
-  }
-  .dnd-pill-title {
-    font-size: var(--text-xs);
-    font-weight: 600;
-    color: var(--foreground);
-  }
-  .dnd-pill-hint {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    line-height: 1.25;
   }
 
   .expires-banner {
