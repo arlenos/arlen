@@ -1,5 +1,8 @@
 <script lang="ts">
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
+  import { alsoRun } from "$lib/childProps.js";
   import { t } from "$lib/i18n/messages";
   /// The Activity/Jobs zone (job-progress-surface.md): the top zone of the
   /// notifications popover, showing live long-running work with a per-job progress
@@ -72,25 +75,37 @@
       <p class="jobs-sample err" role="alert">{$t($lastError)}</p>
     {/if}
 
+    <!-- An icon-only job action, named for a reader and labelled for the pointer
+         by the kit tooltip rather than the native title bubble (§6.4). -->
+    {#snippet jobButton(label: string, Icon: typeof X, run: () => void)}
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <button {...props} class="job-btn" aria-label={label} onclick={(e) => { alsoRun(props.onclick, e); run(); }}><Icon size={14} strokeWidth={2} /></button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.TooltipContent>{label}</Tooltip.TooltipContent>
+      </Tooltip.Root>
+    {/snippet}
     {#each ordered as j (j.id)}
       <div class="job" class:paused={j.state === "paused"} class:err={isError(j)} class:done={j.state === "done"}>
         <div class="job-top">
           <span class="job-avatar">{avatarLetter(j.appLabel)}</span>
           <!-- The title ellipses in a panel this narrow (a German one already
-               does at 720), and it is what tells two copies apart, so it is
-               also the hover title - the same answer the window cards give. -->
-          <span class="job-title" title={j.title}>{j.title}</span>
+               does at 720), and it is what tells two copies apart, so a cut-off
+               title reveals itself on hover, through the kit tooltip (§6.4). -->
+          <span class="job-title"><OverflowLabel text={j.title} /></span>
           <span class="job-actions">
             {#if j.suspendable && j.state === "running"}
-              <button class="job-btn" aria-label={$t("sh.job.pause")} title={$t("sh.job.pause")} onclick={() => pauseJob(j.id)}><Pause size={14} strokeWidth={2} /></button>
+              {@render jobButton($t("sh.job.pause"), Pause, () => pauseJob(j.id))}
             {:else if j.suspendable && j.state === "paused"}
-              <button class="job-btn" aria-label={$t("sh.job.resume")} title={$t("sh.job.resume")} onclick={() => resumeJob(j.id)}><Play size={14} strokeWidth={2} /></button>
+              {@render jobButton($t("sh.job.resume"), Play, () => resumeJob(j.id))}
             {/if}
             {#if j.state === "error_recoverable"}
-              <button class="job-btn" aria-label={$t("sh.job.retry")} title={$t("sh.job.retry")} onclick={() => resumeJob(j.id)}><RotateCw size={14} strokeWidth={2} /></button>
+              {@render jobButton($t("sh.job.retry"), RotateCw, () => resumeJob(j.id))}
             {/if}
             {#if j.killable && j.state !== "done"}
-              <button class="job-btn" aria-label={$t("sh.job.cancel")} title={$t("sh.job.cancel")} onclick={() => cancelJob(j.id)}><X size={14} strokeWidth={2} /></button>
+              {@render jobButton($t("sh.job.cancel"), X, () => cancelJob(j.id))}
             {/if}
           </span>
         </div>

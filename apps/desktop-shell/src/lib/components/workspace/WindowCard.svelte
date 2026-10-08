@@ -9,6 +9,7 @@
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import { AppWindow } from "lucide-svelte";
   import { AppIcon, type AppId } from "@arlen/ui-kit/components/ui/app-icon";
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
   import type { WorkspaceInfo } from "$lib/stores/workspaces.js";
   import type { DragEngine } from "$lib/workspace/drag.svelte.js";
   import { cardTitle } from "$lib/workspace/format.js";
@@ -82,7 +83,6 @@
         onpointermove={drag.onCardPointerMove}
         onpointerup={drag.onCardPointerUp}
         onpointercancel={drag.onCardPointerCancel}
-        title={title || appId}
         aria-label={minimized
           ? $t("sh.aria.windowMinimized", { window: title || appId, n: wsIndex + 1 })
           : $t("sh.aria.window", { window: title || appId, n: wsIndex + 1 })}
@@ -106,7 +106,7 @@
           />
         {/if}
         <span class="window-card-title">
-          {cardTitle(title, appId)}
+          <OverflowLabel text={cardTitle(title, appId)} />
         </span>
       </button>
     {/snippet}
