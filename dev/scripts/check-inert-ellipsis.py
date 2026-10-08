@@ -28,6 +28,10 @@ the finding; a file that happens to contain both in different rules is not, whic
 is why this parses rather than greps.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import sys

@@ -52,6 +52,10 @@ at the bus. Three siblings had the same line and nothing was looking at any of
 them.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import os
 import re

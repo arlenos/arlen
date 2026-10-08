@@ -29,6 +29,10 @@ the reason is written where the next reader finds it.
 Shown to fail before being trusted: the control plants an undeclared image.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import subprocess
 import sys

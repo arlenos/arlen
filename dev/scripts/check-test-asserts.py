@@ -47,6 +47,10 @@ does not have. If that ever stops being true the bound goes back in.
 literal assertion says so there, with the reason, once.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import os
 import pathlib
 import re

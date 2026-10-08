@@ -24,6 +24,10 @@ directly is not shipping, and holds no secrets worth the noise.
 Run: python3 dev/scripts/check-sandbox-env.py
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import os
 import re
 import sys

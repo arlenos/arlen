@@ -56,6 +56,10 @@ What this does NOT cover:
 Run: dev/scripts/check-window-grants.py [tree]
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import json
 import re
 import sys

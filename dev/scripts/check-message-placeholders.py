@@ -23,6 +23,10 @@ The rule: a message must not contain a bare `{identifier}`. A variable takes the
 - `{$name}`, `{$n :number}`, `{#markup}` - untouched.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import sys

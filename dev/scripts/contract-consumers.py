@@ -24,6 +24,10 @@ Prints one crate path per line, so a caller can loop over it. Prints nothing and
 exits 0 when there are none, which is the common case and not an error.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import subprocess

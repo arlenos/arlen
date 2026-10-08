@@ -39,6 +39,10 @@ wired app's layout makes it name that app - and the first attempt at that proof
 is what found the import-versus-call bug in this file.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import json
 import sys
 from pathlib import Path

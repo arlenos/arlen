@@ -29,6 +29,10 @@ BOTH LOCALES ARE CHECKED, since a key present in English and missing in German i
 a sentence that vanishes for half the users rather than for none.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

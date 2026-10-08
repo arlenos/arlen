@@ -30,6 +30,10 @@ daemon's own bind is exempt by being a different function in its own crate
 binds one path, and its unit pins it.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import os
 import re
 import sys

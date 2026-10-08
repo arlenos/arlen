@@ -29,6 +29,10 @@ Not checked: `///` on ordinary functions. `arlen-run`'s `spawn.rs` cites plans t
 a maintainer reading the source, which is exactly where a citation belongs.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

@@ -39,6 +39,10 @@ different one, flagging any directory word a profile mentions, was measured at
 three findings and three false positives, and was NOT gated for that reason.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 import tomllib

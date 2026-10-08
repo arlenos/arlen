@@ -23,6 +23,10 @@ The rule is therefore not "no NUL in a string" - it is "no NUL in a source FILE"
 Write the escape.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import sys
 

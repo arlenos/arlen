@@ -27,6 +27,10 @@ either installed, or listed below with the reason it waits. A silence becomes a
 sentence somebody can disagree with.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import sys

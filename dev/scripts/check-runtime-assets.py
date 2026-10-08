@@ -37,6 +37,10 @@ are one decision. String literals inside `#[cfg(test)]` are skipped - a test nam
 
 from __future__ import annotations
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

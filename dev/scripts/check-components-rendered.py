@@ -26,6 +26,10 @@ path built from a variable. Both resolve to a node this walk never visits, so th
 are listed with a reason rather than silently trusted.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

@@ -48,6 +48,10 @@ Shown to fail before being trusted: add `invoke("nonexistent_command")` to any a
 under `apps/*/src` and it names that app and that command.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import os
 import re
 import sys

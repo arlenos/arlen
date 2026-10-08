@@ -24,6 +24,10 @@ allowed is a literal in code: a `const`, a `Path::new(...)`, an `unwrap_or_else`
 fallback. Those are the shapes that shipped.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import re
 import sys
 from pathlib import Path

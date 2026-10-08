@@ -5,6 +5,10 @@ The shell renders `os_sdk::menu` labels verbatim and holds no catalog to
 translate them against, so a label written in Rust is the source language
 forever. Files did exactly that: the whole bar read "File Edit View Go Help"
 over a window whose own chrome was German, and because the menu was published
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 from `setup()` - before the webview that knows the language exists - a later
 language switch could not reach it either. The tree now comes from the
 frontend, where the catalog is.

@@ -69,6 +69,7 @@ check("the source is restored", readFileSync(INSTALLD, "utf8") === original);
 {
   const py = `
 import importlib.util, pathlib
+import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(${JSON.stringify(GATE)}))  # as running it would
 spec = importlib.util.spec_from_file_location("g", ${JSON.stringify(GATE)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = m.deferred_daemons(pathlib.Path(${JSON.stringify(ROOT)}))

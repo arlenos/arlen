@@ -17,6 +17,10 @@ and the user-namespace hypothesis it refuted. It was re-derived from scratch on
 note and not the plan for the subject - so the rule was known and nothing
 enforced it, which is what this file is for. Re-measured then with
 `systemd-run --user`, one directive per run, against a process plainly readable
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 from outside the sandbox:
 
     PrivateDevices=yes        DENIED      RestrictNamespaces=yes  readable

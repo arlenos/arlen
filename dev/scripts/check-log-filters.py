@@ -30,6 +30,10 @@ It does not check WHICH crate or which levels - `warn,x=info` and
 the blanket, because a blanket is what nobody chooses and everybody inherits.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import pathlib
 import re
 import sys

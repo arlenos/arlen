@@ -37,6 +37,10 @@ What it cannot check, and both are deliberate:
     the render is what found this one.
 """
 
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 import os
 import pathlib
 import re

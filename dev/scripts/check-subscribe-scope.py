@@ -29,6 +29,10 @@ emit lives in `sdk/tauri-plugin-shell` and is invisible in the app's own Rust by
 construction - and this file reported each one as "grants publish X and emits
 nothing". A list where seventeen lines are all noise teaches a reader to skip it,
 and the list is where a real over-grant would show. Those topics are credited now,
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 from `check-publish-grants.py`'s own map (imported, never re-listed), because that
 sibling asks the question this file cannot: whether an app GRANTED the plugin
 command also holds the publish scope. Three notes remain and each names the shape

@@ -14,6 +14,10 @@ frontend writes an object literal, the backend writes a function signature, and
 they meet at a string.
 
 Tauri's own convention is part of the trap. A snake_case parameter is reachable
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 from JavaScript as camelCase, so `app_id` and `appId` are both correct and
 `app_ID` is not, and no tool says so.
 
