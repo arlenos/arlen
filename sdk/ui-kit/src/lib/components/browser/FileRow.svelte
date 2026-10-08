@@ -11,6 +11,7 @@
   import { formatModified, formatSize } from "./format";
 
   import { tick } from "svelte";
+  import { OverflowLabel } from "../ui/overflow-label/index.js";
 
   let {
     id,
@@ -171,7 +172,9 @@
     {/if}
   </span>
   {#if columns.middle === "location"}
-    <span class="fr-location" role="gridcell" title={location}>{location}</span>
+    <!-- The folder path reveals itself only when it is cut off, through the kit
+         tooltip (design-system §6.4); the native title bubble is not ours. -->
+    <span class="fr-location" role="gridcell"><OverflowLabel text={location} /></span>
   {:else}
     <span class="fr-size" role="gridcell">{formatSize(entry.size)}</span>
   {/if}
