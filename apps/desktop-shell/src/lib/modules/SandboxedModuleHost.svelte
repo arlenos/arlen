@@ -1,5 +1,7 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
+  import { alsoRun } from "$lib/childProps.js";
   /// Sandboxed Tier 2 module host (ds#77 path).
   ///
   /// Mounts the module as an iframe served over `module://`. The
@@ -264,22 +266,40 @@
 </script>
 
 {#if mountError}
-  <div class="mod-failed" title={$t("sh.module.didNotMount", { why: $t(mountError) })}>
-    <span class="mod-failed-glyph">!</span>
-  </div>
+  <!-- Not a control, but a state a person needs the reason for: named for a
+       reader, and the same sentence for the pointer through the kit tooltip. -->
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      {#snippet child({ props })}
+        <div {...props} class="mod-failed" role="img" aria-label={$t("sh.module.didNotMount", { why: $t(mountError ?? "") })}>
+          <span class="mod-failed-glyph" aria-hidden="true">!</span>
+        </div>
+      {/snippet}
+    </Tooltip.Trigger>
+    <Tooltip.TooltipContent>{$t("sh.module.didNotMount", { why: $t(mountError ?? "") })}</Tooltip.TooltipContent>
+  </Tooltip.Root>
 {:else if module.failed}
-  <button
-    class="mod-failed"
-    type="button"
-    title={$t("sh.module.failed")}
-    onclick={async () => {
-      try {
-        await invoke("retry_module", { moduleId: module.id });
-      } catch {}
-    }}
-  >
-    <span class="mod-failed-glyph">↻</span>
-  </button>
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      {#snippet child({ props })}
+        <button
+          {...props}
+          class="mod-failed"
+          type="button"
+          aria-label={$t("sh.module.failed")}
+          onclick={async (e) => {
+            alsoRun(props.onclick, e);
+            try {
+              await invoke("retry_module", { moduleId: module.id });
+            } catch {}
+          }}
+        >
+          <span class="mod-failed-glyph" aria-hidden="true">↻</span>
+        </button>
+      {/snippet}
+    </Tooltip.Trigger>
+    <Tooltip.TooltipContent>{$t("sh.module.failed")}</Tooltip.TooltipContent>
+  </Tooltip.Root>
 {:else if iframeUrl}
   <iframe
     bind:this={iframe}

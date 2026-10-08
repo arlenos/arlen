@@ -1,6 +1,8 @@
 <script lang="ts">
   import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
+  import { alsoRun } from "$lib/childProps.js";
   /// Quick Settings footer row.
   ///
   /// Rendered as the last "tile" in the panel grid but visually a
@@ -73,7 +75,8 @@
     class="user-identity"
     role="button"
     tabindex="0"
-    title={$t("sh.user.accountPower")}
+    aria-haspopup="menu"
+    aria-expanded={powerOpen}
     onclick={(e) => {
       e.stopPropagation();
       powerOpen = !powerOpen;
@@ -84,30 +87,50 @@
   </div>
 
   <div class="user-actions">
-    <button
-      class="user-icon"
-      title={isDark ? $t("sh.user.switchToLight") : $t("sh.user.switchToDark")}
-      onclick={(e) => {
-        e.stopPropagation();
-        cycleTheme();
-      }}
-    >
-      {#if isDark}
-        <Sun size={16} strokeWidth={1.5} />
-      {:else}
-        <Moon size={16} strokeWidth={1.5} />
-      {/if}
-    </button>
-    <button
-      class="user-icon"
-      title={$t("sh.user.settings")}
-      onclick={(e) => {
-        e.stopPropagation();
-        openSettings();
-      }}
-    >
-      <Settings size={16} strokeWidth={1.5} />
-    </button>
+    <!-- Icon-only, so each is named for a reader and labelled for the pointer by
+         the kit tooltip; the native title bubble was their only name (§6.4). -->
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <button
+            {...props}
+            class="user-icon"
+            aria-label={isDark ? $t("sh.user.switchToLight") : $t("sh.user.switchToDark")}
+            onclick={(e) => {
+              alsoRun(props.onclick, e);
+              e.stopPropagation();
+              cycleTheme();
+            }}
+          >
+            {#if isDark}
+              <Sun size={16} strokeWidth={1.5} />
+            {:else}
+              <Moon size={16} strokeWidth={1.5} />
+            {/if}
+          </button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.TooltipContent>{isDark ? $t("sh.user.switchToLight") : $t("sh.user.switchToDark")}</Tooltip.TooltipContent>
+    </Tooltip.Root>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <button
+            {...props}
+            class="user-icon"
+            aria-label={$t("sh.user.settings")}
+            onclick={(e) => {
+              alsoRun(props.onclick, e);
+              e.stopPropagation();
+              openSettings();
+            }}
+          >
+            <Settings size={16} strokeWidth={1.5} />
+          </button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.TooltipContent>{$t("sh.user.settings")}</Tooltip.TooltipContent>
+    </Tooltip.Root>
   </div>
 
   {#if powerOpen}
