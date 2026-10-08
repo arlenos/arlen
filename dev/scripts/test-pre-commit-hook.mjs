@@ -117,5 +117,20 @@ check("the warning does not block the commit", (dir) => {
   return git(dir, "log", "--oneline").split("\n").filter(Boolean).length === 2;
 });
 
+check("the gates run at low priority", (dir) => {
+  // A stand-in runner that records the niceness it was started with. At least
+  // ten: util-linux `renice -n` sets the value rather than adding to it, and an
+  // unprivileged process cannot go back down, so a caller already nicer stays so.
+  // Run from a shell at nice 0 this fails without the hook's line; from inside
+  // the hook it cannot tell, which is why it is worded as a floor.
+  mkdirSync(join(dir, "dev/scripts"), { recursive: true });
+  writeFileSync(join(dir, "dev/scripts/run-ci-gates.sh"), `ps -o ni= -p $$ > "${dir}/nice.out"\n`);
+  writeFileSync(join(dir, "e.txt"), "e\n");
+  git(dir, "add", "e.txt");
+  commit(dir);
+  const seen = Number(execFileSync("cat", [join(dir, "nice.out")], { encoding: "utf8" }).trim());
+  return seen >= 10;
+});
+
 console.log(failures.length ? "\nsome cases regressed" : "\nevery shape holds");
 process.exit(failures.length ? 1 : 0);
