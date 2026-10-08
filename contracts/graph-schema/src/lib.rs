@@ -228,6 +228,7 @@ const NODES: &[NodeSchema] = &[
             ("author", FieldType::Text),
             ("author_email", FieldType::Text),
             ("committed_at", FieldType::Int),
+            ("authored_at", FieldType::Int),
         ],
     },
     NodeSchema {
