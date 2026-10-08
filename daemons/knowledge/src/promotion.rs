@@ -361,7 +361,7 @@ async fn run_pass(
                 promote_window_focused(pool, graph, id, timestamp, session_of(origin), payload).await
             }
             "window.focus_left" => {
-                promote_focus_left(graph, id, timestamp, payload).await
+                promote_focus_left(pool, graph, id, timestamp, payload).await
             }
             "file.written" => {
                 promote_file_written(pool, graph, id, timestamp, source, pid, payload).await
@@ -378,7 +378,7 @@ async fn run_pass(
                 promote_presence_clear(graph, id, timestamp, payload).await
             }
             "app.timeline.record" => {
-                promote_timeline_record(graph, id, timestamp, payload).await
+                promote_timeline_record(pool, graph, id, timestamp, payload).await
             }
             // A finished terminal command block becomes a reserved Command node,
             // so ⌃R history spans sessions and survives a restart.
@@ -397,8 +397,7 @@ async fn run_pass(
             "app.toolbar.action_invoked"
             | "app.shortcut.action_invoked"
             | "app.menu.action_invoked" => {
-                promote_action_invoked(
-                    graph, id, event_type, timestamp, session_of(origin), payload,
+                promote_action_invoked(pool, graph, id, event_type, timestamp, session_of(origin), payload,
                 )
                 .await
             }
@@ -406,12 +405,12 @@ async fn run_pass(
             // high-frequency `power.state` snapshot is deliberately NOT listed,
             // so battery-% churn is never promoted.
             t if is_power_transition(t) => {
-                promote_power_transition(graph, id, event_type, timestamp, source).await
+                promote_power_transition(pool, graph, id, event_type, timestamp, source).await
             }
             // Coarse system-service transitions (journald Tier-2) become timeline
             // Event nodes carrying the normalized service + the transition kind.
             "system.service" => {
-                promote_service_transition(graph, id, timestamp, source, payload).await
+                promote_service_transition(pool, graph, id, timestamp, source, payload).await
             }
             // The code-graph layer (CG-R1): replace a file's CodeSymbols with the
             // freshly-parsed set and fuse each to its File via DEFINES.
@@ -1112,21 +1111,21 @@ fn is_power_transition(event_type: &str) -> bool {
 /// promoted - the caller's match list excludes `power.state`, and the power
 /// daemon already emits a transition only once per crossing.
 async fn promote_power_transition(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     event_type: &str,
     timestamp: &i64,
     source: &str,
 ) -> Result<()> {
-    let event_id_esc = escape_cypher(event_id);
-    let type_esc = escape_cypher(event_type);
-    let source_esc = escape_cypher(source);
-    graph
-        .write(format!(
-            "MERGE (e:Event {{id: '{event_id_esc}'}})
-             SET e.type = '{type_esc}', e.timestamp = {timestamp}, e.source = '{source_esc}'"
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![Fact::node(
+        "Event",
+        event_id,
+        &[("type", json!(event_type)), ("timestamp", json!(*timestamp)), ("source", json!(source))],
+    )];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
     debug!(event_id, event_type, "promoted power transition");
     Ok(())
 }
@@ -1145,6 +1144,7 @@ async fn promote_power_transition(
 /// No `App` node and no session edge: there is no app, and saying so by absence is
 /// the point of the split.
 async fn promote_focus_left(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     timestamp: &i64,
@@ -1157,15 +1157,19 @@ async fn promote_focus_left(
         // sent nothing rather than record a blank.
         warn!(event_id, "window.focus_left carried no kind");
     }
-    let event_id_esc = escape_cypher(event_id);
-    let kind_esc = escape_cypher(&p.kind);
-    graph
-        .write(format!(
-            "MERGE (e:Event {{id: '{event_id_esc}'}})
-             SET e.type = 'window.focus_left', e.timestamp = {timestamp},
-                 e.source = 'wayland', e.kind = '{kind_esc}'"
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![Fact::node(
+        "Event",
+        event_id,
+        &[
+            ("type", json!("window.focus_left")),
+            ("timestamp", json!(*timestamp)),
+            ("source", json!("wayland")),
+            ("kind", json!(p.kind)),
+        ],
+    )];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
     debug!(event_id, kind = %p.kind, "promoted focus_left");
     Ok(())
 }
@@ -1178,6 +1182,7 @@ async fn promote_focus_left(
 /// payload is content-free by construction (no SSID/secret; the parser guarantees
 /// it), so the fields are stored as-is, escaped.
 async fn promote_service_transition(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     timestamp: &i64,
@@ -1185,17 +1190,20 @@ async fn promote_service_transition(
     payload: &[u8],
 ) -> Result<()> {
     let p = ServiceEventPayload::decode(payload)?;
-    let event_id_esc = escape_cypher(event_id);
-    let source_esc = escape_cypher(source);
-    let service_esc = escape_cypher(&p.service);
-    let kind_esc = escape_cypher(&p.kind);
-    graph
-        .write(format!(
-            "MERGE (e:Event {{id: '{event_id_esc}'}})
-             SET e.type = 'system.service', e.timestamp = {timestamp}, e.source = '{source_esc}', \
-                 e.service = '{service_esc}', e.kind = '{kind_esc}'"
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![Fact::node(
+        "Event",
+        event_id,
+        &[
+            ("type", json!("system.service")),
+            ("timestamp", json!(*timestamp)),
+            ("source", json!(source)),
+            ("service", json!(p.service)),
+            ("kind", json!(p.kind)),
+        ],
+    )];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
     debug!(event_id, service = %p.service, kind = %p.kind, "promoted service transition");
     Ok(())
 }
@@ -1384,14 +1392,13 @@ fn timeline_micros(v: i64) -> Option<i64> {
 }
 
 async fn promote_timeline_record(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     _timestamp: &i64,
     payload: &[u8],
 ) -> Result<()> {
     let p = TimelineRecordPayload::decode(payload)?;
-    let id_esc = escape_cypher(event_id);
-    let type_esc = escape_cypher(&p.r#type);
     // THE SUBJECT, NOT THE LABEL, and the two docs in `os-sdk/src/timeline.rs`
     // disagreed about which. The field's own doc is the contract an app reads -
     // "Subject of the event - typically a file path... Becomes the `subject`
@@ -1404,7 +1411,6 @@ async fn promote_timeline_record(
     //
     // The label stays in the SQLite event row with the metadata, exactly as the
     // presence handler leaves its own extras there.
-    let subject_esc = escape_cypher(&p.subject);
     // Use ended_at when present (duration event), otherwise started_at,
     // and finally fall back to the wall-clock timestamp from the
     // Event envelope. This keeps timeline queries time-ordered by the
@@ -1430,15 +1436,19 @@ async fn promote_timeline_record(
         }
     };
 
-    graph
-        .write(format!(
-            "MERGE (u:UserAction {{id: '{id_esc}'}})
-             SET u.category = 'timeline',
-                 u.action   = '{type_esc}',
-                 u.subject  = '{subject_esc}',
-                 u.timestamp = {ts}"
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts = vec![Fact::node(
+        "UserAction",
+        event_id,
+        &[
+            ("category", json!("timeline")),
+            ("action", json!(p.r#type)),
+            ("subject", json!(p.subject)),
+            ("timestamp", json!(ts)),
+        ],
+    )];
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     debug!(event_id, app_id = %p.app_id, subject = %p.subject, "promoted app.timeline.record");
     Ok(())
@@ -1634,6 +1644,7 @@ async fn promote_badge_set(
 /// this arm because their payloads are byte-identical (`app_id`, `action`,
 /// `window_id`); `window_id` is irrelevant to the interaction record.
 async fn promote_action_invoked(
+    pool: &SqlitePool,
     graph: &GraphHandle,
     event_id: &str,
     event_type: &str,
@@ -1654,19 +1665,18 @@ async fn promote_action_invoked(
         return Ok(());
     }
 
-    let id_esc = escape_cypher(event_id);
-    let action_esc = escape_cypher(&p.action);
-    let app_esc = escape_cypher(&p.app_id);
-
-    graph
-        .write(format!(
-            "MERGE (u:UserAction {{id: '{id_esc}'}})
-             SET u.category = '{category}',
-                 u.action   = '{action_esc}',
-                 u.subject  = '{app_esc}',
-                 u.timestamp = {timestamp}"
-        ))
-        .await?;
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let mut facts = vec![Fact::node(
+        "UserAction",
+        event_id,
+        &[
+            ("category", json!(category)),
+            ("action", json!(p.action)),
+            ("subject", json!(p.app_id)),
+            ("timestamp", json!(*timestamp)),
+        ],
+    )];
 
     // Session<->activity edge (KG-richness Thrust 1): link the interaction to
     // the session it happened in, so the graph answers "what did I do in this
@@ -1675,16 +1685,10 @@ async fn promote_action_invoked(
     // incognito session is excluded upstream before promotion, like every other
     // event, so no new hard-exclude surface.
     if !session_id.is_empty() {
-        graph
-            .write(crate::cypher::merge_node("s", "Session", session_id))
-            .await?;
-        graph
-            .write(format!(
-                "{} MERGE (u)-[:PERFORMED_IN]->(s)",
-                crate::cypher::match_two_nodes("u", "UserAction", event_id, "s", "Session", session_id)
-            ))
-            .await?;
+        facts.push(Fact::node("Session", session_id, &[]));
+        facts.push(Fact::link("PERFORMED_IN", ("UserAction", event_id), ("Session", session_id)));
     }
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
     debug!(
         event_id,
@@ -2471,7 +2475,7 @@ mod shell_event_tests {
         // type, timestamp and source - the timeline marker the AI correlates to
         // session boundaries (§3f). No battery-% churn: only the transition.
         let (graph, _tmp) = setup().await;
-        promote_power_transition(&graph, "pwr1", "power.critical", &4242, "app:arlen-powerd")
+        promote_power_transition(&scratch().await, &graph, "pwr1", "power.critical", &4242, "app:arlen-powerd")
             .await
             .unwrap();
         let rs = graph
@@ -2498,7 +2502,7 @@ mod shell_event_tests {
             detail: "eth0".into(),
         }
         .encode_to_vec();
-        promote_service_transition(&graph, "svc1", &7777, "app:arlen-journald-parser", &payload)
+        promote_service_transition(&scratch().await, &graph, "svc1", &7777, "app:arlen-journald-parser", &payload)
             .await
             .unwrap();
         let rs = graph
@@ -2812,6 +2816,7 @@ mod shell_event_tests {
         let mut buf = Vec::new();
         menu.encode(&mut buf).unwrap();
         promote_action_invoked(
+            &scratch().await,
             &graph,
             "menu1",
             "app.menu.action_invoked",
@@ -2856,6 +2861,7 @@ mod shell_event_tests {
         let mut buf2 = Vec::new();
         toolbar.encode(&mut buf2).unwrap();
         promote_action_invoked(
+            &scratch().await,
             &graph,
             "tb1",
             "app.toolbar.action_invoked",
@@ -2891,6 +2897,7 @@ mod shell_event_tests {
         let mut buf3 = Vec::new();
         empty.encode(&mut buf3).unwrap();
         promote_action_invoked(
+            &scratch().await,
             &graph,
             "empty1",
             "app.menu.action_invoked",
@@ -2928,7 +2935,7 @@ mod shell_event_tests {
         };
         let bytes = encode_timeline(&payload);
 
-        promote_timeline_record(&graph, "evt-timeline-1", &1_000_000, &bytes)
+        promote_timeline_record(&scratch().await, &graph, "evt-timeline-1", &1_000_000, &bytes)
             .await
             .unwrap();
 
@@ -3088,7 +3095,7 @@ mod shell_event_tests {
         };
         let bytes = encode_timeline(&payload);
 
-        promote_timeline_record(&graph, "evt-timeline-1", &1_700_000_010_000_000, &bytes)
+        promote_timeline_record(&scratch().await, &graph, "evt-timeline-1", &1_700_000_010_000_000, &bytes)
             .await
             .unwrap();
 
@@ -3136,7 +3143,7 @@ mod shell_event_tests {
         };
         let bytes = encode_timeline(&payload);
 
-        promote_timeline_record(&graph, "evt-timeline-2", &7_777_777, &bytes)
+        promote_timeline_record(&scratch().await, &graph, "evt-timeline-2", &7_777_777, &bytes)
             .await
             .unwrap();
 
@@ -3166,7 +3173,7 @@ mod shell_event_tests {
             metadata: HashMap::new(),
         };
         let bytes = encode_timeline(&payload);
-        promote_timeline_record(&graph, "evt-timeline-ms", &1_700_000_006_000_000, &bytes)
+        promote_timeline_record(&scratch().await, &graph, "evt-timeline-ms", &1_700_000_006_000_000, &bytes)
             .await
             .unwrap();
         let rs = graph
