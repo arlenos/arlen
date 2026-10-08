@@ -21,6 +21,8 @@
     onclick,
     onremove,
     tooltip,
+    prefix,
+    removeLabel,
     class: className,
   }: {
     label: string;
@@ -34,6 +36,12 @@
     /// The chip's identity when its label is shorter than it, as the kit
     /// tooltip (a file's path behind its name; design-system 6.6).
     tooltip?: string;
+    /// A quiet word before the label naming what kind of thing it is (a filter's
+    /// group: "Type" before "PDF, Images"). Read with the label.
+    prefix?: string;
+    /// The remove control's name when "Remove <label>" would say the wrong
+    /// thing (a filter chip removes its group, not one value).
+    removeLabel?: string;
     class?: string;
   } = $props();
 </script>
@@ -56,16 +64,18 @@
   {#if onclick}
     <button type="button" class="chip-body" {onclick}>
       {#if lead}<span class="chip-lead" aria-hidden="true">{@render lead()}</span>{/if}
+      {#if prefix}<span class="chip-prefix">{prefix}</span>{/if}
       <span class="chip-label">{label}</span>
     </button>
   {:else}
     <span class="chip-body">
       {#if lead}<span class="chip-lead" aria-hidden="true">{@render lead()}</span>{/if}
+      {#if prefix}<span class="chip-prefix">{prefix}</span>{/if}
       <span class="chip-label">{label}</span>
     </span>
   {/if}
   {#if onremove}
-    <button type="button" class="chip-x" aria-label={$kt("k.chip.remove", { label })} onclick={onremove}>
+    <button type="button" class="chip-x" aria-label={removeLabel ?? $kt("k.chip.remove", { label })} onclick={onremove}>
       <X size={12} strokeWidth={2.5} />
     </button>
   {/if}
@@ -102,6 +112,10 @@
   }
   button.chip-body:hover {
     color: var(--foreground);
+  }
+  .chip-prefix {
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .chip-lead {
     display: inline-flex;
