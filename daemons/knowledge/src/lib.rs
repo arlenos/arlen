@@ -35,6 +35,7 @@ pub mod cypher;
 pub mod db;
 pub mod derivation;
 pub mod drift;
+pub mod fact_index;
 pub mod fts;
 pub mod fuse;
 pub mod graph;

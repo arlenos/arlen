@@ -266,6 +266,9 @@ async fn run_pass(
     if let Err(e) = index_project_fact_text(pool, graph).await {
         warn!(error = %e, "could not index project keyword text");
     }
+    if let Err(e) = crate::fact_index::index_nodes(pool, graph).await {
+        warn!(error = %e, "could not index node keyword text");
+    }
 
     let hwm = read_hwm(pool).await?;
 
