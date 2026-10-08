@@ -19,6 +19,12 @@ SPDX-License-Identifier: AGPL-3.0-only
   import { onMount, tick } from "svelte";
   import { Switch } from "$lib/components/ui/switch";
   import { Checkbox } from "$lib/components/ui/checkbox";
+  import {
+    Collapsible,
+    CollapsibleTrigger,
+    CollapsibleContent,
+    CollapsibleChevron,
+  } from "$lib/components/ui/collapsible";
 
   let flipped = $state(false);
   let dark = $state(false);
@@ -68,6 +74,25 @@ SPDX-License-Identifier: AGPL-3.0-only
       <Checkbox checked={flipped} disabled ariaLabel="disabled" />
     </div>
   </section>
+
+  <section>
+    <h2>Disclosure</h2>
+    <div class="discl">
+      <Collapsible open={flipped}>
+        <CollapsibleTrigger class="discl-trigger"><CollapsibleChevron />Advanced</CollapsibleTrigger>
+        <CollapsibleContent>
+          <p>Three lines of settings that sit behind the expander until someone asks for them.</p>
+          <p>A second paragraph, so the height is not a single line.</p>
+        </CollapsibleContent>
+      </Collapsible>
+      <Collapsible open={!flipped}>
+        <CollapsibleTrigger class="discl-trigger">Earlier message<CollapsibleChevron from="down" /></CollapsibleTrigger>
+        <CollapsibleContent>
+          <p>The body of a message in a thread, folded away once a later one arrives.</p>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  </section>
 </div>
 
 <style>
@@ -95,6 +120,29 @@ SPDX-License-Identifier: AGPL-3.0-only
   }
   section {
     margin-bottom: 1.5rem;
+  }
+  .discl {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    max-width: 40rem;
+    align-items: start;
+  }
+  .discl :global(.discl-trigger) {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font: inherit;
+    font-size: 0.85rem;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    padding: 0;
+  }
+  .discl p {
+    font-size: 0.8rem;
+    opacity: 0.75;
+    margin: 0.5rem 0 0;
   }
   .row {
     display: flex;
