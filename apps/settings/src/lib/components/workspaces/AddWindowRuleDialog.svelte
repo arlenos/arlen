@@ -46,9 +46,12 @@
     try {
       new RegExp(pattern);
       return null;
-    } catch (e) {
-      // The engine's own message when it has one; ours only when it does not.
-      return e instanceof Error ? e.message : $t("s.wr.invalidRegex");
+    } catch {
+      // Always our sentence. The engine's own message is developer English
+      // ("Invalid regular expression: /(/: Unterminated group") and reached a
+      // German reader untranslated under the field (design-system 6.11, thread
+      // three: a host's text is never the sentence).
+      return $t("s.wr.invalidRegex");
     }
   }
 
