@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Chip } from "@arlen/ui-kit/components/ui/chip";
   /// The store browse (store-app.md §8.1/§8.7, content-forward): search first,
   /// the capability facets as honest toggle chips, the hand-picked editorial
   /// collections, then the whole catalogue. Discovery is plain and good - no
@@ -115,37 +116,25 @@
 
       <div class="facets" role="group" aria-label={$t("st.search")}>
         {#each FACETS as f (f.key)}
-          <button
-            type="button"
-            class="chip"
-            class:on={active.has(f.key)}
-            aria-pressed={active.has(f.key)}
+          <Chip
             id={`facet-${f.key}`}
+            label={$t(f.labelKey)}
+            pressed={active.has(f.key)}
             onclick={() => toggleFacet(f.key)}
-          >
-            {$t(f.labelKey)}
-          </button>
+          />
         {/each}
-        <button
-          type="button"
-          class="chip"
-          class:on={leastPrivilege}
-          aria-pressed={leastPrivilege}
+        <Chip
           id="facet-least-privilege"
+          label={$t("st.sort.leastPrivilege")}
+          pressed={leastPrivilege}
           onclick={() => (leastPrivilege = !leastPrivilege)}
-        >
-          {$t("st.sort.leastPrivilege")}
-        </button>
-        <button
-          type="button"
-          class="chip"
-          class:on={showCommunity}
-          aria-pressed={showCommunity}
+        />
+        <Chip
           id="facet-community"
+          label={$t("st.facet.community")}
+          pressed={showCommunity}
           onclick={() => (showCommunity = !showCommunity)}
-        >
-          {$t("st.facet.community")}
-        </button>
+        />
       </div>
 
       {#if filtering}
@@ -224,22 +213,6 @@
     margin-bottom: 1.5rem;
   }
   /* Honest toggle chips in the quiet-chip language; active = a stronger fill. */
-  .chip {
-    padding: 0.25rem 0.7rem;
-    border: none;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-    transition: background var(--duration-fast, 150ms) ease, color var(--duration-fast, 150ms) ease;
-  }
-  .chip:hover {
-    background: color-mix(in srgb, var(--color-fg-primary) 13%, transparent);
-  }
-  .chip.on {
-    background: color-mix(in srgb, var(--color-fg-primary) 88%, transparent);
-    color: var(--color-fg-inverse);
-  }
   .group-label {
     margin: 1.25rem 0 0.6rem;
     font-size: var(--text-2xs);

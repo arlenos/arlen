@@ -34,4 +34,12 @@ describe("chip", () => {
       locale.set(before);
     }
   });
+
+  it("is a filter toggle with pressed, its id on the button", () => {
+    const { container } = render(Chip, { label: "Verified", id: "facet-verified", pressed: true, onclick: () => {} });
+    const b = container.querySelector("button")!;
+    expect(b.id).toBe("facet-verified");
+    expect(b.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector(".chip")?.classList.contains("on")).toBe(true);
+  });
 });

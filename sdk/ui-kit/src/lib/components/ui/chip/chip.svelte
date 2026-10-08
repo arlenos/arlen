@@ -26,6 +26,7 @@
     meta,
     trail,
     actionLabel,
+    pressed,
     class: className,
   }: {
     label: string;
@@ -52,6 +53,9 @@
     /// The press's accessible name when the label alone does not say what it
     /// does ("Save report.pdf"); only read with `onclick`.
     actionLabel?: string;
+    /// A filter chip that is on or off: set it (with `onclick`) and the chip
+    /// reports `aria-pressed` and fills while it is on.
+    pressed?: boolean;
     class?: string;
   } = $props();
 </script>
@@ -70,9 +74,11 @@
 {/if}
 
 {#snippet chip(attrs: Record<string, unknown>)}
-<span class="chip {className ?? ''}" class:has-x={!!onremove} {id} {...attrs}>
+<span class="chip {className ?? ''}" class:has-x={!!onremove} class:on={pressed === true} id={onclick ? undefined : id} {...attrs}>
   {#if onclick}
-    <button type="button" class="chip-body" aria-label={actionLabel} {onclick}>
+    <!-- The id goes on the control a person presses, not its wrapper, so a
+         deep link or a test that finds it by id lands on something clickable. -->
+    <button type="button" class="chip-body" {id} aria-label={actionLabel} aria-pressed={pressed} {onclick}>
       {#if lead}<span class="chip-lead" aria-hidden="true">{@render lead()}</span>{/if}
       {#if prefix}<span class="chip-prefix">{prefix}</span>{/if}
       <span class="chip-label">{label}</span>
@@ -131,6 +137,19 @@
      and shows keyboard focus on the chip rather than on its inner text. */
   .chip:has(> button.chip-body:hover) {
     background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  }
+  /* On: the chip takes the foreground as its fill, the strongest state a chip
+     has, so a row of filters reads at a glance. */
+  .chip.on {
+    background: color-mix(in srgb, var(--foreground) 88%, transparent);
+    color: var(--background);
+  }
+  .chip.on:has(> button.chip-body:hover) {
+    background: var(--foreground);
+  }
+  .chip.on .chip-prefix,
+  .chip.on .chip-meta {
+    color: color-mix(in srgb, var(--background) 70%, transparent);
   }
   button.chip-body:focus-visible {
     outline: none;
