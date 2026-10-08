@@ -80,6 +80,21 @@ pub enum Fact {
         from: (String, String),
         at: i64,
     },
+    /// One occurrence of something that recurs between two nodes - an app
+    /// launching another. The record keeps every occurrence under its own `id`;
+    /// the graph keeps ONE edge per pair whose `count`, `first_seen` and
+    /// `last_seen` the projection computes from the record, over DISTINCT ids, so
+    /// a fact journaled twice cannot count twice and a rebuild arrives at the same
+    /// numbers. One edge per pair is a privacy property, not an economy: an edge
+    /// per exec would be the minute-by-minute activity map `provenance-halo.md`
+    /// §7 forbids.
+    Occurrence {
+        rel: String,
+        id: String,
+        from: (String, String),
+        to: (String, String),
+        at: i64,
+    },
 }
 
 impl Fact {
@@ -222,6 +237,20 @@ pub async fn record(tx: &mut Transaction<'_, Sqlite>, facts: &[(Fact, Origin)]) 
                 .bind(stamps.invalid_at)
                 .bind(stamps.created_at)
                 .bind(stamps.expired_at),
+            Fact::Occurrence { rel, id, from, to, at } => q
+                .bind("occurrence")
+                .bind(rel)
+                .bind(id)
+                .bind(&from.0)
+                .bind(&from.1)
+                .bind(&to.0)
+                .bind(&to.1)
+                .bind("{}")
+                .bind("{}")
+                .bind(Some(*at))
+                .bind(None::<i64>)
+                .bind(None::<i64>)
+                .bind(None::<i64>),
             Fact::CloseFrom { rel, from, at } => q
                 .bind("close_from")
                 .bind(rel)
@@ -312,6 +341,18 @@ fn row_to_fact(r: Row) -> Result<Fact> {
                 op_id: (!id.is_empty()).then_some(id),
                 stamps: Stamps { valid_at: va, invalid_at: ia, created_at: ca, expired_at: ea },
                 props: serde_json::from_str(&props)?,
+            }
+        }
+        "occurrence" => {
+            let (Some(fl), Some(fi), Some(tl), Some(ti)) = (fl, fi, tl, ti) else {
+                bail!("journal occurrence row without both endpoints");
+            };
+            Fact::Occurrence {
+                rel: label,
+                id,
+                from: (fl, fi),
+                to: (tl, ti),
+                at: va.ok_or_else(|| anyhow::anyhow!("journal occurrence row without its time"))?,
             }
         }
         "close_from" => {
@@ -438,6 +479,9 @@ pub fn project(fact: &Fact) -> Result<String> {
                 None => Ok(format!("{head} MERGE (a)-[r:{rel}]->(b) SET {}", set.join(", "))),
             }
         }
+        Fact::Occurrence { .. } => {
+            bail!("an occurrence is projected from the record's aggregate; see project_occurrence")
+        }
         Fact::CloseFrom { rel, from, at } => Ok(format!(
             "MATCH (a:{} {{id: '{}'}})-[r:{}]->() \
              WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
@@ -474,6 +518,58 @@ pub async fn commit_and_project(
     Ok(())
 }
 
+/// How often `rel` has occurred between `from` and `to` in the record up to and
+/// including `seq`, and the first and last time: counted over distinct ids.
+async fn occurrence_tally(
+    pool: &SqlitePool,
+    rel: &str,
+    from: &(String, String),
+    to: &(String, String),
+    seq: i64,
+) -> Result<(i64, i64, i64)> {
+    let row: (i64, Option<i64>, Option<i64>) = sqlx::query_as(
+        "SELECT count(DISTINCT id), min(valid_at), max(valid_at) FROM facts
+         WHERE op = 'occurrence' AND label = ? AND from_label = ? AND from_id = ?
+           AND to_label = ? AND to_id = ? AND seq <= ?",
+    )
+    .bind(rel)
+    .bind(&from.0)
+    .bind(&from.1)
+    .bind(&to.0)
+    .bind(&to.1)
+    .bind(seq)
+    .fetch_one(pool)
+    .await?;
+    Ok((row.0, row.1.unwrap_or(0), row.2.unwrap_or(0)))
+}
+
+/// The Cypher for an occurrence: the pair's one edge, carrying the tally.
+fn project_occurrence(fact: &Fact, tally: (i64, i64, i64)) -> Result<String> {
+    let Fact::Occurrence { rel, from, to, .. } = fact else {
+        bail!("not an occurrence");
+    };
+    let (count, first, last) = tally;
+    Ok(format!(
+        "MATCH (a:{} {{id: '{}'}}), (b:{} {{id: '{}'}}) MERGE (a)-[l:{}]->(b) \
+         SET l.count = {count}, l.first_seen = {first}, l.last_seen = {last}",
+        ident(&from.0)?,
+        escape_cypher(&from.1),
+        ident(&to.0)?,
+        escape_cypher(&to.1),
+        ident(rel)?,
+    ))
+}
+
+/// The statement that makes the fact at `seq` true in Ladybug.
+async fn statement(pool: &SqlitePool, seq: i64, fact: &Fact) -> Result<String> {
+    match fact {
+        Fact::Occurrence { rel, from, to, .. } => {
+            project_occurrence(fact, occurrence_tally(pool, rel, from, to, seq).await?)
+        }
+        other => project(other),
+    }
+}
+
 /// Apply every fact after the projected mark to `graph`, in order. Returns how
 /// many facts were applied.
 ///
@@ -492,7 +588,7 @@ pub async fn project_pending(pool: &SqlitePool, graph: &crate::graph::GraphHandl
         }
         let mut last = from;
         for (seq, fact) in batch {
-            if let Err(e) = async { graph.write(project(&fact)?).await }.await {
+            if let Err(e) = async { graph.write(statement(pool, seq, &fact).await?).await }.await {
                 if last > from {
                     set_projected_seq(pool, last).await?;
                 }
@@ -544,6 +640,13 @@ mod tests {
             },
             Fact::Close { rel: "FILE_PART_OF".into(), op_id: "op-1".into(), at: 9 },
             Fact::CloseFrom { rel: "HAS_VERSION".into(), from: ("Annotation".into(), "a1".into()), at: 11 },
+            Fact::Occurrence {
+                rel: "LAUNCHED".into(),
+                id: "ev-9".into(),
+                from: ("App".into(), "shell".into()),
+                to: ("App".into(), "files".into()),
+                at: 12,
+            },
         ];
         let tagged: Vec<_> = facts.iter().cloned().map(|f| (f, origin())).collect();
         let mut tx = pool.begin().await.unwrap();
@@ -677,6 +780,41 @@ mod tests {
             bytes,
             bytes / (opens as u64 * 5),
         );
+    }
+
+    /// A launch journaled twice - the retry path does that - still counts once,
+    /// and the pair keeps one edge however often it recurs.
+    #[tokio::test]
+    async fn an_occurrence_counts_distinct_ids_on_one_edge() {
+        let (pool, dir) = pool().await;
+        let occ = |id: &str, at: i64| Fact::Occurrence {
+            rel: "LAUNCHED".into(),
+            id: id.into(),
+            from: ("App".into(), "shell".into()),
+            to: ("App".into(), "files".into()),
+            at,
+        };
+        let facts = vec![
+            Fact::node("App", "shell", &[]),
+            Fact::node("App", "files", &[]),
+            occ("e1", 10),
+            occ("e2", 20),
+            occ("e2", 20),
+            occ("e3", 30),
+        ];
+        let mut tx = pool.begin().await.unwrap();
+        record(&mut tx, &facts.into_iter().map(|f| (f, origin())).collect::<Vec<_>>()).await.unwrap();
+        tx.commit().await.unwrap();
+        let graph = crate::graph::spawn(dir.path().join("g").to_str().unwrap()).unwrap();
+        project_pending(&pool, &graph).await.unwrap();
+        let rs = graph
+            .query_rows("MATCH ()-[l:LAUNCHED]->() RETURN l.count, l.first_seen, l.last_seen".into())
+            .await
+            .unwrap();
+        assert_eq!(rs.rows.len(), 1, "one edge for the pair");
+        assert_eq!(rs.rows[0][0].as_i64(), 3, "e2 journaled twice counts once");
+        assert_eq!(rs.rows[0][1].as_i64(), 10);
+        assert_eq!(rs.rows[0][2].as_i64(), 30);
     }
 
     #[test]
