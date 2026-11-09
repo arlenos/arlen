@@ -1,7 +1,7 @@
 <script lang="ts">
   /// The Console archetype's block primitive (design-system.md §5.3,
   /// terminal.md §4.2): one command plus its result, rendered as a
-  /// quiet unit. The command stays the star — the header row carries
+  /// quiet unit. The command stays the star - the header row carries
   /// the marker, the command in mono and the result (exit chip only
   /// when something went wrong, duration always once finished);
   /// actions show on hover only; a thin divider closes the block.
@@ -26,7 +26,7 @@
     actions,
     children,
   }: {
-    /// The command line that ran. Arbitrary bytes by contract — it is
+    /// The command line that ran. Arbitrary bytes by contract - it is
     /// rendered as text only.
     command: string;
     /// The context already carries the whole prompt + command line (the
@@ -39,16 +39,16 @@
     exitCode?: number | null;
     /// Wall-clock duration once finished; null while running.
     durationMs?: number | null;
-    /// True while the command is still executing — shows the quiet
+    /// True while the command is still executing - shows the quiet
     /// running indicator instead of the result.
     running?: boolean;
     /// The prompt context (path + git), rendered inline before the
-    /// marker — one line like a real shell prompt.
+    /// marker - one line like a real shell prompt.
     context?: Snippet;
     /// The origin marker rendered before the command (prompt char).
     marker?: Snippet;
     /// Optional header-right inline content (e.g. the table lens
-    /// toggle) — visible always, sits before the result.
+    /// toggle) - visible always, sits before the result.
     lens?: Snippet;
     /// Hover-only actions at the right edge of the header.
     actions?: Snippet;
@@ -183,7 +183,7 @@
     align-items: center;
   }
 
-  /* Actions appear on block hover only — the resting block is quiet. */
+  /* Actions appear on block hover only - the resting block is quiet. */
   .cb-actions {
     flex-shrink: 0;
     display: inline-flex;

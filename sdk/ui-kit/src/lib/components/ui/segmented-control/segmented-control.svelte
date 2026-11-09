@@ -15,7 +15,7 @@
   import * as Tooltip from "../tooltip";
 
   /// Any icon component taking size/strokeWidth (a Lucide icon from
-  /// whichever package instance the host app carries — the nominal
+  /// whichever package instance the host app carries - the nominal
   /// Lucide types differ across installs, the shape does not).
   type IconLike = Component<{ size?: number | string; strokeWidth?: number | string }>;
 
@@ -82,7 +82,7 @@
     return () => ro.disconnect();
   });
 
-  // Roving tabindex: exactly one radio is tabbable — the selected one, or the
+  // Roving tabindex: exactly one radio is tabbable - the selected one, or the
   // first when nothing is selected yet (the WAI-ARIA radio-group pattern).
   const tabbableIndex = $derived.by(() => {
     const i = options.findIndex((o) => o.value === value);

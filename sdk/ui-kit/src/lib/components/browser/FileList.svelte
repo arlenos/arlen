@@ -4,7 +4,7 @@
   /// goes through the controller (the backend sorts, the view only
   /// asks). Rows are windowed against the scrolling host, so a
   /// hundred-thousand-entry folder costs the viewport, not the
-  /// listing — two spacers keep the scrollbar honest.
+  /// listing - two spacers keep the scrollbar honest.
   import { onMount } from "svelte";
   import type { Snippet } from "svelte";
   import { ChevronDown, ChevronUp } from "@lucide/svelte";

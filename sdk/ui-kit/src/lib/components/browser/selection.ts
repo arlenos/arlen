@@ -125,7 +125,7 @@ export class Selection {
 
   /// Replace the selection with an arbitrary index set (the marquee:
   /// a grid rectangle is non-contiguous in index space). An extension
-  /// over the Rust model — flagged, not silently divergent. `additive`
+  /// over the Rust model - flagged, not silently divergent. `additive`
   /// keeps the existing selection.
   setSelected(indices: number[], additive = false): void {
     if (!additive) this.selected.clear();

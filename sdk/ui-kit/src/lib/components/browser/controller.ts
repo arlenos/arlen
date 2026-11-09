@@ -1,5 +1,5 @@
 /// The headless browser controller: one instance is one navigable
-/// location with its own history, sort and listing — a tab IS a
+/// location with its own history, sort and listing - a tab IS a
 /// controller, the host keeps N of them and mounts one FileBrowser.
 /// Adapter results land in writable stores (the project rule: IPC
 /// continuations never mutate `$state`), guarded by a navigation
@@ -11,7 +11,7 @@ import { joinPath, parentPath } from "./types";
 import { isVirtualLocation } from "./breadcrumb";
 
 /// How the browser renders a listing. Dual-pane is deliberately NOT a
-/// view mode — it is a host layout of two browsers.
+/// view mode - it is a host layout of two browsers.
 export type ViewMode = "list" | "grid" | "miller";
 
 export interface BrowserState {
@@ -99,7 +99,7 @@ export function createBrowserState(
 
   // Thumbnail cache: full path + mtime keys (path-scoped, so two
   // directories sharing a name never collide; an edited file refetches
-  // via its new mtime). Nulls are cached too — a broken image must not
+  // via its new mtime). Nulls are cached too - a broken image must not
   // re-invoke on every scroll pass. Insertion order doubles as the LRU
   // order, touched on request; navigation keeps the map (the keys stay
   // valid), refresh distrusts it like the listing cache.

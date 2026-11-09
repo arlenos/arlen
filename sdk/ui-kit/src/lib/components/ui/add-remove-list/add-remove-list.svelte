@@ -14,7 +14,7 @@
   ///
   /// The Add trigger is opaque: the consumer wires `onadd` to whatever
   /// dialog or picker their data type needs. We deliberately don't
-  /// bake a picker into this list — different consumers need different
+  /// bake a picker into this list - different consumers need different
   /// pickers (DirectoryPicker, AppPicker, plain text input, etc.).
 
   import type { Snippet } from "svelte";

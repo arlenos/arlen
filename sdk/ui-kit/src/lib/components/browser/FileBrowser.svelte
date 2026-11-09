@@ -10,7 +10,7 @@
   /// internally (every host wants that); everything else calls
   /// `onactivate` and the host decides (the FM opens, the picker
   /// confirms). Hosted unchanged by the FM app and the confined xdg
-  /// picker — nothing in here may assume ambient filesystem access
+  /// picker - nothing in here may assume ambient filesystem access
   /// or a particular window chrome.
   import type { Snippet } from "svelte";
   import type { BrowserState } from "./controller";
@@ -371,7 +371,7 @@
       for (let i = lo; i <= hi; i++) hits.push(i);
     } else {
       // The grid windows its tiles, so intersection runs on the same
-      // metric the grid reported — scrolled-away tiles still select.
+      // metric the grid reported - scrolled-away tiles still select.
       const g = gridMetrics;
       if (!g) return;
       const m = marquee;
@@ -506,7 +506,7 @@
     </div>
   {:else if $viewMode === "grid"}
     <!-- Thumbnails ride the grid only (the doc's default; "on-demand
-         in list view" has no specified control yet — flagged, not
+         in list view" has no specified control yet - flagged, not
          invented). -->
     <FileGrid
       entries={visible}

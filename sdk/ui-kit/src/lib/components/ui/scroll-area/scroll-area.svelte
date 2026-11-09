@@ -72,7 +72,7 @@
 		flex: 1;
 		border-radius: 9999px;
 		/* 38% gives visible contrast on both shell-popover (dark) and
-		   app-surface (light) backgrounds — matches macOS / GNOME
+		   app-surface (light) backgrounds - matches macOS / GNOME
 		   scrollbar tone. */
 		background: color-mix(in srgb, var(--foreground) 38%, transparent);
 		min-height: 24px;

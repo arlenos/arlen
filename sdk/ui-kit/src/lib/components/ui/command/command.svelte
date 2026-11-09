@@ -19,7 +19,7 @@
 </script>
 
 <!-- Surface colors belong to the consumer (the shell's waypointer
-     paints itself via its .wp-root class) — a kit primitive must not
+     paints itself via its .wp-root class) - a kit primitive must not
      hardcode shell tokens, and an inline style here would force every
      consumer override into !important. -->
 <CommandPrimitive.Root

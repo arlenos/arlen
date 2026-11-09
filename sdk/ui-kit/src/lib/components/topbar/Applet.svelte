@@ -5,7 +5,7 @@
   /// trigger, and module-side applet routes through. Shell owns the
   /// chrome (button frame, hover, focus, tooltip, badge layering,
   /// hit-target sizing) so plugin authors physically can't ship a
-  /// visually divergent applet — they only provide content (icon,
+  /// visually divergent applet - they only provide content (icon,
   /// optional inline label, optional badge, click handler).
   ///
   /// Sizing comes from the shell-level CSS tokens declared on the
@@ -14,17 +14,17 @@
   /// comfortable" topbar variants update every applet at once.
   ///
   /// State naming is explicit (no overloaded `active` prop):
-  ///   * `popoverOpen` — the applet's popover surface is currently
+  ///   * `popoverOpen` - the applet's popover surface is currently
   ///     visible. Drives the accent-tinted "selected" look.
-  ///   * `state` — semantic underlying status:
-  ///       "on"        — connected / enabled / playing
-  ///       "off"       — disconnected / disabled
-  ///       "connecting"— transient pending state
-  ///       "warn"      — caution (e.g. low battery)
-  ///       "error"     — critical (e.g. unreachable adapter)
-  ///   * `dimmed` — render at 40% opacity to signal low-priority /
+  ///   * `state` - semantic underlying status:
+  ///       "on"        - connected / enabled / playing
+  ///       "off"       - disconnected / disabled
+  ///       "connecting"- transient pending state
+  ///       "warn"      - caution (e.g. low battery)
+  ///       "error"     - critical (e.g. unreachable adapter)
+  ///   * `dimmed` - render at 40% opacity to signal low-priority /
   ///     not-currently-relevant. Independent of `state`.
-  ///   * `disabled` — non-interactive (no click). Tooltip still
+  ///   * `disabled` - non-interactive (no click). Tooltip still
   ///     shows so the user can read why.
   ///
   /// Tooltip behaviour:
@@ -69,7 +69,7 @@
     /// (120px default).
     label?: string;
     /// Escape-hatch for callers that need richer label content than
-    /// a single styled string — e.g. Clock with a dim weekday +
+    /// a single styled string - e.g. Clock with a dim weekday +
     /// bright time on the same row. When provided, takes precedence
     /// over the `label` string. Caller is responsible for sizing
     /// the snippet content within the topbar's height envelope.
@@ -88,7 +88,7 @@
     /// `true` while this applet's popover is rendered. Drives the
     /// accent-tinted "open" look and suppresses the tooltip.
     popoverOpen?: boolean;
-    /// Semantic underlying status — see the AppletState enum
+    /// Semantic underlying status - see the AppletState enum
     /// docstring above. Optional; absence means "neutral / no
     /// state-coloured chrome".
     state?: AppletState;
@@ -111,19 +111,19 @@
     /// preventDefault. Most applets won't need this.
     onWheel?: (e: WheelEvent) => void;
     /// Override for the accessible name when it should differ from
-    /// the tooltip text — e.g. a NotificationsTrigger with
+    /// the tooltip text - e.g. a NotificationsTrigger with
     /// "Notifications" tooltip but "3 unread notifications" aria.
     ariaLabel?: string;
   } = $props();
 
   // Dev-mode validation: every applet must have something for
   // assistive tech to announce. An applet without icon + label +
-  // tooltip is a silent button — caught at compile time would be
+  // tooltip is a silent button - caught at compile time would be
   // ideal, runtime warning is the next-best safeguard.
   $effect(() => {
     if (!icon && !label && !tooltip) {
       console.warn(
-        "[Applet] No icon, label, or tooltip provided — accessible name is empty.",
+        "[Applet] No icon, label, or tooltip provided - accessible name is empty.",
       );
     }
   });
@@ -275,7 +275,7 @@
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
   }
 
-  /* Semantic state colours — applied only to the icon, not the bg,
+  /* Semantic state colours - applied only to the icon, not the bg,
      so they read as foreground accents without competing with the
      popover-open state's bg-tint. */
   .applet.state-on:not(.popover-open) {
@@ -340,7 +340,7 @@
     z-index: 1;
   }
 
-  /* Tooltip styling — applies through the bits-ui portal. The
+  /* Tooltip styling - applies through the bits-ui portal. The
      content class lands as `.applet-tooltip` on the portal'd
      div regardless of where it renders in the DOM. */
   :global(.applet-tooltip) {

@@ -3,7 +3,7 @@
   /// Arlen Color Picker (Tier 1: HSV pad + hue slider + hex input).
   ///
   /// Replaces the native `<input type="color">` which on Wayland +
-  /// Tauri opens GTK's stock chooser dialog — visually inconsistent
+  /// Tauri opens GTK's stock chooser dialog - visually inconsistent
   /// with the rest of the shell. This component is themed via the
   /// existing CSS variables (`--color-bg-card`, `--color-fg-shell`,
   /// `--radius-md` etc.) so it inherits the active theme.

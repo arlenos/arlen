@@ -4,7 +4,7 @@
   ///
   /// Canonical source lives in `sdk/ui-kit`; consuming apps keep file
   /// copies under their own `src/lib/components/ui/confirm-dialog/`
-  /// (Tailwind scope hashing breaks across symlinked components — sync
+  /// (Tailwind scope hashing breaks across symlinked components - sync
   /// by copying when this file changes).
   ///
   /// Controlled from the parent via `open`. Parent supplies title,

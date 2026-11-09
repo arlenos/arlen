@@ -2,7 +2,7 @@
   /// Quick Settings slider tile (sound, brightness).
   ///
   /// Composes BaseTile for the whole tile chrome (head, status
-  /// strip, detail affordances) and FillSlider for the control —
+  /// strip, detail affordances) and FillSlider for the control -
   /// this file only wires the two together and renders the percent
   /// readout in the head's trailing slot. Always a 2x1 cell.
   import type { Snippet } from "svelte";

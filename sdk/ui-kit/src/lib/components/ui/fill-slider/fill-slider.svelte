@@ -7,11 +7,11 @@
   /// (matching radius-input, fg-shell-tinted track, hover treatment).
   ///
   /// Pointer interaction is a hidden full-overlay `<input type="range">`
-  /// — keeps native drag, click-to-jump, keyboard arrows (Left/Right,
+  /// - keeps native drag, click-to-jump, keyboard arrows (Left/Right,
   /// Home/End, PageUp/PageDown), and accessibility for free.
   ///
   /// Stateless: caller passes `value`, receives changes via `oninput`.
-  /// The component does not own state — that lets backends (logind
+  /// The component does not own state - that lets backends (logind
   /// brightness, wpctl volume, fs-watched config files) stay
   /// authoritative.
 
@@ -31,8 +31,8 @@
     min?: number;
     max?: number;
     step?: number;
-    /// `"default"` — 24px, for QuickSettings tiles and Settings rows
-    /// where the slider has its own breathing room. `"sm"` — 12px,
+    /// `"default"` - 24px, for QuickSettings tiles and Settings rows
+    /// where the slider has its own breathing room. `"sm"` - 12px,
     /// for dense popover rows that sit alongside small icons / value
     /// text where a chunky bar would dominate the layout. Mirrors
     /// `Switch`'s `default`/`sm` size pattern.
@@ -79,7 +79,7 @@
   /* Wrapper height matches the standard inline-control register
      (28 / 24) so the click area aligns vertically with sibling
      Input / Select / TimeInput / etc. in a settings row. The
-     VISIBLE track inside is much thinner (8 / 6) — slider's visual
+     VISIBLE track inside is much thinner (8 / 6) - slider's visual
      mass should match a 1px-bordered input's empty interior, not
      a solid filled rectangle. Adwaita uses 10px track, Apple ~4-6,
      so 8 default sits in the middle. See
@@ -95,7 +95,7 @@
     opacity: var(--control-disabled-opacity, 0.5);
   }
 
-  /* Track is the VISIBLE bar — not the wrapper. It's centred
+  /* Track is the VISIBLE bar - not the wrapper. It's centred
      vertically inside the wrapper, with the slim outer wrapper
      providing the larger hit-target. */
   .ln-fill-slider-track {
@@ -116,7 +116,7 @@
   /* Visible-bar sizing: mid-register between "thin Adwaita track"
      (8-10px, hard to aim at on touchpads) and "full filled
      rectangle" (24-28px, dominates the row). 18 / 14 lands at ~65%
-     of wrapper height — clearly a bar with comfortable hit-feel,
+     of wrapper height - clearly a bar with comfortable hit-feel,
      visually paired with the 18px Switch (both specialised). */
   .ln-fill-slider.default .ln-fill-slider-track {
     height: 18px;

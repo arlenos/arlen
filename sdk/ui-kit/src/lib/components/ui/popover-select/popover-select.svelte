@@ -44,7 +44,7 @@
     /// Shown in the trigger when `options` is empty or none matches
     /// `value`. The default covers the common "still loading" case
     /// for callers that populate `options` asynchronously (AudioPopover
-    /// polls the devices after mount — without a placeholder the
+    /// polls the devices after mount - without a placeholder the
     /// trigger would try to render `undefined.label` and crash the
     /// whole surrounding popover).
     placeholder?: string;
@@ -121,7 +121,7 @@
   }
 
   /// Move the menu into `document.body` so it is not clipped by any
-  /// overflow-hidden ancestor. Svelte still owns the node — `bind:this`
+  /// overflow-hidden ancestor. Svelte still owns the node - `bind:this`
   /// on the same element keeps `menuRef` valid across the move, so the
   /// outside-click check below works unchanged.
   function portal(node: HTMLElement) {
@@ -171,7 +171,7 @@
       document.addEventListener("keydown", onKey);
     });
     // `capture: true` on scroll catches every scroll container in the
-    // ancestry, not just the window — settings panels live inside a
+    // ancestry, not just the window - settings panels live inside a
     // scrollable content column.
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);
@@ -281,7 +281,7 @@
     border-color: color-mix(in srgb, var(--foreground) 20%, transparent);
   }
 
-  /* One label class serves the trigger and the menu items — the
+  /* One label class serves the trigger and the menu items - the
      two used to be byte-identical copies. */
   .ps-label {
     flex: 1;

@@ -1,6 +1,6 @@
 <script lang="ts">
   /// Predictable action row: `start` content (left, grows + truncates) and
-  /// `end` content (right, fixed) with consistent spacing — so page/section
+  /// `end` content (right, fixed) with consistent spacing - so page/section
   /// headers (title + search + buttons) stop being hand-rolled flex markup.
   /// Falls back to plain `children` when the start/end split is not needed.
   import type { Snippet } from "svelte";

@@ -1,7 +1,7 @@
 <script lang="ts">
   /// Seven small day-of-week pills. Stored as `[0..6]` where 0 = Monday
   /// (matching the daemon's `DndSchedule.days` schema). An empty array
-  /// is rendered as "every day" upstream — this picker shows all pills
+  /// is rendered as "every day" upstream - this picker shows all pills
   /// inactive in that case and lets the user opt in.
   ///
   /// The names come from `Intl.DateTimeFormat`, not from the catalog. Weekday

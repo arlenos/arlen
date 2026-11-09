@@ -58,7 +58,7 @@
   --radius-3xl: 32px;
   --radius-full: 9999px;
 
-  /* Type scale — a base-relative ladder off the theme's --font-size-base
+  /* Type scale - a base-relative ladder off the theme's --font-size-base
      (emitted by sdk/theme, driven live by the Appearance "Text size" slider).
      Both the scoped primitives and the Tailwind text-* utilities read these,
      so one knob scales the whole UI. The fallback is the shipped theme's own
@@ -73,7 +73,7 @@
   --text-lg:  calc(var(--font-size-base) + 3px);
   --text-xl:  calc(var(--font-size-base) + 6px);
 
-  /* Sizing scale — see docs/architecture/sizing-system.md.
+  /* Sizing scale - see docs/architecture/sizing-system.md.
      Semantic naming over t-shirt sizing (mirrors theme-system.md
      radius tokens). Components pick a token by VISUAL ROLE.
      Variant props on components (sm/default/lg) are ergonomic
@@ -94,12 +94,12 @@
      No ad-hoc ms values anywhere.
 
      State rules for every interactive element:
-       Default    — base appearance
-       Hover      — subtle brightness shift, duration-fast ease-default
-       Active     — scale(0.97) or brightness decrease, duration-instant
-       Focus      — visible focus ring (accessibility, never remove)
-       Disabled   — opacity-50, cursor-not-allowed, no hover/active
-       Loading    — skeleton or spinner, never block interaction silently
+       Default    - base appearance
+       Hover      - subtle brightness shift, duration-fast ease-default
+       Active     - scale(0.97) or brightness decrease, duration-instant
+       Focus      - visible focus ring (accessibility, never remove)
+       Disabled   - opacity-50, cursor-not-allowed, no hover/active
+       Loading    - skeleton or spinner, never block interaction silently
 
      Tooltip standard:
        - Appears after 400ms hover delay (prevents tooltip spam)
@@ -224,7 +224,7 @@
   --radius-3xl: var(--radius-3xl, 32px);
   --radius-full: var(--radius-full, 9999px);
 
-  /* Type-scale utilities — text-2xs .. text-xl emit var(--text-*), the
+  /* Type-scale utilities - text-2xs .. text-xl emit var(--text-*), the
      :root ladder above, so Tailwind text sizes are base-relative and the
      "Text size" slider scales the whole UI (not just the terminal console). */
   --text-2xs:  var(--text-2xs);
@@ -243,7 +243,7 @@
   --radius-card: var(--radius-card, 12px);
   --radius-modal: var(--radius-modal, 16px);
 
-  /* Sizing-scale utilities — see docs/architecture/sizing-system.md.
+  /* Sizing-scale utilities - see docs/architecture/sizing-system.md.
      Generates h-tag, h-control-compact, h-control,
      h-control-prominent, h-control-emphasized, h-row, h-bar. */
   --height-tag:                 var(--height-tag, 20px);

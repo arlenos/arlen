@@ -2,7 +2,7 @@
 /// `/home/x/p` becomes `/`, `home`, `x`, `p`, each crumb carrying the
 /// absolute path navigating to it produces. `.`/`..` segments are
 /// ignored (the path bar shows canonical locations, not relative
-/// steps). Pure logic — an IPC round trip for this would be waste.
+/// steps). Pure logic - an IPC round trip for this would be waste.
 
 import type { Crumb } from "./types";
 

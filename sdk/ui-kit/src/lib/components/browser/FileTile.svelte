@@ -1,7 +1,7 @@
 <script lang="ts">
   /// One grid tile: a fixed media box over a two-line name. The box
   /// shows the thumbnail when the host resolved one (cover-cropped,
-  /// never stretched) and the icon otherwise — including while the
+  /// never stretched) and the icon otherwise - including while the
   /// image loads, so the swap is opacity-only and the layout never
   /// shifts. Fixed box + fixed name height make the tile height a
   /// constant the grid windowing can rely on. Same content voice as
@@ -38,7 +38,7 @@
     focused?: boolean;
     /// The quiet bottom-right corner signal: the filetype on a
     /// thumbnail (an image hides what it is), later the KG-state
-    /// overlay. Rendered only over a loaded thumbnail — the corner
+    /// overlay. Rendered only over a loaded thumbnail - the corner
     /// stays empty on plain icons by design (the icon already says
     /// the type).
     badge?: string | null;

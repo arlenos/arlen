@@ -1,7 +1,7 @@
 <script lang="ts">
   import { kt } from "../../i18n/messages.kit";
   /// One listing row in the detail view: icon, name, size, modified.
-  /// Dumb by design — selection, cursor and events come from the
+  /// Dumb by design - selection, cursor and events come from the
   /// list. Hidden entries speak at the secondary dim; a symlink shows
   /// its target as quiet trailing text. The `icon` snippet is the
   /// seam for themed and KG-state icons later.
@@ -77,7 +77,7 @@
 
   let draft = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
-  // Enter commits and unmounts the input, which fires blur — the
+  // Enter commits and unmounts the input, which fires blur - the
   // flag keeps that from committing a second time.
   let committed = false;
 

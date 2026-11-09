@@ -3,7 +3,7 @@
   ///
   /// Canonical source lives in `sdk/ui-kit`; consuming apps keep file
   /// copies under their own `src/lib/components/ui/number-input/`
-  /// (see the other shared primitives for why — Tailwind scope hashing
+  /// (see the other shared primitives for why - Tailwind scope hashing
   /// breaks across symlinked components). Sync by copying when this
   /// file changes.
   ///
@@ -13,7 +13,7 @@
   ///   28px is comfortably above the 24px desktop hit-target floor
   ///   and aligns with the rest of the inline-control register).
   /// * Native spin-buttons are hidden (they were the reason we built
-  ///   this component — they're <12px on most browsers).
+  ///   this component - they're <12px on most browsers).
   /// * Arrow-Up / Arrow-Down on the focused input still increment
   ///   because we keep `type="number"` and let the browser do it;
   ///   state syncs on `change` (blur / Enter).
@@ -79,7 +79,7 @@
     if (next !== value) onchange(next);
   }
 
-  /// Fires on blur / Enter — not on every keystroke. That lets the
+  /// Fires on blur / Enter - not on every keystroke. That lets the
   /// user type `1500` without the value being clamped to `max` in the
   /// middle of typing `1`, `15`, ...
   function handleChange(e: Event): void {
@@ -94,7 +94,7 @@
     if (clamped !== value) {
       onchange(clamped);
     } else {
-      // Parsed value equalled current — still re-sync the DOM in
+      // Parsed value equalled current - still re-sync the DOM in
       // case the user typed whitespace or a leading zero.
       (e.target as HTMLInputElement).value = String(value);
     }
@@ -155,7 +155,7 @@
   }
 
   /* Keyboard focus lands on the inner input (its own outline is
-     suppressed below) — the control's border carries the ring. */
+     suppressed below) - the control's border carries the ring. */
   .wrap:focus-within {
     border-color: var(--color-accent, var(--primary));
   }
@@ -187,7 +187,7 @@
   }
 
   /* A stepper at its bound dims individually; when the whole
-     control is disabled the wrap's opacity already covers it —
+     control is disabled the wrap's opacity already covers it -
      compounding the two used to fade the buttons to ~0.18. */
   .btn:disabled {
     opacity: 0.35;
@@ -217,7 +217,7 @@
   }
 
   .field input {
-    /* The spin-buttons in Chromium/Firefox are tiny — hide them and
+    /* The spin-buttons in Chromium/Firefox are tiny - hide them and
      * let our side buttons do the work. `appearance: textfield` is
      * still needed on Firefox to kill the reserved right-edge gutter.
      */

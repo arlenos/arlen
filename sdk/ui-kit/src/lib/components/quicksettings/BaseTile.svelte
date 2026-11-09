@@ -19,10 +19,10 @@
   /// ContextMenu key).
   ///
   /// Sizes:
-  ///   `1x1` — half-row (default). Square-ish tile.
-  ///   `2x1` — full-row, single height. Used for sliders and
+  ///   `1x1` - half-row (default). Square-ish tile.
+  ///   `2x1` - full-row, single height. Used for sliders and
   ///           context-rich tiles (project context).
-  ///   `2x2` — full-row, double height. Reserved for tiles that
+  ///   `2x2` - full-row, double height. Reserved for tiles that
   ///           expose inline detail content (audio media controls).
   import type { Snippet } from "svelte";
   import { ChevronRight } from "@lucide/svelte";
@@ -62,7 +62,7 @@
     /// backlight device).
     disabled?: boolean;
     /// Click handler for the primary body. Caller decides what
-    /// "primary" means — for Network it's WiFi-toggle, for DND it's
+    /// "primary" means - for Network it's WiFi-toggle, for DND it's
     /// flip the suppress mode, etc.
     onclick?: () => void;
     /// Right-click handler. Called on `contextmenu` event. The
@@ -72,7 +72,7 @@
     /// Detail-surface entry handler. When supplied, the status row
     /// becomes a separate clickable strip with its own hover bg,
     /// separator, and chevron. This is the discoverable counterpart
-    /// to `oncontextmenu` — same target, mouse-visible affordance.
+    /// to `oncontextmenu` - same target, mouse-visible affordance.
     onDetail?: () => void;
     /// Override the strip's accessible label. Defaults to
     /// `"Open details for <label>"`. Useful when the tile's name
@@ -280,7 +280,7 @@
     min-height: var(--height-control-prominent, 38px);
   }
   .qs-tile.has-strip .qs-tile-head {
-    /* Tighter when followed by a strip — the head no longer carries
+    /* Tighter when followed by a strip - the head no longer carries
        the status line, only the icon + label. */
     padding-bottom: 10px;
   }
@@ -329,7 +329,7 @@
     white-space: nowrap;
   }
 
-  /* Status strip — always rendered when statusText is set, so the
+  /* Status strip - always rendered when statusText is set, so the
      status line lives in the same vertical position across all
      tiles. The interactive variant adds chevron + hover-bg + click
      target; the passive variant is just the line. No top-border in

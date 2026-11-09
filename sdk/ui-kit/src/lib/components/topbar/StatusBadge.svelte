@@ -8,7 +8,7 @@
   /// Visibility is controlled entirely by the caller via `visible`.
   /// The badge fades in/out on transition; the parent slot collapses
   /// the layout when no badges are visible (TopBar.svelte handles
-  /// the row-spacing logic — this component only renders one slot).
+  /// the row-spacing logic - this component only renders one slot).
   ///
   /// `onclick` is the canonical "tap to interact" entry point. For
   /// caffeine/recording it cycles state; for night-light/airplane it
@@ -35,7 +35,7 @@
     /// this for layout purposes.
     visible: boolean;
     /// `true` paints in accent / status colour; `false` falls back to
-    /// muted foreground. Almost all badges are active when visible —
+    /// muted foreground. Almost all badges are active when visible -
     /// the prop exists for the rare "show ambient" case.
     active?: boolean;
     /// What the badge stands for, in words. Shown as the kit tooltip

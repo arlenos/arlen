@@ -12,7 +12,7 @@
 /// consuming apps import these directly via the `@arlen/ui-kit` SvelteKit
 /// alias (`svelte.config.js`: "@arlen/ui-kit" -> "../sdk/ui-kit/src/lib"),
 /// e.g. `import { Page } from "@arlen/ui-kit/components/ui/page"`. This is the
-/// single source — do NOT copy these into apps.
+/// single source - do NOT copy these into apps.
 ///   - Scoped-style components (Page, SectionGrid, Group, Row, Switch,
 ///     SegmentedControl, ChipList, Toolbar, StatGrid, topbar, …) import cleanly
 ///     cross-crate with no extra setup (desktop-shell + app-settings both do).

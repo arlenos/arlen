@@ -2,17 +2,17 @@
   /// Standard corner badge for an Applet primitive.
   ///
   /// Top-right overlay chip with three variants:
-  ///   * `count` — numeric pill (notification count, etc.).
+  ///   * `count` - numeric pill (notification count, etc.).
   ///     Auto-formats `> 99` to `99+`. Min-width 14, grows for
   ///     wide numbers, height 14.
-  ///   * `dot` — small coloured dot (presence indicator).
-  ///   * `icon` — small icon (charging-bolt for battery, lock for
+  ///   * `dot` - small coloured dot (presence indicator).
+  ///   * `icon` - small icon (charging-bolt for battery, lock for
   ///     locked WiFi, etc.).
   ///
   /// Colour is one of the semantic shell tokens via the `color`
   /// prop. Default = `accent`.
   ///
-  /// Sits in `.applet-badge-slot` (own stacking context — see
+  /// Sits in `.applet-badge-slot` (own stacking context - see
   /// Applet.svelte) so the badge stays crisp even when the parent
   /// applet is `dimmed`.
   import type { Snippet } from "svelte";
@@ -90,7 +90,7 @@
     height: 14px;
   }
 
-  /* Colour variants — same source-of-truth as the rest of the
+  /* Colour variants - same source-of-truth as the rest of the
      shell. The text colour for filled badges uses the contrasting
      foreground if the theme provides one, else white. */
   .c-accent {

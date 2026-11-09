@@ -23,7 +23,7 @@
   /// the same event/selection contract as the list, windowed like
   /// FileList (only the visible rows of tiles are in the DOM, two
   /// spacers keep the scrollbar honest). Thumbnails are requested
-  /// per rendered tile — the windowing is what makes them lazy.
+  /// per rendered tile - the windowing is what makes them lazy.
   import { onMount, type Snippet } from "svelte";
   import type { FileEntry } from "./types";
   import FileTile from "./FileTile.svelte";
@@ -121,7 +121,7 @@
   });
 
   /// The corner badge says what a thumbnail hides: the filetype.
-  /// Only paired with a thumbnail URL — an icon tile's corner stays
+  /// Only paired with a thumbnail URL - an icon tile's corner stays
   /// empty (the icon already speaks).
   function extBadge(e: FileEntry): string | null {
     const i = e.name.lastIndexOf(".");

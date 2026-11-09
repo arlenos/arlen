@@ -1,7 +1,7 @@
 <script lang="ts">
   /// Canonical settings/app page wrapper: padded content region with an
   /// optional standard header (title + description) and, on a sub-route, the
-  /// door back to its parent. It does NOT own a scroll container — the app
+  /// door back to its parent. It does NOT own a scroll container - the app
   /// shell's content region already scrolls; Page only provides the page
   /// padding and header. Width + reflow are the job of `SectionGrid`, which
   /// Page centres by sharing the same max-width on its header. See

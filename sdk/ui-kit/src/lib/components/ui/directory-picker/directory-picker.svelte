@@ -26,7 +26,7 @@
     size = "sm",
   }: {
     /// Called with the picked path (absolute) when the user confirms.
-    /// Not called when the user cancels — callers don't need to handle
+    /// Not called when the user cancels - callers don't need to handle
     /// a null branch.
     onpick: (path: string) => void;
     /// Optional starting directory. Defaults to `$HOME`.

@@ -3,7 +3,7 @@ import { get } from "svelte/store";
 import { locale } from "../../i18n";
 
 /// Display formatting for the browser archetype: sizes and modified
-/// times the way a file manager speaks them — short, lay-readable,
+/// times the way a file manager speaks them - short, lay-readable,
 /// no internal units.
 
 /// 0 B / 18 KB / 2.4 MB / 4.0 GB, with the reader's decimal mark.

@@ -118,7 +118,7 @@ function firstInRow(cells: GridCell[], row: number): number | null {
 
 /// Index of the cell at logical (row, col), or null when no cell sits
 /// there. Two-column cells "occupy" col 0 for purposes of vertical
-/// traversal — pressing k from a single-cell at col 1 above a 2-col
+/// traversal - pressing k from a single-cell at col 1 above a 2-col
 /// row lands on the 2-col cell.
 function indexAt(cells: GridCell[], row: number, col: number): number | null {
   let r = 0;
