@@ -258,7 +258,7 @@
     gap: 0.5rem;
     width: 100%;
     height: var(--height-control, 30px);
-    padding: 0 0.75rem;
+    padding: 0 0.625rem 0 0.75rem;
     border-radius: var(--radius-input);
     background: var(--control-bg);
     border: 1px solid var(--control-border);
@@ -355,7 +355,7 @@
     gap: 0.5rem;
     width: 100%;
     min-height: var(--height-control, 30px);
-    padding: 0 0.75rem;
+    padding: 0 0.625rem 0 0.75rem;
     border: none;
     background: transparent;
     border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
@@ -363,10 +363,12 @@
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
 
-  /* The check is the selection's one marking, so the selected row carries
-     no fill, and hover never paints over it. */
-  .item:not(.selected):hover {
+  .item:hover {
     background: color-mix(in srgb, var(--foreground) 9%, transparent);
+  }
+
+  .item.selected {
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
 
   /* A described option stacks label over its muted line; the row grows and
@@ -375,7 +377,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.0625rem;
-    padding: 0.25rem 0;
+    padding: 0.3125rem 0;
     min-width: 0;
     text-align: start;
   }

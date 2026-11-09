@@ -201,9 +201,8 @@
     left: 0;
     box-sizing: border-box;
     border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
-    /* A fill and nothing else: a fill plus an outline marked one selection
-       twice (halbat, 9 November 2026: one selection, one marking). */
     background: color-mix(in srgb, var(--foreground) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--foreground) 30%, transparent);
     pointer-events: none;
   }
   .seg-mark.placed {
@@ -247,7 +246,7 @@
   }
 
   .seg.compact .seg-pill {
-    padding: 2px 8px;
+    padding: 2px 10px;
     min-height: calc(var(--height-control-compact, 26px) - 6px);
     font-size: var(--text-xs);
   }
