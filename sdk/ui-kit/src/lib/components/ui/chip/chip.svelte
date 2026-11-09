@@ -9,6 +9,9 @@
   /// language. `onclick` makes the label itself a button (open the file, jump
   /// to the facet). `lead` is a slot before the label for an icon or a mark.
   /// A long label ellipses; the chip never grows past its row.
+  ///
+  /// No dot before the label (Tim, 9 November 2026, for every tag); colour
+  /// and word carry the state. Kept by tag-no-dot.test.ts.
   import type { Snippet } from "svelte";
   import { X } from "@lucide/svelte";
   import { kt } from "../../../i18n/messages.kit";

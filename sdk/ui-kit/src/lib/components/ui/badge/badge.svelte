@@ -1,6 +1,8 @@
 <script lang="ts" module>
 	import { type VariantProps, tv } from "tailwind-variants";
 
+	// No dot before the label (Tim, 9 November 2026, for every tag); colour
+	// and word carry the state. Kept by tag-no-dot.test.ts.
 	export const badgeVariants = tv({
 		// `text-xs/none` is load-bearing, not tidying. The badge's height is fixed
 		// at `--height-tag` (20px) and its content was taller than that: 13px text

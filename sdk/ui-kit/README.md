@@ -111,6 +111,24 @@ npx shadcn-svelte@latest add dialog
 
 Components are copied into `src/lib/components/ui/` and can be modified freely. They are not updated automatically after installation.
 
+## Learnings from the website and halbat
+
+Collected on 9 November 2026 from the redesigns of tim.kicker.dev and halbat, whose kits take their tokens from this one. They are notes for the coming design pass on Arlen. Nothing here changes a component yet.
+
+- **No dot inside a tag.** Tim asked for it to go everywhere. Both sites drew it as a `::before` on the pill and both removed it (website `1ea000f`, halbat `e819bb92`). Colour and word carry the state. Badge and Chip here never had one, and `tag-no-dot.test.ts` keeps it that way. The dots that remain in Arlen are passed in by apps (harness capability bar, settings providers, the files filter menu).
+- **A fixed overlay must not inherit a column's width.** On the website a column rule capped every child at 560px, so a `position: fixed` game screen sat as a strip on a phone in landscape. A full-screen layer sets `max-width: none` and `margin: 0` itself.
+- **Segment labels are centred** and keep a small inner padding. A global `button { text-align: left }` had pushed them against the left border.
+- **No middle dot as a separator.** Use layout or a comma instead.
+- From halbat's design rules (halbat repo, `.claude/skills/halbat-frontend-design/SKILL.md`, section Visual system):
+  - three radii: 6px for everything clickable including tags, 12px for everything floating (menus, popovers, toasts), round only for avatars, legend dots, count badges and switches
+  - spacing only in steps of 4, 8, 12, 16, 24 and 32
+  - a selection has one mark (a line, an outline or a fill) and no focus ring after a mouse click
+  - no 3D hover
+  - a colour keeps one role across the app and the accent is never a data colour
+  - scrollbars and Escape handled once in the kit, never per page
+  - thousands separated by a narrow no-break space (U+202F), `tabular-nums` only on number cells
+  - contrast measured at 4.5:1 in light and dark
+
 ## Part of
 
 [Arlen](https://github.com/arlenos): a Linux desktop OS built around a system-wide knowledge graph.
