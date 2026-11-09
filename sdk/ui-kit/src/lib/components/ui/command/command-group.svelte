@@ -24,7 +24,7 @@
 	{#if heading}
 		<CommandPrimitive.GroupHeading
 			class="px-2 py-1.5 text-xs font-medium"
-			style="color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);"
+			style="color: color-mix(in srgb, var(--color-fg-shell) 64%, transparent);"
 			data-slot="command-group-heading"
 		>
 			{heading}

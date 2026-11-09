@@ -18,7 +18,7 @@
 <span
 	data-slot="command-shortcut"
 	class={cn("ms-auto text-xs tracking-widest", className)}
-	style="color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);"
+	style="color: color-mix(in srgb, var(--color-fg-shell) 64%, transparent);"
 	{...restProps}
 >
 	{@render children?.()}

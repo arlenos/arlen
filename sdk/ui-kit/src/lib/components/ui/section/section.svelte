@@ -35,7 +35,7 @@
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     padding-inline-start: 0.25rem;
   }
 

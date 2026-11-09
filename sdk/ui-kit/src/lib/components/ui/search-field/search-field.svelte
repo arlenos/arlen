@@ -51,7 +51,7 @@
     position: absolute;
     inset-inline-start: 0.55rem;
     pointer-events: none;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: color-mix(in srgb, var(--foreground) 52%, transparent);
   }
   .sf-input {
     width: 100%;
@@ -76,7 +76,7 @@
     inset-inline-start: 0.65rem;
   }
   .sf-input::placeholder {
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .sf-input:focus-visible {
     outline: none;

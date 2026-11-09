@@ -297,12 +297,12 @@
   }
 
   .ps-label.is-placeholder {
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     font-weight: 400;
   }
 
   :global(.ps-chev) {
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: color-mix(in srgb, var(--foreground) 52%, transparent);
     flex-shrink: 0;
     transition: transform var(--duration-fast, 150ms) var(--ease-out, ease);
   }
@@ -384,7 +384,7 @@
   .ps-desc {
     font-size: var(--text-2xs);
     font-weight: 400;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     white-space: normal;
     line-height: 1.35;
   }

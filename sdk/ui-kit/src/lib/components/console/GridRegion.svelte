@@ -171,7 +171,7 @@
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: var(--text-sm);
     line-height: 1.5;
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

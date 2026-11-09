@@ -83,7 +83,7 @@
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     font-size: var(--text-2xs);
     font-weight: 600;
     transition:

@@ -239,7 +239,7 @@
   .mc-icon {
     display: inline-flex;
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .mc-name {
     flex: 1;
@@ -251,17 +251,17 @@
     white-space: nowrap;
   }
   .mc-name.dim {
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .mc-chevron {
     display: inline-flex;
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    color: color-mix(in srgb, var(--foreground) 52%, transparent);
   }
 
   .mc-empty {
     padding: 8px;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
 </style>

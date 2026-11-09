@@ -202,7 +202,7 @@
     align-items: center;
     gap: 6px;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .cb-running-dot {
     width: 6px;
@@ -249,7 +249,7 @@
     flex-shrink: 0;
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
 
   .cb-body {

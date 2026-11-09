@@ -157,7 +157,7 @@
   .label-desc {
     font-size: var(--text-2xs);
     line-height: 1.3;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     margin-top: 0.0625rem;
     overflow-wrap: anywhere;
   }

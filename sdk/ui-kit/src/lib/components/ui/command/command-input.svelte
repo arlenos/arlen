@@ -23,7 +23,7 @@
 	style="border-bottom: 1px solid color-mix(in srgb, var(--color-fg-shell) 10%, transparent);"
 	data-slot="command-input-wrapper"
 >
-	<Search class="size-4 shrink-0" style="color: color-mix(in srgb, var(--color-fg-shell) 40%, transparent);" />
+	<Search class="size-4 shrink-0" style="color: color-mix(in srgb, var(--color-fg-shell) 52%, transparent);" />
 	<!-- NO FOCUS RING, and it is the one input in the kit without one, so here is
 	     why before somebody adds it or reports it again. `Input` rings on
 	     `:focus-visible`; this one is `outline-hidden` like upstream shadcn's,
@@ -51,7 +51,7 @@
 			"flex h-10 w-full rounded-input bg-transparent py-3 text-sm outline-hidden disabled:opacity-50",
 			className
 		)}
-		style="color: var(--color-fg-shell); --placeholder-color: color-mix(in srgb, var(--color-fg-shell) 35%, transparent);"
+		style="color: var(--color-fg-shell); --placeholder-color: color-mix(in srgb, var(--color-fg-shell) 64%, transparent);"
 		{...restProps}
 	/>
 </div>

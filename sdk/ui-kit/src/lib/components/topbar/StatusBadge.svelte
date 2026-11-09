@@ -112,7 +112,7 @@
     border-radius: var(--radius-chip);
     background: transparent;
     border: none;
-    color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
+    color: color-mix(in srgb, var(--color-fg-shell) 64%, transparent);
     cursor: default;
     font-size: var(--text-2xs);
     line-height: 1;

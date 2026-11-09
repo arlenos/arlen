@@ -626,7 +626,7 @@
   }
   .fb-state-hint {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     max-width: 36ch;
   }
 </style>

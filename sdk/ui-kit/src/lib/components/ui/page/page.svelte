@@ -121,6 +121,6 @@
     margin-top: 0.25rem;
     font-size: var(--text-sm);
     line-height: 1.4;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
 </style>

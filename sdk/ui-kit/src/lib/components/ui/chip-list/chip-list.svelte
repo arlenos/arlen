@@ -104,7 +104,7 @@
   }
 
   .chip-input::placeholder {
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
 
   /* The remove button had hover styling and no focus styling, so it was

@@ -252,7 +252,7 @@
   .unit {
     font-size: 13px;
     line-height: 1;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     white-space: nowrap;
     pointer-events: none;
   }

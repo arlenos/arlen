@@ -186,7 +186,7 @@
     border-radius: var(--radius-chip);
     background: transparent;
     font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .bc-crumb:hover {
@@ -200,13 +200,13 @@
   .bc-sep {
     display: inline-flex;
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    color: color-mix(in srgb, var(--foreground) 52%, transparent);
   }
   .bc-fold {
     flex-shrink: 0;
     padding: 0 2px;
     font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    color: color-mix(in srgb, var(--foreground) 52%, transparent);
   }
   .bc.tight .bc-crumb {
     flex-shrink: 1;

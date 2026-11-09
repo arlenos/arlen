@@ -13,6 +13,6 @@
 	bind:ref
 	data-slot="command-empty"
 	class={cn("py-6 text-center text-sm", className)}
-	style="color: color-mix(in srgb, var(--color-fg-shell) 30%, transparent);"
+	style="color: color-mix(in srgb, var(--color-fg-shell) 64%, transparent);"
 	{...restProps}
 />

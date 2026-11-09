@@ -81,7 +81,7 @@
   .empty {
     padding: 0.75rem 1rem;
     font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     border: 1px dashed
       color-mix(in srgb, var(--foreground) 14%, transparent);
     border-radius: var(--radius-chip);
@@ -125,7 +125,7 @@
     border-radius: var(--radius-chip);
     border: 1px solid transparent;
     background: transparent;
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     transition:
       background 0.1s ease,
       color 0.1s ease;

@@ -163,7 +163,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     /* The thumbnail hugs the tile's media box; its corners follow the tile
        radius minus the 2px the image is inset (rounding-fix.md). */
     --container-radius: var(--radius-input);
@@ -216,6 +216,6 @@
     max-width: 100%;
   }
   .hidden-entry .ft-name {
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
 </style>

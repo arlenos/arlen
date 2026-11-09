@@ -66,7 +66,7 @@
   .lc-icon {
     flex-shrink: 0;
     display: inline-flex;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .lc-body {
     flex: 1;
@@ -81,7 +81,7 @@
   }
   .lc-desc {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     /* WRAPS. This was one nowrap line with an ellipsis, which is a
        measurement of English: the same sentence in German runs a third
        longer and lost its end in a narrow column - "Fensterverwaltung,
@@ -91,7 +91,7 @@
   }
   :global(.lc-chev) {
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: color-mix(in srgb, var(--foreground) 52%, transparent);
     transition: transform var(--duration-fast, 150ms) var(--ease-out, ease);
   }
   .link-card:hover :global(.lc-chev) {

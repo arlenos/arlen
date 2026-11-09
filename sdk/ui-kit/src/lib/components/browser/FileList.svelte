@@ -243,7 +243,7 @@
     background: transparent;
     font-size: var(--text-xs);
     font-weight: 500;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     text-align: start;
   }
   .fl-col:hover {
@@ -254,7 +254,7 @@
     cursor: default;
   }
   .fl-col.static:hover {
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .fl-col.right {
     justify-content: flex-end;

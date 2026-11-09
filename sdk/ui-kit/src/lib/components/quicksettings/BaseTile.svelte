@@ -322,7 +322,7 @@
 
   .qs-tile-status {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -378,7 +378,7 @@
 
   :global(.qs-tile-chevron) {
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     transition: color var(--duration-micro, 100ms) ease, transform var(--duration-micro, 100ms) ease;
   }
   .qs-tile-strip.is-interactive:hover :global(.qs-tile-chevron) {

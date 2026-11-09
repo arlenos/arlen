@@ -163,11 +163,11 @@
   }
   .chip-prefix {
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .chip-meta {
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .chip-lead {
     display: inline-flex;
@@ -193,7 +193,7 @@
     border: none;
     border-radius: max(0px, calc(var(--radius-chip, 4px) - 2px));
     background: transparent;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: color-mix(in srgb, var(--foreground) 52%, transparent);
     transition:
       background-color var(--duration-fast) var(--ease-out),
       color var(--duration-fast) var(--ease-out);

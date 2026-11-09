@@ -254,7 +254,7 @@
     flex-shrink: 0;
     width: 18px;
     height: 18px;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     /* The preview hugs an 18px box; its corners follow the chip radius inset by
        1px (rounding-fix.md concentric rule). */
     --container-radius: var(--radius-chip);
@@ -281,7 +281,7 @@
     white-space: nowrap;
   }
   .hidden-entry .fr-name {
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .fr-rename {
     flex: 1;
@@ -308,7 +308,7 @@
     flex-shrink: 1;
     min-width: 0;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -317,12 +317,12 @@
   .fr-size {
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     text-align: end;
   }
   .fr-location {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -330,6 +330,6 @@
   .fr-modified {
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
 </style>

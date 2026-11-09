@@ -104,7 +104,7 @@
   }
   .file-head :global(.twist) {
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     transition: transform var(--duration-fast) var(--ease-out);
   }
   .file-head :global(.twist.on) {
@@ -121,7 +121,7 @@
   }
   .file-head :global(.status-modified),
   .file-head :global(.status-renamed) {
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .path {
     flex: 1;
@@ -132,7 +132,7 @@
     font-family: var(--font-mono, monospace);
   }
   .path .old {
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     text-decoration: line-through;
   }
   .counts {
@@ -158,7 +158,7 @@
   }
   .hunk-head {
     padding: 0.1rem 0.5rem;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     white-space: pre;
   }
@@ -170,7 +170,7 @@
     flex-shrink: 0;
     width: 1.1rem;
     padding-inline-start: 0.3rem;
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
     user-select: none;
   }
   .row .code {
