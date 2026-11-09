@@ -70,7 +70,7 @@
 	}
 	:global(.ln-scroll-thumb) {
 		flex: 1;
-		border-radius: 9999px;
+		border-radius: var(--radius-full, 9999px);
 		/* 38% gives visible contrast on both shell-popover (dark) and
 		   app-surface (light) backgrounds - matches macOS / GNOME
 		   scrollbar tone. */

@@ -66,8 +66,7 @@
   }
   .about-sub {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
   }
   .about-desc {
     margin-top: 8px;

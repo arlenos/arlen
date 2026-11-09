@@ -109,6 +109,52 @@
   outline-offset: 2px;
 }
 
+/* A mouse click does not ring. WebKitGTK still draws its own `auto` outline on
+   some elements focused by a pointer; keyboard focus keeps the ring above.
+   From halbat's kit, 9 November 2026: one selection has one marking, and a
+   focus ring after a click is a second one. */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* A menu takes focus so the arrow keys reach its rows, and the highlighted
+   row is the marking. The rule above is unlayered, so it beat the menus'
+   own `outline-none` (a Tailwind utility, layered) and every open menu drew
+   a ring round itself as well: two markings for one place. */
+[data-slot="dropdown-menu-content"]:focus-visible,
+[data-slot="dropdown-menu-sub-content"]:focus-visible,
+[data-slot="context-menu-content"]:focus-visible,
+[data-slot="context-menu-sub-content"]:focus-visible {
+  outline: none;
+}
+
+/* ------------------------------------------------------------
+   SCROLLBARS, once for every app. Fifteen apps carried this same block in
+   their own app.css, the shell carries its own variant and the greeter
+   none, so the greeter drew the engine's bar. halbat learned the same
+   thing (Tim saw two different bars on one page): the rule belongs in the
+   one sheet every app imports. The values are
+   the fifteen copies' own, so nothing changes where a copy exists; the thumb
+   is round because a bar is one of the few round things.
+   ------------------------------------------------------------ */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 18%, transparent);
+  border-radius: var(--radius-full, 9999px);
+  border: 2px solid var(--background);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground) 30%, transparent);
+  background-clip: padding-box;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     /* BOTH names. The theme reaches a page as a `:root` block appended to the

@@ -258,7 +258,7 @@
     gap: 0.5rem;
     width: 100%;
     height: var(--height-control, 30px);
-    padding: 0 0.625rem 0 0.75rem;
+    padding: 0 0.75rem;
     border-radius: var(--radius-input);
     background: var(--control-bg);
     border: 1px solid var(--control-border);
@@ -323,12 +323,12 @@
     z-index: 9999;
     max-height: 280px;
     overflow-y: auto;
-    padding: 4px;
-    border-radius: var(--radius-input);
-    /* Concentric nesting: the items hug the menu's inside, so their corners
-       follow the menu radius minus the 4px padding. */
-    --container-radius: var(--radius-input);
-    --container-inset: 4px;
+    padding: 6px;
+    /* A menu floats, so it takes the floating radius and a 6px inset: the
+       6px rows inside sit concentric (halbat's three radii, 9 November 2026). */
+    border-radius: var(--radius-card);
+    --container-radius: var(--radius-card);
+    --container-inset: 6px;
     background: color-mix(in srgb, var(--background) 92%, var(--foreground) 8%);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 15%, transparent);
@@ -355,7 +355,7 @@
     gap: 0.5rem;
     width: 100%;
     min-height: var(--height-control, 30px);
-    padding: 0 0.625rem 0 0.75rem;
+    padding: 0 0.75rem;
     border: none;
     background: transparent;
     border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
@@ -363,12 +363,10 @@
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
 
-  .item:hover {
+  /* The check is the selection's one marking, so the selected row carries
+     no fill, and hover never paints over it. */
+  .item:not(.selected):hover {
     background: color-mix(in srgb, var(--foreground) 9%, transparent);
-  }
-
-  .item.selected {
-    background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
 
   /* A described option stacks label over its muted line; the row grows and

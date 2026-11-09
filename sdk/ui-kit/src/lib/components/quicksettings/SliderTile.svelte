@@ -69,8 +69,9 @@
     <!-- A percentage is a reading. A tile whose backend never answered has a
          placeholder value, and rendering it says the volume is 0 - so when the
          caller says the value is not known, the readout says nothing rather
-         than a number nobody measured. -->
-    {#if valueKnown}{Math.round(percent)}%{:else}&mdash;{/if}
+         than a number nobody measured. Nothing means empty: it was a dash,
+         and no dash stands in for a value on screen (9 November 2026). -->
+    {#if valueKnown}{Math.round(percent)}%{/if}
   {/snippet}
 
   <div class="qs-slider-row">
