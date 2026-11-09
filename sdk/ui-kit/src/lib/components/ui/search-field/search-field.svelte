@@ -57,7 +57,7 @@
     width: 100%;
     height: var(--height-control, 30px);
     padding-block: 0.25rem;
-    padding-inline: 1.65rem 0.75rem;
+    padding-inline: 1.65rem 0.625rem;
     border: 1px solid var(--border);
     border-radius: var(--search-radius, var(--radius-input));
     background: var(--input, transparent);

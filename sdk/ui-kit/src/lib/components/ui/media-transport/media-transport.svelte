@@ -82,6 +82,6 @@
     gap: 2px;
   }
   .mt.lg {
-    gap: 16px;
+    gap: 18px;
   }
 </style>

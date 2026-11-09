@@ -48,7 +48,7 @@
   .link-card {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.875rem;
     padding: 0.75rem 1rem;
     border-radius: var(--radius-card);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);

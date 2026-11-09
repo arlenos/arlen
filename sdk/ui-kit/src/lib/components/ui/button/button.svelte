@@ -32,8 +32,8 @@
 				// `lg`      = emphasized button         → --height-control-emphasized (40)
 				default: "h-control-prominent gap-1.5 px-3 in-data-[slot=button-group]:rounded-button has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2",
 				xs: "h-control-compact gap-1 px-2 text-xs in-data-[slot=button-group]:rounded-button has-data-[icon=inline-end]:pe-1.5 has-data-[icon=inline-start]:ps-1.5 [&_svg:not([class*='size-'])]:size-3",
-				sm: "h-control gap-1 px-3 in-data-[slot=button-group]:rounded-button has-data-[icon=inline-end]:pe-1.5 has-data-[icon=inline-start]:ps-1.5",
-				lg: "h-control-emphasized gap-1.5 px-4 has-data-[icon=inline-end]:pe-3 has-data-[icon=inline-start]:ps-3",
+				sm: "h-control gap-1 px-2.5 in-data-[slot=button-group]:rounded-button has-data-[icon=inline-end]:pe-1.5 has-data-[icon=inline-start]:ps-1.5",
+				lg: "h-control-emphasized gap-1.5 px-3.5 has-data-[icon=inline-end]:pe-3 has-data-[icon=inline-start]:ps-3",
 				icon: "size-[var(--height-control-prominent, 38px)]",
 				"icon-xs": "size-[var(--height-control-compact, 26px)] in-data-[slot=button-group]:rounded-button [&_svg:not([class*='size-'])]:size-3",
 				"icon-sm": "size-[var(--height-control, 30px)] in-data-[slot=button-group]:rounded-button",

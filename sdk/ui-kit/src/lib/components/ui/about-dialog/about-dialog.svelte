@@ -44,7 +44,7 @@
     align-items: center;
     text-align: center;
     gap: 4px;
-    padding: 24px 24px 16px;
+    padding: 28px 24px 16px;
   }
   .about-mark {
     display: flex;
@@ -67,6 +67,7 @@
   .about-sub {
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 64%, transparent);
+    font-variant-numeric: tabular-nums;
   }
   .about-desc {
     margin-top: 8px;
