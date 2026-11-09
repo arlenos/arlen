@@ -193,7 +193,12 @@
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
     color: var(--foreground);
   }
+  /* The fold takes the crumbs before it, but nothing took the current one:
+     with tabs beside a narrow window it was cut mid-letter by `.bc`. It is
+     the one crumb allowed to give way, and it ellipsizes when it does. */
   .bc-crumb.current {
+    flex-shrink: 1;
+    min-width: 0;
     color: var(--foreground);
     font-weight: 500;
   }
