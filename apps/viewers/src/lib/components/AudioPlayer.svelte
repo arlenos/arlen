@@ -61,7 +61,7 @@
 
   <div class="stack">
     <div class="title">
-      {file.title}{#if file.artist}<span class="sep">·</span><span class="artist">{file.artist}</span>{/if}
+      {file.title}{#if file.artist}<span class="sep">,</span><span class="artist">{file.artist}</span>{/if}
     </div>
 
     <div class="wavebox">
@@ -134,9 +134,10 @@
     color: var(--color-fg-secondary, #a1a1aa);
     font-weight: 500;
   }
+  /* A comma, never a middot: the house separator. It hugs the word before. */
   .sep {
     color: var(--color-fg-secondary, #a1a1aa);
-    margin: 0 0.4em;
+    margin: 0 0.4em 0 0;
   }
 
   .wavebox {

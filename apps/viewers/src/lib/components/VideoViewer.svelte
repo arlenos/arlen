@@ -138,7 +138,7 @@
         <!-- Only when the folder has actually been read, like the image viewer:
              printing a position you do not have states a wrong one. -->
         <span class="meta"
-          >{file.name}{#if file.index && file.total}<span class="dot">·</span>{file.index} /
+          >{file.name}{#if file.index && file.total}<span class="dot">,</span>{file.index} /
             {file.total}{/if}</span
         >
         <Button variant="ghost" size="icon-sm" aria-label={$t("v.fullscreen")}>
@@ -292,8 +292,9 @@
     color: var(--color-fg-secondary, #a1a1aa);
     white-space: nowrap;
   }
+  /* A comma, never a middot: the house separator. It hugs the word before. */
   .dot {
     color: var(--color-fg-secondary, #a1a1aa);
-    margin: 0 0.4em;
+    margin: 0 0.4em 0 0;
   }
 </style>
