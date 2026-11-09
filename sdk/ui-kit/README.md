@@ -113,21 +113,20 @@ Components are copied into `src/lib/components/ui/` and can be modified freely. 
 
 ## Learnings from the website and halbat
 
-Collected on 9 November 2026 from the redesigns of tim.kicker.dev and halbat, whose kits take their tokens from this one. They are notes for the coming design pass on Arlen. Nothing here changes a component yet.
+Collected on 9 November 2026 from the redesigns of tim.kicker.dev and halbat, whose kits take their tokens from this one. Each one says whether the kit took it and why.
 
 - **No dot inside a tag.** Tim asked for it to go everywhere. Both sites drew it as a `::before` on the pill and both removed it (website `1ea000f`, halbat `e819bb92`). Colour and word carry the state. Badge and Chip here never had one, and `tag-no-dot.test.ts` keeps it that way. The dots that remain in Arlen are passed in by apps (harness capability bar, settings providers, the files filter menu).
 - **A fixed overlay must not inherit a column's width.** On the website a column rule capped every child at 560px, so a `position: fixed` game screen sat as a strip on a phone in landscape. A full-screen layer sets `max-width: none` and `margin: 0` itself.
 - **Segment labels are centred** and keep a small inner padding. A global `button { text-align: left }` had pushed them against the left border.
 - **No middle dot as a separator.** Use layout or a comma instead.
-- From halbat's design rules (halbat repo, `.claude/skills/halbat-frontend-design/SKILL.md`, section Visual system):
-  - three radii: 6px for everything clickable including tags, 12px for everything floating (menus, popovers, toasts), round only for avatars, legend dots, count badges and switches
-  - spacing only in steps of 4, 8, 12, 16, 24 and 32
-  - a selection has one mark (a line, an outline or a fill) and no focus ring after a mouse click
-  - no 3D hover
-  - a colour keeps one role across the app and the accent is never a data colour
-  - scrollbars and Escape handled once in the kit, never per page
-  - thousands separated by a narrow no-break space (U+202F), `tabular-nums` only on number cells
-  - contrast measured at 4.5:1 in light and dark
+- From halbat's design rules (halbat repo, `.claude/skills/halbat-frontend-design/SKILL.md`, section Visual system), checked against Arlen's own system on the same day:
+  - **Radii stay Arlen's.** halbat has three (6 clickable, 12 floating, round); Arlen has the five semantic tokens in `docs/architecture/theme-system.md` (chip 4, button 6, input 8, card 12, modal 16, full) and the concentric rule in `docs/architecture/rounding-fix.md`. What the two agree on is taken from Arlen's table: a button face is `--radius-button`, a menu is `--radius-card` and its rows are concentric, an avatar is round. No token value changes.
+  - Spacing in steps of four is not an Arlen rule. Arlen's spacing tokens are still to be written (design-system §3), so a pass over the kit's gaps waits for that rather than borrowing halbat's scale.
+  - One selection, one mark: taken for menu rows (a neutral hover, no accent fill) and for the focus ring after a mouse click. The segmented control keeps its fill and outline (8 October 2026) and a chosen option in a select keeps its tint beside the check.
+  - No 3D hover: Arlen is flat already.
+  - Scrollbars handled once in the kit (`motion.css`), not per app.
+  - Contrast measured at 4.5:1: the floor in `docs/architecture/theming-system-plan.md`, applied to the kit's muted text.
+  - Not taken yet: a colour keeping one role, thousands with a narrow no-break space, `tabular-nums` only on number cells. Each is a pass of its own.
 
 ## Part of
 
