@@ -128,6 +128,15 @@
   outline: none;
 }
 
+/* The same for a dialog that takes focus by script so its keys are read.
+   KeyCapture and its siblings wrote `focus:outline-none` on the card for this
+   reason, and the unlayered rule above beat it: the whole card got a ring.
+   The ring belongs on the controls inside. */
+[role="dialog"][tabindex="-1"]:focus-visible,
+[role="dialog"] > [tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
 /* ------------------------------------------------------------
    SCROLLBARS, once for every app. Fifteen apps carried this same block in
    their own app.css, the shell carries its own variant and the greeter
