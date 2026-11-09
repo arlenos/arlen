@@ -46,10 +46,10 @@
      banners. */
   .notice {
     display: flex;
-    gap: 0.55rem;
+    gap: 0.5rem;
     align-items: flex-start;
     margin: 0;
-    padding: 0.5rem 0.7rem;
+    padding: 0.5rem 0.75rem;
     border: 1px solid transparent;
     border-radius: var(--radius-input);
     font-size: var(--text-xs);

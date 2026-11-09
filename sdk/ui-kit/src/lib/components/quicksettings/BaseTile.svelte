@@ -275,14 +275,14 @@
   .qs-tile-head {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: 8px;
     padding: 12px;
     min-height: var(--height-control-prominent, 38px);
   }
   .qs-tile.has-strip .qs-tile-head {
     /* Tighter when followed by a strip - the head no longer carries
        the status line, only the icon + label. */
-    padding-bottom: 10px;
+    padding-bottom: 8px;
   }
 
   .qs-tile-icon {
@@ -341,7 +341,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 8px;
     padding: 8px 12px;
     /* Strip uses --height-control (28) rather than the head's
        --height-control-prominent (36): hierarchy comes from this

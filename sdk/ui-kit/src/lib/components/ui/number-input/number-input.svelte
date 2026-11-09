@@ -210,7 +210,7 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 0 10px;
+    padding: 0 12px;
     height: var(--height-control, 30px);
     min-width: 72px;
     flex: 1;

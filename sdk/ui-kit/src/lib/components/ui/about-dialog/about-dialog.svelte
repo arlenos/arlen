@@ -44,7 +44,7 @@
     align-items: center;
     text-align: center;
     gap: 4px;
-    padding: 28px 24px 16px;
+    padding: 24px 24px 16px;
   }
   .about-mark {
     display: flex;

@@ -119,9 +119,9 @@
   .choice {
     display: flex;
     align-items: flex-start;
-    gap: 0.625rem;
+    gap: 0.5rem;
     width: 100%;
-    padding: 0.5rem 0.625rem;
+    padding: 0.5rem 0.75rem;
     border: none;
     background: transparent;
     border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));

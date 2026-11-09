@@ -84,7 +84,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.625rem;
+    gap: 0.75rem;
     /* Top/bottom uses the row spacing token; horizontal stays fixed at 1rem
        to give the label a reliable left edge regardless of token overrides. */
     padding: var(--space-row, 0.75rem) 1rem;
@@ -104,7 +104,7 @@
   .row-main {
     display: flex;
     align-items: center;
-    gap: 0.875rem;
+    gap: 1rem;
     /* Preserve the row rhythm: the main line keeps the standard row
        height; the .row padding is excluded here so a `below` block adds
        under it rather than inflating the line. */

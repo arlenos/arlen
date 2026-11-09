@@ -91,7 +91,7 @@
     height: var(--height-control-compact, 26px);
     margin-inline-start: -0.5rem;
     margin-bottom: 0.5rem;
-    padding-inline: 0.5rem 0.625rem;
+    padding-inline: 0.5rem 0.75rem;
     border-radius: var(--radius-button);
     font-size: var(--text-sm);
     line-height: 1;

@@ -246,7 +246,7 @@
   }
 
   .seg.compact .seg-pill {
-    padding: 2px 10px;
+    padding: 2px 8px;
     min-height: calc(var(--height-control-compact, 26px) - 6px);
     font-size: var(--text-xs);
   }

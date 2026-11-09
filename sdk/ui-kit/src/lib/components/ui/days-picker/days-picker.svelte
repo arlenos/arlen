@@ -76,7 +76,7 @@
   .day {
     min-width: var(--height-control, 30px);
     height: var(--height-control, 30px);
-    padding: 0 5px;
+    padding: 0 4px;
     display: inline-flex;
     align-items: center;
     justify-content: center;

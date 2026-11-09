@@ -236,7 +236,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 10px;
+    padding: 12px;
     background: var(--background);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-input);

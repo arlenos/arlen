@@ -377,7 +377,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.0625rem;
-    padding: 0.3125rem 0;
+    padding: 0.25rem 0;
     min-width: 0;
     text-align: start;
   }
