@@ -36,11 +36,11 @@ echo ">> cargo build the AI layer (engine daemon + proxy) - Debian-native ($(car
 
 # The proxy (ai/ workspace, its own target dir). The default feature set leaves
 # the onnx classifier out, so this stays pure-Rust.
-CARGO_TARGET_DIR="$cache/target-ai" \
+CARGO_TARGET_DIR="$cache/target-daemons" \
     cargo build --release --manifest-path ai/Cargo.toml -p arlen-ai-proxy
 
 # The pi-backed engine daemon (its own workspace + its own target dir).
-CARGO_TARGET_DIR="$cache/target-ai-engine" \
+CARGO_TARGET_DIR="$cache/target-daemons" \
     cargo build --release --manifest-path daemons/ai-engine-daemon/Cargo.toml
 
 # Install under /usr/lib/arlen/libexec, NOT /usr/bin: this is the canonical path
@@ -50,10 +50,10 @@ CARGO_TARGET_DIR="$cache/target-ai-engine" \
 # `ai-agent` (identity.rs: the drop-in curator role reuses the same principal), so
 # its ai-agent.toml graph profile keys correctly. A /usr/bin install would make it
 # unresolvable and fail the proxy's exact match.
-install -Dm755 "$cache/target-ai/release/arlen-ai-proxy" \
+install -Dm755 "$cache/target-daemons/release/arlen-ai-proxy" \
     "$DESTDIR/usr/lib/arlen/libexec/arlen-ai-proxy"
 echo ">> staged arlen-ai-proxy into the image (libexec, the canonical identity path)"
-install -Dm755 "$cache/target-ai-engine/release/arlen-ai-engine-daemon" \
+install -Dm755 "$cache/target-daemons/release/arlen-ai-engine-daemon" \
     "$DESTDIR/usr/lib/arlen/libexec/arlen-ai-engine-daemon"
 echo ">> staged arlen-ai-engine-daemon into the image (libexec, the canonical identity path)"
 

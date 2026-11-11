@@ -26,7 +26,7 @@ set -eu
 cache="${BUILDDIR:-/var/tmp/arlen-build}"
 export RUSTUP_HOME="$cache/rustup"
 export CARGO_HOME="$cache/cargo-home"
-export CARGO_TARGET_DIR="$cache/target-knowledge-mcp"
+export CARGO_TARGET_DIR="$cache/target-daemons"   # shared, see 08-audit
 mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
 
 if [ ! -x "$CARGO_HOME/bin/cargo" ]; then

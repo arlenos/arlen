@@ -23,14 +23,14 @@ export PATH="$CARGO_HOME/bin:$PATH"
 cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
 echo ">> cargo build the dogfood tools (event-emit + dogfood) - Debian-native ($(cargo --version))"
 
-CARGO_TARGET_DIR="$cache/target-event-emit" \
+CARGO_TARGET_DIR="$cache/target-daemons" \
     cargo build --release --manifest-path dev/event-emit/Cargo.toml
-install -Dm755 "$cache/target-event-emit/release/arlen-event-emit" \
+install -Dm755 "$cache/target-daemons/release/arlen-event-emit" \
     "$DESTDIR/usr/bin/arlen-event-emit"
 echo ">> staged arlen-event-emit into the image"
 
-CARGO_TARGET_DIR="$cache/target-dogfood" \
+CARGO_TARGET_DIR="$cache/target-daemons" \
     cargo build --release --manifest-path dev/dogfood/Cargo.toml
-install -Dm755 "$cache/target-dogfood/release/arlen-dogfood" \
+install -Dm755 "$cache/target-daemons/release/arlen-dogfood" \
     "$DESTDIR/usr/bin/arlen-dogfood"
 echo ">> staged arlen-dogfood into the image"

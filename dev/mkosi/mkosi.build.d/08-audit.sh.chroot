@@ -10,7 +10,14 @@ set -eu
 cache="${BUILDDIR:-/var/tmp/arlen-build}"
 export RUSTUP_HOME="$cache/rustup"
 export CARGO_HOME="$cache/cargo-home"
-export CARGO_TARGET_DIR="$cache/target-audit"
+# ONE target directory for every daemon phase, as the apps share target-apps
+# (see 04-shell). Each phase had its own, thirty of them, and each compiled the
+# same tokio, serde and zbus again: on 8 October the build was on course to run
+# the disk under its 25 GB floor before reaching the daemons. The phases run one
+# after another, cargo keeps each workspace's fingerprints apart, and every phase
+# copies its binary out before the next starts. The eBPF phase keeps its own: it
+# builds for another target.
+export CARGO_TARGET_DIR="$cache/target-daemons"
 mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
 
 if [ ! -x "$CARGO_HOME/bin/cargo" ]; then

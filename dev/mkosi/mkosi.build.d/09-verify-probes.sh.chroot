@@ -27,7 +27,7 @@ fi
 cache="${BUILDDIR:-/var/tmp/arlen-build}"
 export RUSTUP_HOME="$cache/rustup"
 export CARGO_HOME="$cache/cargo-home"
-export CARGO_TARGET_DIR="$cache/target-verify-probes"
+export CARGO_TARGET_DIR="$cache/target-daemons"   # shared, see 08-audit
 mkdir -p "$CARGO_TARGET_DIR"
 export PATH="$CARGO_HOME/bin:$PATH"
 
