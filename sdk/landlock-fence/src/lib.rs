@@ -150,7 +150,7 @@ use std::path::Path;
 
 use landlock::{
     Access, AccessFs, PathBeneath, PathFd, Ruleset, RulesetAttr, RulesetCreatedAttr,
-    RulesetStatus, ABI,
+    RulesetStatus, Scope, ABI,
 };
 
 /// Whether the kernel actually enforced the fence.
@@ -186,12 +186,19 @@ fn ll_err(e: impl std::error::Error + Send + Sync + 'static) -> io::Error {
 /// thread it later creates, so call this on the main thread before the async
 /// runtime starts (see the module docs).
 pub fn fence_writes(writable: &[impl AsRef<Path>]) -> io::Result<FenceOutcome> {
-    // ABI v5 covers every filesystem right through IoctlDev; the crate is
-    // best-effort by default, so an older kernel drops unsupported rights
-    // rather than failing the call (the NotEnforced check below is the floor).
-    let abi = ABI::V5;
+    // ABI 9, best effort: an older kernel drops what it does not know rather than
+    // failing the call (the NotEnforced check below is the floor). Every
+    // filesystem right is handled EXCEPT `ResolveUnix` (ABI 9): handling it would
+    // need a grant per socket the process may dial, and which sockets those are
+    // per grant is not decided yet (coder report of 8 October), so connecting
+    // stays as bwrap's mount view and the socket's own peer check leave it.
+    // The two ABI 6 scopes are taken: a process may signal and dial abstract
+    // Unix sockets only inside its own Landlock domain.
+    let abi = ABI::V9;
     let mut ruleset = Ruleset::default()
-        .handle_access(AccessFs::from_all(abi))
+        .handle_access(AccessFs::from_all(abi) & !AccessFs::ResolveUnix)
+        .map_err(ll_err)?
+        .scope(Scope::from_all(abi))
         .map_err(ll_err)?
         .create()
         .map_err(ll_err)?;
@@ -216,7 +223,7 @@ pub fn fence_writes(writable: &[impl AsRef<Path>]) -> io::Result<FenceOutcome> {
             Err(_) => continue,
         };
         ruleset = ruleset
-            .add_rule(PathBeneath::new(fd, AccessFs::from_all(abi)))
+            .add_rule(PathBeneath::new(fd, AccessFs::from_all(abi) & !AccessFs::ResolveUnix))
             .map_err(ll_err)?;
     }
 
@@ -320,5 +327,65 @@ mod tests {
             code, 0,
             "fence self-test: write inside ok, write outside denied, read outside ok"
         );
+    }
+
+    /// The ABI 6 signal scope is taken and the ABI 9 socket right is not: a
+    /// fenced process may no longer signal a process outside its domain (its
+    /// parent here), and may still dial a path socket it holds no rule for, which
+    /// is what a daemon does with every peer. Run with `--ignored --test-threads=1`.
+    #[test]
+    #[ignore = "needs Linux >=6.12 with Landlock enabled"]
+    fn signals_stay_inside_and_sockets_still_dial() {
+        use std::os::unix::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("peer.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        let fenced = tempfile::tempdir().unwrap();
+        let mut sock_c = std::os::unix::ffi::OsStrExt::as_bytes(sock.as_os_str()).to_vec();
+        sock_c.push(0);
+
+        // SAFETY: as in the test above; the child only issues syscalls.
+        let pid = unsafe { libc::fork() };
+        if pid == 0 {
+            match fence_writes(&[fenced.path()]) {
+                Ok(FenceOutcome::Enforced) => {}
+                Ok(FenceOutcome::NotEnforced) => unsafe { libc::_exit(11) },
+                Err(_) => unsafe { libc::_exit(10) },
+            }
+            let parent = unsafe { libc::getppid() };
+            let signal_refused = unsafe { libc::kill(parent, 0) } != 0;
+            let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0) };
+            let mut addr: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+            addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+            for (i, b) in sock_c.iter().enumerate().take(addr.sun_path.len()) {
+                addr.sun_path[i] = *b as libc::c_char;
+            }
+            let dialled = unsafe {
+                libc::connect(
+                    fd,
+                    &addr as *const libc::sockaddr_un as *const libc::sockaddr,
+                    std::mem::size_of::<libc::sockaddr_un>() as libc::socklen_t,
+                )
+            } == 0;
+            let code = match (signal_refused, dialled) {
+                (true, true) => 0,
+                (false, _) => 21,
+                (_, false) => 22,
+            };
+            unsafe { libc::_exit(code) };
+        }
+
+        let mut status = 0;
+        unsafe { libc::waitpid(pid, &mut status, 0) };
+        drop(listener);
+        let code = if libc::WIFEXITED(status) { libc::WEXITSTATUS(status) } else { -1 };
+        if code == 11 {
+            eprintln!("landlock not enforced on this kernel; skipping");
+            return;
+        }
+        assert_ne!(code, 21, "a fenced process could still signal outside its domain");
+        assert_ne!(code, 22, "a fenced process could no longer dial a socket");
+        assert_eq!(code, 0);
     }
 }

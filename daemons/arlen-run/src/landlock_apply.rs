@@ -27,7 +27,7 @@ use std::path::Path;
 
 use landlock::{
     Access, AccessFs, PathBeneath, PathFd, Ruleset, RulesetAttr, RulesetCreatedAttr,
-    RulesetStatus, ABI,
+    RulesetStatus, Scope, ABI,
 };
 
 /// Map a landlock crate error into an `io::Error` so it threads through the
@@ -44,12 +44,19 @@ fn ll_err(e: impl std::error::Error + Send + Sync + 'static) -> io::Error {
 /// ruleset; a single unopenable writable path is skipped (fail-safe), because a
 /// dropped write rule reduces access rather than widening it.
 pub fn apply_landlock(writable: &[impl AsRef<Path>]) -> io::Result<()> {
-    // ABI v5 covers every filesystem right through IoctlDev; the crate is
-    // best-effort by default, so an older kernel drops unsupported rights
-    // rather than failing the call (the NotEnforced check below is the floor).
-    let abi = ABI::V5;
+    // ABI 9, best effort: an older kernel drops what it does not know rather than
+    // failing the call (the NotEnforced check below is the floor). Every
+    // filesystem right is handled EXCEPT `ResolveUnix` (ABI 9): handling it would
+    // need a grant per socket the process may dial, and which sockets those are
+    // per grant is not decided yet (coder report of 8 October), so connecting
+    // stays as bwrap's mount view and the socket's own peer check leave it.
+    // The two ABI 6 scopes are taken: a process may signal and dial abstract
+    // Unix sockets only inside its own Landlock domain.
+    let abi = ABI::V9;
     let mut ruleset = Ruleset::default()
-        .handle_access(AccessFs::from_all(abi))
+        .handle_access(AccessFs::from_all(abi) & !AccessFs::ResolveUnix)
+        .map_err(ll_err)?
+        .scope(Scope::from_all(abi))
         .map_err(ll_err)?
         .create()
         .map_err(ll_err)?;
@@ -72,7 +79,7 @@ pub fn apply_landlock(writable: &[impl AsRef<Path>]) -> io::Result<()> {
             Err(_) => continue,
         };
         ruleset = ruleset
-            .add_rule(PathBeneath::new(fd, AccessFs::from_all(abi)))
+            .add_rule(PathBeneath::new(fd, AccessFs::from_all(abi) & !AccessFs::ResolveUnix))
             .map_err(ll_err)?;
     }
 
