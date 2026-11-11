@@ -6,7 +6,7 @@
 //! system-wide installations.
 //!
 //! Only authorized callers (arlen-installd) may invoke methods.
-//! Caller identity is verified via `/proc/{pid}/exe`.
+//! Caller identity is verified by attested app id.
 //!
 //! See `docs/architecture/install-daemon.md`.
 

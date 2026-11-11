@@ -4,17 +4,26 @@
 //! Object path: /org/arlen/InstallHelper1
 //!
 //! Only arlen-installd may invoke methods. Caller identity is verified
-//! via /proc/{pid}/exe.
+//! by its attested app id.
 
 use zbus::{interface, Connection};
 
 use crate::install;
 
-/// Allowed caller binaries (resolved from /proc/{pid}/exe).
-const ALLOWED_CALLERS: &[&str] = &[
-    "arlen-installd",
-    "arlen-install-helper", // self-test
-];
+/// The callers this helper acts for, by attested app id: installd and this
+/// helper's own self-test.
+///
+/// By id and not by file name. This list used to hold binary NAMES and the check
+/// asked whether the caller's file name CONTAINED one of them, so any program a
+/// user copied to `~/arlen-installd-x` was admitted by a helper that runs as
+/// root. An id comes from `path_to_app_id`, which names a daemon only at its
+/// root-owned install path.
+const ALLOWED_CALLERS: &[&str] = &["installd", "install-helper"];
+
+/// Whether an attested app id may call this helper.
+fn is_allowed_caller(app_id: &str) -> bool {
+    ALLOWED_CALLERS.contains(&app_id)
+}
 
 /// D-Bus interface implementation.
 pub struct InstallHelper;
@@ -152,19 +161,45 @@ async fn validate_caller_inner(
         .await
         .map_err(|e| format!("get PID: {e}"))?;
 
-    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
-        .map_err(|e| format!("read exe: {e}"))?;
+    // Pinned first, so the pid the bus named cannot be recycled between that
+    // answer and the read below. This helper is root, which is why the read
+    // works here when a hardened per-user daemon's does not.
+    let _pin = arlen_permissions::peer_pidfd::pidfd_open(pid)
+        .ok_or_else(|| format!("caller pid {pid} is gone"))?;
+    let app_id = arlen_permissions::identity::app_id_from_pid(pid)
+        .map_err(|e| format!("caller pid {pid} has no attested identity: {e}"))?;
 
-    let exe_name = exe
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    if !ALLOWED_CALLERS.iter().any(|c| exe_name.contains(c)) {
-        return Err(format!(
-            "unauthorized caller: {exe_name} (pid {pid})"
-        ));
+    if !is_allowed_caller(&app_id) {
+        return Err(format!("unauthorized caller: {app_id} (pid {pid})"));
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod caller_tests {
+    use super::is_allowed_caller;
+    use arlen_permissions::identity::path_to_app_id;
+    use std::path::Path;
+
+    #[test]
+    fn installd_at_its_install_path_is_admitted() {
+        let id = path_to_app_id(Path::new("/usr/lib/arlen/libexec/arlen-installd")).unwrap();
+        assert!(is_allowed_caller(&id), "{id}");
+    }
+
+    /// The hole this replaced: a file NAME that contains an allowed one.
+    #[test]
+    fn a_lookalike_name_in_a_home_directory_is_not() {
+        for imposter in [
+            "/home/u/arlen-installd",
+            "/home/u/.local/bin/arlen-installd-x",
+            "/tmp/my-arlen-settings",
+        ] {
+            let admitted = path_to_app_id(Path::new(imposter))
+                .map(|id| is_allowed_caller(&id))
+                .unwrap_or(false);
+            assert!(!admitted, "{imposter} must not be admitted");
+        }
+    }
 }

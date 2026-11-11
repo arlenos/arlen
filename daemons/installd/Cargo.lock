@@ -46,6 +46,7 @@ dependencies = [
 name = "arlen-install-helper"
 version = "0.1.0"
 dependencies = [
+ "arlen-permissions",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
