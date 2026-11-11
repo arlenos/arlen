@@ -440,6 +440,9 @@ KNOWN: dict[str, dict[str, str]] = {
         # share a plan section, not because it shares their blocker. Naming what
         # each one waits on separately is what showed it waited on nothing - the
         # shell already tracks the outputs and the toplevels for its own bars.
+        # `capture_status` came off on 11 November for the same reason: the
+        # compositor announces every screen capture on the overlay protocol
+        # (version 3), so the indicator reads that and waits on no producer.
         # FALSE WHEN: a PipeWire producer exists and the portal's `Start` returns
         # real node ids - at which point `arlen.portal` can list ScreenCast in its
         # `Interfaces` line, which is the single check for whether this is still
@@ -447,7 +450,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "cancel_screencast": "cancelling a screencast (PipeWire producer)",
         "start_screencast": "starting a screencast (PipeWire producer)",
         "stop_capture": "stopping a capture (PipeWire producer)",
-        "capture_status": "the capture indicator (PipeWire producer)",
         # Dictation needs a speech engine, which this system does not have and has
         # not decided to have. Listed so it is not mistaken for plumbing.
         # FALSE WHEN: a speech engine is provisioned on the image - a binary or

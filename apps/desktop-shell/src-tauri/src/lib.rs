@@ -12,6 +12,7 @@ mod app_state;
 mod audio;
 mod capability;
 mod capture_sources;
+mod capture_state;
 mod battery;
 mod clipboard_history;
 mod clipboard_ipc;
@@ -202,6 +203,7 @@ pub fn run() {
         // The Activity/Jobs zone's live set, fed by the notification socket.
         .manage(crate::jobs::new_live_jobs())
         .manage(Arc::clone(&overlay_sender))
+        .manage(Arc::new(capture_state::CaptureState::new()))
         .manage(Arc::clone(&output_bar_registry))
         .manage(Arc::clone(&output_connector_table))
         .manage(Arc::clone(&workspace_sender))
@@ -526,6 +528,7 @@ pub fn run() {
             wayland_client::window_move_to_workspace,
             wayland_client::get_windows,
             capture_sources::list_capture_sources,
+            capture_state::capture_status,
             wayland_client::get_workspaces,
             minimized_windows::get_minimized_windows,
             minimized_windows::restore_window,

@@ -805,6 +805,18 @@ impl Dispatch<OverlayProxy, ()> for AppData {
                 );
             }
 
+            // Version 3: every screen capture, whichever way it was opened.
+            // `source` (output, window or workspace) is not carried further:
+            // the badge says who captures, and the picker is where a person
+            // chose what.
+            overlay::Event::CaptureStarted { capture_id, app_id, source: _ } => {
+                crate::capture_state::on_started(&state.app_handle, capture_id, app_id);
+            }
+
+            overlay::Event::CaptureStopped { capture_id } => {
+                crate::capture_state::on_stopped(&state.app_handle, capture_id);
+            }
+
             _ => {}
         }
     }
@@ -1020,7 +1032,7 @@ pub fn start(app_handle: AppHandle, sender: Arc<ShellOverlaySender>) {
 
         let qh = event_queue.handle();
 
-        let overlay_proxy = match globals.bind::<OverlayProxy, AppData, ()>(&qh, 1..=2, ()) {
+        let overlay_proxy = match globals.bind::<OverlayProxy, AppData, ()>(&qh, 1..=3, ()) {
             Ok(p) => p,
             Err(e) => {
                 log::warn!(

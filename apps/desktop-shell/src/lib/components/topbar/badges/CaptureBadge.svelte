@@ -4,15 +4,17 @@
   /// captured or screencast; pulsates to draw the eye; a click stops it (the
   /// operator who sees it is positioned to kill it). Mirrors RecordingBadge.
   ///
-  /// Mock-vs-live: the capture-state signal (compositor/portal -> shell) is a coder
-  /// seam. Under vite dev the badge shows a fixture so the surface renders; on metal
-  /// without the command it stays invisible (no cry-wolf), like RecordingBadge.
+  /// The state comes from the compositor, which announces every screen capture
+  /// on the overlay protocol; the shell holds it and says when it changed. Under
+  /// vite dev the badge shows a fixture so the surface renders. Stopping a
+  /// capture from here still waits on the portal's producer.
   import { t } from "$lib/i18n/messages";
   import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { tauriAvailable } from "$lib/tauri";
   import { ScreenShare } from "lucide-svelte";
   import { shellRead } from "$lib/shellRead";
   import { shellAction } from "$lib/shellAction";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
   interface CaptureStatus {
@@ -34,7 +36,15 @@
     tickInterval = setInterval(() => {
       now = Date.now();
     }, 1_000);
+    // The shell says when a capture starts or stops, so a screenshot that is
+    // over within a second still lights the badge. The poll stays as the
+    // net under a missed event.
+    let stopListening: UnlistenFn | null = null;
+    if (tauriAvailable) {
+      listen("arlen://capture-changed", refresh).then((u) => (stopListening = u));
+    }
     return () => {
+      stopListening?.();
       if (pollInterval) clearInterval(pollInterval);
       if (tickInterval) clearInterval(tickInterval);
     };

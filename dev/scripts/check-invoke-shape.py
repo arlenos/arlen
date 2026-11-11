@@ -516,7 +516,6 @@ DEAD_INVOKES: dict[str, str] = {
     # capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet - coder, target build
     "start_screencast": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
     "cancel_screencast": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
-    "capture_status": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
     "stop_capture": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
     # the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not - coder
     # The Settings printers page had three more entries here, and they are gone
