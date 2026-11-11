@@ -17,10 +17,6 @@ two of the four did not:
 Neither was breaking anything, and that is the point. Both apps are in the
 first-party set, so `tier_for_app` makes them system-anchored and the read-scope
 gate does not apply to them at all - the declaration can drift arbitrarily far
-try:
-    import tracked_walk  # noqa: F401  the walk below reads what git knows about
-except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
-    pass
 from the code and nothing complains. It only becomes a bug the day that anchoring
 tightens, and then it is not an error: the query still runs and the column comes
 back empty, so the symptom is a Recent Files list that is simply blank.
@@ -75,6 +71,11 @@ documentation. So a filter is the most useful thing in them either way: where th
 gate has arrived it is exactly what gets denied, and where it has not it is
 exactly what a query will need the day it does.
 """
+
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 
 import re
 import sys

@@ -16,6 +16,7 @@ Usage: check-gates-read-tracked.py [SCRIPTS_DIR]
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -24,7 +25,25 @@ HERE = Path(__file__).resolve().parent
 DIR = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else HERE
 
 WALKS = re.compile(r'\.rglob\(|os\.walk\(|\.glob\(\s*"\*\*')
-IMPORTS = re.compile(r"^\s*import tracked_walk\b", re.M)
+
+
+def imports_it(text: str) -> bool:
+    """Whether the script really runs `import tracked_walk`.
+
+    Parsed, not matched. Until 11 November this was a regex over the lines, and
+    fifteen gates passed it with the import sitting inside their module docstring,
+    where it is prose: a worktree under `.claude/` then turned
+    `check-menu-labels-translated` red over a file that is not in this tree. A
+    script that does not parse is treated as not importing it.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, ast.Import) and any(a.name == "tracked_walk" for a in node.names)
+        for node in ast.walk(tree)
+    )
 
 
 def main() -> int:
@@ -35,7 +54,7 @@ def main() -> int:
     bare = []
     for p in scripts:
         text = p.read_text(encoding="utf-8", errors="replace")
-        if WALKS.search(text) and not IMPORTS.search(text):
+        if WALKS.search(text) and not imports_it(text):
             bare.append(p.name)
     if bare:
         for name in bare:

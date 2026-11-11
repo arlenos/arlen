@@ -11,10 +11,6 @@ or assigned to a user-facing name, never passing through `$t`.
 
 Neither the catalogue checks nor that sibling can see it, and the reason is worth
 stating because it is why this went unnoticed for so long: **nothing is missing
-try:
-    import tracked_walk  # noqa: F401  the walk below reads what git knows about
-except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
-    pass
 from the catalogue.** The sentence never asks it. A completeness check compares
 the two locales and finds them equal; a render-site scan sees a variable and
 cannot know what is in it.
@@ -59,6 +55,11 @@ Run: dev/scripts/check-born-translatable.py [root]
 """
 
 from __future__ import annotations
+
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 
 import re
 import sys

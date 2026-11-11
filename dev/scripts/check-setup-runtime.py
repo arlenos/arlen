@@ -28,10 +28,6 @@ and one file already breaking it, which is why this note exists rather than a
 comfortable silence.
 
 What this checks: for every `apps/*/src-tauri/src/lib.rs`, the functions called
-try:
-    import tracked_walk  # noqa: F401  the walk below reads what git knows about
-except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
-    pass
 from inside `.setup(...)`, and whether any of them is a NON-ASYNC function whose
 body reaches for tokio directly. The correct spelling in this tree is
 `tauri::async_runtime::spawn`, which is what the three sibling IPC services
@@ -55,6 +51,11 @@ What it does NOT cover:
 Shown to fail before being trusted: restoring `tokio::net::UnixListener` in
 `launch_service::bind` makes it name that function.
 """
+
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 
 import re
 import sys

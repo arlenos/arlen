@@ -5,10 +5,6 @@
 """A daemon under test must not reach the developer's home.
 
 The integration harness spawns real daemons, and a daemon resolves its paths
-try:
-    import tracked_walk  # noqa: F401  the walk below reads what git knows about
-except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
-    pass
 from the environment. Every variable the harness forgets is one the daemon reads
 from the real session instead - so the test writes into the machine it is meant
 to leave alone, and reads state the scenario never seeded.
@@ -38,6 +34,11 @@ Only those two families, deliberately. The `ARLEN_*` variables are this project'
 own and mostly name a socket the harness already points somewhere; the leaks that
 cost real time were all a path resolved from the home directory.
 """
+
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 
 import re
 import sys

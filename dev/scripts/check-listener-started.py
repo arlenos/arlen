@@ -12,10 +12,6 @@ a function that sets up a subscription looks identical whether or not anybody
 subscribes.
 
 The failure is quiet in the worst way. A feed nobody starts is indistinguishable
-try:
-    import tracked_walk  # noqa: F401  the walk below reads what git knows about
-except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
-    pass
 from a feed nobody publishes on: the surface renders its empty state, which is
 usually correct-looking, and the thing that would have filled it never runs. That
 is the same shape as the missing MIME name that made the Windows prompt inert the
@@ -32,6 +28,11 @@ Run: dev/scripts/check-listener-started.py [tree]
 """
 
 from __future__ import annotations
+
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 
 import re
 import sys

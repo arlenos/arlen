@@ -15,10 +15,6 @@ That is not hypothetical. `knowledge`'s `savedUnavailable` was set by
 `loadSavedSearches`'s catch and read by nobody, so the Searches place answered a
 failed read with "No saved searches yet." - a statement about the person's own
 data, made after failing to look at it. The flag saying otherwise was two lines
-try:
-    import tracked_walk  # noqa: F401  the walk below reads what git knows about
-except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
-    pass
 from the code that set it. Found on 16 August by scanning for exactly this, after
 finding the same shape by hand in four other places.
 
@@ -54,6 +50,11 @@ What it does NOT cover, deliberately:
 So a pass means every recorded failure has a reader, not that every failure is
 reported well.
 """
+
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 
 import re
 import sys

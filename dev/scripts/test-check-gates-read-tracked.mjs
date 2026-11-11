@@ -34,7 +34,9 @@ try {
   writeFileSync(path.join(fixture, "check-good.py"), "import tracked_walk\nfrom pathlib import Path\nPath('.').rglob('*.rs')\n");
   writeFileSync(path.join(fixture, "check-bare.py"), "from pathlib import Path\nfor p in Path('.').rglob('*.rs'):\n    pass\n");
   writeFileSync(path.join(fixture, "check-flat.py"), "from pathlib import Path\nPath('.').glob('*.toml')\n");
+  writeFileSync(path.join(fixture, "check-prose.py"), '"""Walks the tree.\nimport tracked_walk\n"""\nfrom pathlib import Path\nPath(".").rglob("*.rs")\n');
   const red = run(fixture);
+  check("an import that is only prose in a docstring is named", red.stdout.includes("check-prose.py"), red.stdout);
   check("a walking gate without the import is named", red.status === 1 && red.stdout.includes("check-bare.py"), red.stdout);
   check("a gate that imports it is not", !red.stdout.includes("check-good.py"), red.stdout);
   check("a one-level glob is not a walk", !red.stdout.includes("check-flat.py"), red.stdout);

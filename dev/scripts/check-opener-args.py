@@ -19,10 +19,6 @@ exactly that in its own error text.
 Three tools now, each measured on its own, because the remedy is NOT the same for
 all of them - `xdg-open` and `xdg-mime` REJECT `--` and need an absolute argument,
 while `gtk-launch` requires `--` and has no path to make absolute. One line copied
-try:
-    import tracked_walk  # noqa: F401  the walk below reads what git knows about
-except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
-    pass
 from either to the other breaks it. The obvious generalisation is wrong: the
 same guard applied to `nmcli` breaks it, because nmcli does not honour `--` as an
 end-of-options marker and would take it as the connection name -
@@ -53,6 +49,11 @@ What this does NOT cover:
     session and an application launch, which is not something CI or an agent
     should be doing on somebody's desktop. The parse is what is verified.
 """
+
+try:
+    import tracked_walk  # noqa: F401  the walk below reads what git knows about
+except ModuleNotFoundError:  # a control's copy of this gate, run away from the module
+    pass
 
 import re
 import sys

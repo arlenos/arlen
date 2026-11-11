@@ -675,6 +675,16 @@ impl Drop for EphemeralStack {
     }
 }
 
+/// Whether a directory of this name is something a walk of the tree leaves
+/// alone: build output, installed packages, the image build's folders, git's own
+/// data and `.claude`, a local tools folder. The last can hold whole second
+/// checkouts (`.claude/worktrees/`), and on 11 November one of them put twenty-one packages
+/// in front of the frontend matrix test that are not in this tree at all. Seven
+/// walks here each carried their own copy of this list and none had that entry.
+pub(crate) fn not_our_tree(name: &str) -> bool {
+    matches!(name, "target" | "node_modules" | ".git" | ".claude") || name.starts_with("mkosi")
+}
+
 /// Locate a spawned binary. Every crate builds into the ONE shared target dir
 /// (repo-root `.cargo/config.toml` `[build] target-dir = "target"`), so all
 /// binaries land in `<repo-root>/target/debug/<name>` regardless of their crate.
@@ -885,7 +895,7 @@ mod unit_identity {
         for e in entries.flatten() {
             let p = e.path();
             if p.is_dir() {
-                if p.file_name().is_some_and(|n| n == "target" || n == "node_modules") {
+                if p.file_name().is_some_and(|n| crate::not_our_tree(&n.to_string_lossy())) {
                     continue;
                 }
                 collect(&p, out);
@@ -1039,9 +1049,7 @@ mod proto_agreement {
         for e in entries.flatten() {
             let p = e.path();
             if p.is_dir() {
-                if p.file_name().is_some_and(|n| {
-                    n == "target" || n == "node_modules" || n.to_string_lossy().starts_with("mkosi")
-                }) {
+                if p.file_name().is_some_and(|n| crate::not_our_tree(&n.to_string_lossy())) {
                     continue;
                 }
                 collect(&p, out);
@@ -1151,9 +1159,7 @@ mod dbus_activation {
         for e in entries.flatten() {
             let p = e.path();
             if p.is_dir() {
-                if p.file_name().is_some_and(|n| {
-                    n == "target" || n == "node_modules" || n.to_string_lossy().starts_with("mkosi")
-                }) {
+                if p.file_name().is_some_and(|n| crate::not_our_tree(&n.to_string_lossy())) {
                     continue;
                 }
                 walk(&p, out);
@@ -1265,7 +1271,7 @@ mod ci_matrix {
             let p = e.path();
             if p.is_dir() {
                 let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
-                if n == "target" || n == "node_modules" || n.starts_with("mkosi") || n == ".git" {
+                if crate::not_our_tree(&n) {
                     continue;
                 }
                 packages(&p, out);
@@ -1411,7 +1417,7 @@ mod frontend_matrix {
             let p = e.path();
             if p.is_dir() {
                 let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
-                if n == "node_modules" || n == "target" || n.starts_with("mkosi") || n == ".git" {
+                if crate::not_our_tree(&n) {
                     continue;
                 }
                 packages(&p, out);
@@ -1555,7 +1561,7 @@ mod module_reachability {
             let p = e.path();
             if p.is_dir() {
                 let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
-                if n == "target" || n == "node_modules" || n.starts_with("mkosi") || n == ".git" {
+                if crate::not_our_tree(&n) {
                     continue;
                 }
                 sources(&p, out);
@@ -1779,7 +1785,7 @@ mod crate_reachability {
             let p = e.path();
             if p.is_dir() {
                 let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
-                if n == "target" || n == "node_modules" || n.starts_with("mkosi") || n == ".git" {
+                if crate::not_our_tree(&n) {
                     continue;
                 }
                 manifests(&p, out);
