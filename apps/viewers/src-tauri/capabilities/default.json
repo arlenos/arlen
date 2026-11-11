@@ -22,6 +22,7 @@
     "arlen-shell:allow-menu-register",
     "arlen-shell:allow-presence-set",
     "arlen-shell:allow-presence-clear",
-    "arlen-shell:allow-timeline-record"
+    "arlen-shell:allow-timeline-record",
+    "arlen-portal:allow-pick-file"
   ]
 }

@@ -482,6 +482,7 @@ pub fn run() {
     let initial = std::env::args().skip(1).find(|a| !a.starts_with('-'));
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
+        .plugin(tauri_plugin_arlen_portal::init())
         .manage(InitialFile(initial))
         .invoke_handler(tauri::generate_handler![
             decode_image,

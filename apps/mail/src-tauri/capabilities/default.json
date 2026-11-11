@@ -20,6 +20,7 @@
     "arlen-shell:allow-locale-get",
     "arlen-shell:allow-menu-register",
     "arlen-shell:allow-badges-set",
-    "arlen-shell:allow-badges-clear"
+    "arlen-shell:allow-badges-clear",
+    "arlen-portal:allow-pick-file"
   ]
 }

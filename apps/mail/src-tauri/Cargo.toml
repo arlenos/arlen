@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 dirs = "5"
 tauri = { version = "2", features = [] }
 tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
+tauri-plugin-arlen-portal = { path = "../../../sdk/tauri-plugin-portal" }
 serde = { version = "1", features = ["derive"] }
 arlen-mail-core = { path = "../core" }
 

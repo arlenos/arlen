@@ -343,6 +343,7 @@ pub fn run() {
         .filter(|a| !a.starts_with('-'));
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
+        .plugin(tauri_plugin_arlen_portal::init())
         .manage(LaunchFile(launched))
         .manage(Open::default())
         .invoke_handler(tauri::generate_handler![

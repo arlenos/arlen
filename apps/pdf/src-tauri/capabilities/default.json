@@ -20,6 +20,7 @@
     "arlen-shell:allow-locale-get",
     "arlen-shell:allow-menu-register",
     "arlen-shell:allow-presence-set",
-    "arlen-shell:allow-presence-clear"
+    "arlen-shell:allow-presence-clear",
+    "arlen-portal:allow-pick-file"
   ]
 }

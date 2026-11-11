@@ -509,6 +509,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
+        .plugin(tauri_plugin_arlen_portal::init())
         .manage(LaunchFile(launched))
         .invoke_handler(tauri::generate_handler![
             launch_file,
