@@ -254,21 +254,25 @@ textarea,
 
 /* Scrollbar styling — thumb follows the runtime corner radius so it
    visually matches every other rounded surface in the app. */
-/* Deep-link highlight: the settings:navigate handler adds this class
-   to the target element. Holds a tinted background + left accent
-   border for 70% of the duration so the user has time to spot it,
-   then fades out cleanly. */
+/* Settings' own act is finding a setting. The one a search result or a deep
+   link leads to is marked at once, holds long enough to be spotted, then
+   lets go on `--duration-slow`, which the theme zeroes under reduce motion.
+   The mark is a tint and an inset edge, so nothing in the row moves. */
 .setting-highlight {
-  animation: setting-pulse 3s ease-out forwards !important;
+  --setting-found-edge: 3px;
+  animation: setting-found var(--duration-slow) var(--ease-out) 2s both !important;
 }
-@keyframes setting-pulse {
-  0%, 70% {
+[dir="rtl"] .setting-highlight {
+  --setting-found-edge: -3px;
+}
+@keyframes setting-found {
+  from {
     background-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
-    border-inline-start: 3px solid var(--color-accent);
+    box-shadow: inset var(--setting-found-edge) 0 0 var(--color-accent);
   }
-  100% {
+  to {
     background-color: transparent;
-    border-inline-start: 3px solid transparent;
+    box-shadow: inset var(--setting-found-edge) 0 0 transparent;
   }
 }
 

@@ -244,17 +244,20 @@
       container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     }
 
-    // Force reflow before adding the class so the browser starts
-    // the animation from the current computed state, not from a
-    // cached/optimised no-op.
+    // Restart the mark when the same setting is found twice in a row: the
+    // reflow between remove and add is what makes the animation run again.
+    el.classList.remove("setting-highlight");
     void el.offsetHeight;
     el.classList.add("setting-highlight");
-    console.log(
-      "[deep-link] highlighted #" + el.id,
-      "classes:", el.classList.toString(),
-      "bg:", getComputedStyle(el).backgroundColor,
+    // The class goes when the mark has let go, however long the theme makes
+    // that, so the row is never left holding a finished animation.
+    el.addEventListener(
+      "animationend",
+      (e) => {
+        if (e.animationName === "setting-found") el.classList.remove("setting-highlight");
+      },
+      { once: true },
     );
-    setTimeout(() => el.classList.remove("setting-highlight"), 2500);
   }
 </script>
 
