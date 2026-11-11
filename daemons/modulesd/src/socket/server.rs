@@ -175,12 +175,10 @@ enum Refusal {
     NoCredential(std::io::Error),
     /// Another user's process. Same-uid is the whole boundary here.
     OtherUser(u32),
-    /// A credential with no pid, so nothing to resolve.
-    NoPid,
-    /// `/proc/<pid>/exe` did not read - usually the process exited mid-handshake.
-    NoBinary(u32, std::io::Error),
-    /// A binary the identity broker has no name for.
-    UnknownBinary(std::path::PathBuf),
+    /// The peer left between connecting and being asked about.
+    Gone,
+    /// Neither the launcher's stamp nor the peer's binary gave it a name.
+    Unnamed(String),
     /// A resolved caller that this daemon does not admit.
     NotAdmitted(String),
 }
@@ -193,15 +191,10 @@ impl std::fmt::Display for Refusal {
                 f,
                 "uid {uid} is not this session's user; the module runtime is same-user only"
             ),
-            Self::NoPid => write!(f, "the peer credential carries no pid"),
-            Self::NoBinary(pid, e) => write!(
+            Self::Gone => write!(f, "the peer left mid-handshake"),
+            Self::Unnamed(why) => write!(
                 f,
-                "/proc/{pid}/exe did not read ({e}); the process usually left mid-handshake"
-            ),
-            Self::UnknownBinary(path) => write!(
-                f,
-                "the identity broker has no name for {}; register the unit the caller runs as",
-                path.display()
+                "the caller carries no launcher stamp and its binary names nothing ({why}); register the unit it runs as"
             ),
             Self::NotAdmitted(app_id) => write!(
                 f,
@@ -217,15 +210,23 @@ impl std::fmt::Display for Refusal {
 /// client says. A `dev.`-prefixed id passes in debug builds, matching the audit
 /// and revoke admissions, so a cargo-run shell works without widening release.
 fn admitted_peer(stream: &UnixStream) -> std::result::Result<String, Refusal> {
-    let cred = stream.peer_cred().map_err(Refusal::NoCredential)?;
-    if cred.uid() != unsafe { libc::getuid() } {
-        return Err(Refusal::OtherUser(cred.uid()));
-    }
-    let pid = cred.pid().ok_or(Refusal::NoPid)?;
-    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
-        .map_err(|e| Refusal::NoBinary(pid as u32, e))?;
-    let app_id = arlen_permissions::identity::path_to_app_id(&exe)
-        .map_err(|_| Refusal::UnknownBinary(exe.clone()))?;
+    use arlen_permissions::AuthError;
+    // The launcher's stamp first, answered by the identity broker from a pidfd.
+    // This unit runs under `ProtectSystem=strict`, where a same-uid peer's
+    // `/proc/<pid>/exe` is refused almost every time (1 of 25 on the 15 August
+    // boot), so the read that stood here named nobody on a shipped image and
+    // refused the shell and Settings with them. The binary is still the fallback
+    // inside the resolver, which is what keeps a cargo-run shell working.
+    // SAFETY: getuid never fails.
+    let uid = unsafe { libc::getuid() };
+    let identity = arlen_permissions::stamped_identity::app_id_from_connection(stream, uid)
+        .map_err(|e| match e {
+            AuthError::PeerCred(io) => Refusal::NoCredential(io),
+            AuthError::CrossUid { peer, .. } => Refusal::OtherUser(peer),
+            AuthError::PeerNotAlive => Refusal::Gone,
+            other => Refusal::Unnamed(other.to_string()),
+        })?;
+    let app_id = identity.app_id().to_string();
     if is_admitted_id(&app_id) {
         Ok(app_id)
     } else {
@@ -353,9 +354,9 @@ mod tests {
         // waits - so the sentences have to differ and each has to name its cause.
         let cases = [
             (Refusal::OtherUser(1042), vec!["1042", "same-user"]),
-            (Refusal::NoPid, vec!["no pid"]),
+            (Refusal::Gone, vec!["mid-handshake"]),
             (
-                Refusal::UnknownBinary(std::path::PathBuf::from("/usr/bin/python3")),
+                Refusal::Unnamed("unknown binary /usr/bin/python3".to_string()),
                 vec!["/usr/bin/python3", "register the unit"],
             ),
             (
@@ -375,16 +376,24 @@ mod tests {
     }
 
     #[test]
-    fn the_two_io_refusals_carry_their_error() {
-        // These two only ever happen with an errno behind them, and the errno is
-        // the whole diagnosis: a permission denial and a vanished process read
-        // identically without it.
-        let denied = || std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-        assert!(Refusal::NoCredential(denied()).to_string().contains("denied"));
-        let gone = Refusal::NoBinary(4242, std::io::Error::from(std::io::ErrorKind::NotFound));
-        let said = gone.to_string();
-        assert!(said.contains("4242"), "the pid belongs in it: {said}");
-        assert!(said.contains("/proc/"), "the path belongs in it: {said}");
+    fn the_io_refusal_carries_its_error() {
+        // It only ever happens with an errno behind it, and the errno is the
+        // whole diagnosis.
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert!(Refusal::NoCredential(denied).to_string().contains("denied"));
+    }
+
+    #[tokio::test]
+    async fn a_peer_is_named_through_the_shared_resolver() {
+        // The peer of a socket pair is this test binary: unstamped, from a cargo
+        // target path. It has to come back as a refusal that names why, and not
+        // as a panic or an admission.
+        let (a, _b) = UnixStream::pair().unwrap();
+        let refused = admitted_peer(&a).expect_err("a test binary drives no module runtime");
+        assert!(
+            matches!(refused, Refusal::Unnamed(_) | Refusal::NotAdmitted(_)),
+            "got {refused}"
+        );
     }
 
     #[test]

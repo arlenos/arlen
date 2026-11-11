@@ -69,25 +69,40 @@ fn peer_uid(stream: &UnixStream) -> Option<u32> {
     stream.peer_cred().ok().map(|cred| cred.uid())
 }
 
-/// Resolve whether the connected peer is an attested system-tier producer.
+/// The session's own children that are not units: the session spawns them and
+/// stamps them itself, so they are in no unit table. The shell is listed under
+/// both spellings its id has (the binary rule's and the catalogue's).
+const SESSION_COMPONENTS: &[&str] = &["compositor", "desktop-shell", "dev.arlen.desktop-shell"];
+
+/// The tier of a peer, read off the name it was attested under.
 ///
-/// The peer's PID comes from `SO_PEERCRED` (kernel-attested, not self-declared);
-/// its `/proc/<pid>/exe` install path is classified by [`detect_tier`]. A
-/// system-tier producer is a root-owned binary under `/usr/bin/arlen-*` or
-/// `/usr/lib/arlen/...` (the eBPF kernel-layer, the compositor, the daemons).
+/// This used to be a second look at the peer: `/proc/<pid>/exe`, classified by
+/// install path. Under this unit's own hardening that read is refused for nearly
+/// every same-uid peer (1 of 25 on the 15 August boot), so on a shipped image
+/// nothing was ever the system tier - and the machine-wide view the knowledge
+/// daemon and the shell are meant to keep hung on exactly that.
 ///
-/// Only the system tier is exempt from the EBK-2 uid restamp: the kernel-layer
-/// observes the whole machine and legitimately forwards events stamped with the
-/// *observed* process's uid, so overwriting that with its own peercred uid would
-/// collapse every kernel event onto one user and break per-user routing. Any
-/// resolution failure (no peercred, unreadable `/proc`) returns `false`
-/// (non-system), the fail-safe: a producer that cannot prove a system identity
-/// has its uid restamped from peercred.
-fn peer_tier(stream: &UnixStream) -> Option<arlen_permissions::AppTier> {
-    let cred = stream.peer_cred().ok()?;
-    let pid = cred.pid()?;
-    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
-    Some(arlen_permissions::detect_tier(&exe))
+/// A name is enough because of who can give one. A daemon's id reaches the bus
+/// as a stamp only the supervisor may register, or as a root-owned install path;
+/// an app launched by a user cannot come back as `knowledge`. An unresolved peer
+/// has no tier, which is the fail-safe it always was.
+fn tier_of(scope: &PeerScope) -> Option<arlen_permissions::AppTier> {
+    let id = match scope {
+        PeerScope::Profiled(id, _) | PeerScope::NoProfile(id) => id.as_str(),
+        PeerScope::Unresolved => return None,
+    };
+    Some(tier_for_attested_id(id))
+}
+
+/// [`tier_of`] over the bare id, so the rule is testable without a peer.
+fn tier_for_attested_id(id: &str) -> arlen_permissions::AppTier {
+    if arlen_permissions::unit_identity::is_shipped_daemon_app_id(id)
+        || SESSION_COMPONENTS.contains(&id)
+    {
+        arlen_permissions::AppTier::System
+    } else {
+        arlen_permissions::AppTier::ThirdParty
+    }
 }
 
 /// What the bus could learn about a connected peer.
@@ -109,7 +124,7 @@ enum PeerScope {
 
 /// Everything the bus decides about a peer, from ONE resolution of its pid.
 ///
-/// It used to take three: `peer_tier` read `/proc/<pid>/exe`, then
+/// It used to take three: a `peer_tier` read `/proc/<pid>/exe`, then
 /// `peer_app_profile` read the pid again, then the scope check read it a third
 /// time. Beyond the waste, the exemption verdict was assembled from two
 /// independent reads - so a pid recycled between them would decide "is this
@@ -129,10 +144,9 @@ struct Peer {
 
 impl Peer {
     fn resolve(stream: &UnixStream) -> Self {
-        Self {
-            scope: peer_app_profile(stream),
-            tier: peer_tier(stream),
-        }
+        let scope = peer_app_profile(stream);
+        let tier = tier_of(&scope);
+        Self { scope, tier }
     }
 
     fn is_system(&self) -> bool {
@@ -1003,8 +1017,8 @@ mod tests {
         // The peer of a socket pair is this test binary, which runs from a
         // cargo `target/` path — not `/usr/bin/arlen-*` or `/usr/lib/arlen/`.
         // It must classify as non-system, so its events get the EBK-2 uid
-        // restamp. This also exercises the /proc/<pid>/exe resolution path and
-        // the fail-safe (an unresolvable peer is non-system).
+        // restamp. This also exercises the fail-safe (an unresolvable peer is
+        // non-system).
         //
         // Goes through `Peer::resolve` because that is what the handlers call.
         // It used to call a one-line `peer_is_system_producer` wrapper, and when
@@ -1014,6 +1028,24 @@ mod tests {
         assert!(
             !Peer::resolve(&sock_a).is_system(),
             "a non-system-path peer must not be treated as a system producer"
+        );
+    }
+
+    #[test]
+    fn the_tier_follows_the_attested_name() {
+        use arlen_permissions::AppTier;
+        // The two that keep the machine-wide view by design.
+        assert_eq!(tier_for_attested_id("knowledge"), AppTier::System);
+        assert_eq!(tier_for_attested_id("dev.arlen.desktop-shell"), AppTier::System);
+        assert_eq!(tier_for_attested_id("kernel-layer"), AppTier::System);
+        // A first-party app is not a daemon and gets no exemption from being ours.
+        assert_eq!(tier_for_attested_id("dev.arlen.files"), AppTier::ThirdParty);
+        assert_eq!(tier_for_attested_id("org.example.app"), AppTier::ThirdParty);
+        // No name, no tier.
+        assert_eq!(tier_of(&PeerScope::Unresolved), None);
+        assert_eq!(
+            tier_of(&PeerScope::NoProfile("knowledge".into())),
+            Some(AppTier::System)
         );
     }
 

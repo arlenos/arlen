@@ -275,6 +275,18 @@ pub fn app_id_for_unit(unit: &str) -> Option<&'static str> {
     UNIT_APP_IDS.iter().find(|(u, _)| *u == unit).map(|(_, a)| *a)
 }
 
+/// Whether `app_id` is the id of a daemon this tree ships, system or per-user.
+///
+/// For a reader that has an attested id and needs to know whether it names one
+/// of ours. It says nothing about HOW the id was attested: that is the caller's
+/// resolver, and an id nobody attested proves nothing by being in this table.
+pub fn is_shipped_daemon_app_id(app_id: &str) -> bool {
+    UNIT_APP_IDS
+        .iter()
+        .chain(USER_UNIT_APP_IDS.iter())
+        .any(|(_, a)| *a == app_id)
+}
+
 /// Every unit this resolver knows, for the drift check and for callers that want
 /// to report what is enrollable.
 pub fn enrolled_units() -> impl Iterator<Item = &'static str> {
@@ -298,6 +310,15 @@ pub fn app_id_from_pinned_pid(pid: u32) -> Result<&'static str, UnitError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_shipped_daemon_is_known_by_its_id_and_an_app_is_not() {
+        assert!(is_shipped_daemon_app_id("knowledge"));
+        assert!(is_shipped_daemon_app_id("kernel-layer"));
+        assert!(!is_shipped_daemon_app_id("dev.arlen.files"));
+        assert!(!is_shipped_daemon_app_id("arlen-graph.service"), "the unit name is not the id");
+        assert!(!is_shipped_daemon_app_id(""));
+    }
 
     #[test]
     fn a_system_unit_is_named_by_its_cgroup() {

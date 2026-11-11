@@ -152,8 +152,8 @@ enum CallerUnknown {
     NoPeerCred,
     /// A different user. A deliberate refusal, not a fault.
     CrossUid(u32),
-    /// The peer's binary could not be read - most often `/proc/<pid>/exe` denied
-    /// to a hardened reader.
+    /// No stamp, and the peer's binary could not be read either - most often
+    /// `/proc/<pid>/exe` denied to a hardened reader.
     UnreadableExe(String),
     /// The binary resolved to no app id we know.
     UnknownBinary(String),
@@ -180,15 +180,22 @@ impl CallerUnknown {
 
 /// Resolve the connecting peer to its attested app id, same-uid only.
 fn attested_caller(stream: &tokio::net::UnixStream) -> Result<String, CallerUnknown> {
-    let cred = stream.peer_cred().map_err(|_| CallerUnknown::NoPeerCred)?;
-    if cred.uid() != unsafe { libc::getuid() } {
-        return Err(CallerUnknown::CrossUid(cred.uid()));
-    }
-    let pid = cred.pid().ok_or(CallerUnknown::NoPeerCred)?;
-    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
-        .map_err(|e| CallerUnknown::UnreadableExe(e.to_string()))?;
-    arlen_permissions::identity::path_to_app_id(&exe)
-        .map_err(|_| CallerUnknown::UnknownBinary(exe.display().to_string()))
+    use arlen_permissions::AuthError;
+    // The launcher's stamp first: this unit is hardened, and a hardened reader is
+    // refused a same-uid peer's exe link nearly every time. The binary stays the
+    // fallback inside the resolver, for a caller nobody stamped.
+    // SAFETY: getuid never fails.
+    let uid = unsafe { libc::getuid() };
+    arlen_permissions::stamped_identity::app_id_from_connection(stream, uid)
+        .map(|identity| identity.app_id().to_string())
+        .map_err(|e| match e {
+            AuthError::PeerCred(_) | AuthError::PeerNotAlive => CallerUnknown::NoPeerCred,
+            AuthError::CrossUid { peer, .. } => CallerUnknown::CrossUid(peer),
+            AuthError::Identity(arlen_permissions::identity::IdentityError::UnknownBinary(path)) => {
+                CallerUnknown::UnknownBinary(path.display().to_string())
+            }
+            other => CallerUnknown::UnreadableExe(other.to_string()),
+        })
 }
 
 /// Whether `caller` may write settings belonging to `target`.
