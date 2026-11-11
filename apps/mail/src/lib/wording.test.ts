@@ -6,7 +6,7 @@
 // inside the component, where the only way to exercise them was to render it.
 
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatSent, invitationWords, threadKey } from "./wording";
+import { formatBytes, formatSent, hostWhy, invitationWords, threadKey } from "./wording";
 
 // Returns the id it was asked for, so a test can assert WHICH sentence was
 // chosen without depending on any wording.
@@ -95,5 +95,17 @@ describe("formatBytes", () => {
     expect(formatBytes(900, "en")).toBe("900 B");
     expect(formatBytes(999, "de")).toBe("999 B");
     expect(formatBytes(1000, "en")).toBe("1 KB");
+  });
+});
+
+describe("hostWhy", () => {
+  const id = (key: string) => key;
+
+  it("names a reason the kit has a sentence for", () => {
+    expect(hostWhy("No space left on device (os error 28)", id)).toBe("k.why.noSpace");
+  });
+
+  it("says nothing rather than repeat the host's own words", () => {
+    expect(hostWhy("Operation not supported (os error 95)", id)).toBe("");
   });
 });

@@ -8,8 +8,21 @@
 /// component. The window's LOOK is being redone by another lane; these rules are
 /// not, so they should not be sitting in the file that is going away.
 
+import { ioWhyKey } from "@arlen/ui-kit/io-why";
+
 /// A translator: the message id and its values in, the sentence out.
 export type Translate = (key: string, values?: Record<string, unknown>) => string;
+
+/// The host's reason for a refusal, as a sentence of the reader's, or nothing.
+///
+/// The host sends the operating system's own words ("No space left on device
+/// (os error 28)"), which are English in every language and written for whoever
+/// reads a log. The kit knows the handful a person can act on; anything else
+/// stays out of the sentence, and the kit puts it on the console.
+export function hostWhy(text: string, kt: Translate): string {
+  const key = ioWhyKey(text);
+  return key ? kt(key) : "";
+}
 
 /// The sentence for a calendar part, chosen by what the message claims it is.
 ///

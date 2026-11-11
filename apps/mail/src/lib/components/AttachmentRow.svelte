@@ -9,7 +9,8 @@
   import { Paperclip, CalendarDays, Download } from "@lucide/svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { t, locale } from "$lib/i18n/messages";
-  import { formatBytes } from "$lib/wording";
+  import { kt } from "@arlen/ui-kit/i18n/messages.kit";
+  import { formatBytes, hostWhy } from "$lib/wording";
   import type { Message } from "$lib/stores/mailbox";
 
   let { message }: { message: Message } = $props();
@@ -31,7 +32,7 @@
     const p = e as SaveProblem | null;
     switch (p?.problem) {
       case "unreadable":
-        return $t("ml.attach.failed.unreadable", { why: p.why });
+        return $t("ml.attach.failed.unreadable", { why: hostWhy(p.why, $kt) });
       case "not-a-message":
         return $t("ml.attach.failed.notAMessage");
       case "no-such-attachment":
@@ -39,7 +40,7 @@
       case "no-folder":
         return $t("ml.attach.failed.noFolder");
       case "not-written":
-        return $t("ml.attach.failed.notWritten", { why: p.why });
+        return $t("ml.attach.failed.notWritten", { why: hostWhy(p.why, $kt) });
       default:
         // Not one of ours: no host at all, or a transport that failed before the
         // command answered. Its own words are the only detail there is - and they

@@ -17,7 +17,8 @@
   import { t } from "$lib/i18n/messages";
   import { initAppMenu, menuAction } from "$lib/menu";
   import { menuNoteFor, type MenuNote } from "$lib/menuGuard";
-  import { displayName, threadKey } from "$lib/wording";
+  import { kt } from "@arlen/ui-kit/i18n/messages.kit";
+  import { displayName, hostWhy, threadKey } from "$lib/wording";
   import {
     SidebarProvider,
     SidebarInset,
@@ -454,7 +455,7 @@
   const failureText = $derived.by(() => {
     if (!failure) return "";
     if (failure.problem === "launch") return $t("ml.failed.launch");
-    if (failure.problem === "unreadable") return $t("ml.failed.unreadable", { why: failure.why });
+    if (failure.problem === "unreadable") return $t("ml.failed.unreadable", { why: hostWhy(failure.why, $kt) });
     if (failure.problem === "not-a-message") return $t("ml.failed.notAMessage");
     return $t("ml.failed.other");
   });
