@@ -48,9 +48,12 @@ export function applyToolEvent(trace: TracedCall[], event: unknown): TracedCall[
   return trace;
 }
 
-/// The plain [`ToolCall`] list for the message model (drops the tracking id).
+/// The [`ToolCall`] list for the message model. The engine's id goes with each
+/// call: the daemon's reporter audits a tool result under that same id, so a
+/// call without it cannot be matched to its ledger entries afterwards. An empty
+/// id (an event that carried none) is left off, never stored as "".
 export function toolCallsOf(trace: TracedCall[]): ToolCall[] {
-  return trace.map((t) => t.call);
+  return trace.map((t) => (t.id ? { ...t.call, callId: t.id } : t.call));
 }
 
 /// The assistant text carried by a pi `message_update` event, for STREAMING the

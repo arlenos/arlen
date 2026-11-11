@@ -3,7 +3,7 @@
 /// §4c), and that completion fills the step rather than appearing as a second
 /// one; an entry with no chain is no run's step.
 import { describe, expect, it } from "vitest";
-import { groupRuns, running } from "./run";
+import { entriesForCall, groupRuns, running } from "./run";
 import type { ActivityEntry } from "./ledger";
 
 function entry(i: number, chain: string | null, subject: string, at: number, durationMs: number | null): ActivityEntry {
@@ -51,5 +51,23 @@ describe("groupRuns", () => {
     expect(run.bound).toBeNull();
     expect(run.steps[0].tokens).toBeNull();
     expect(run.steps[0].trace).toBeNull();
+  });
+});
+
+describe("entriesForCall", () => {
+  const page = [
+    entry(3, "call-7", "graph.ask", 300, 12),
+    entry(1, "call-7", "graph.ask", 100, null),
+    entry(2, "call-8", "fs.read", 200, null),
+    entry(4, null, "config", 400, null),
+  ];
+
+  it("returns one call's entries, oldest first", () => {
+    expect(entriesForCall(page, "call-7").map((e) => e.index)).toEqual([1, 3]);
+  });
+
+  it("a call with no id matches nothing, least of all the chainless entries", () => {
+    expect(entriesForCall(page, undefined)).toEqual([]);
+    expect(entriesForCall(page, "")).toEqual([]);
   });
 });

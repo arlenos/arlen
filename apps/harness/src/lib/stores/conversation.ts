@@ -46,6 +46,10 @@ export interface ToolCall {
   /// Outcome from the daemon trace. Absent only on conversations persisted
   /// before this field existed, which the card renders without a glyph.
   status?: ToolStatus;
+  /// The engine's id for this call. The ledger files the call's entries under
+  /// it as their `callChainId`, so it is what joins a card to what was
+  /// recorded. Absent on conversations persisted before it was kept.
+  callId?: string;
 }
 
 /// A file the user attached to a turn via the composer's `@`-mention picker

@@ -93,8 +93,15 @@ describe("applyToolEvent", () => {
     expect(applyToolEvent(start, "not an object")).toBe(start);
   });
 
-  it("toolCallsOf drops the tracking id", () => {
+  it("toolCallsOf keeps the engine's id, which is what the ledger files the call under", () => {
     const trace: TracedCall[] = [{ id: "c1", call: { server: "g", tool: "q", arguments: "{}", result: "r", status: "done" } }];
-    expect(toolCallsOf(trace)).toEqual([{ server: "g", tool: "q", arguments: "{}", result: "r", status: "done" }]);
+    expect(toolCallsOf(trace)).toEqual([
+      { server: "g", tool: "q", arguments: "{}", result: "r", status: "done", callId: "c1" },
+    ]);
+  });
+
+  it("toolCallsOf leaves an empty id off instead of storing it", () => {
+    const trace: TracedCall[] = [{ id: "", call: { server: "g", tool: "q", arguments: "{}", result: "", status: "running" } }];
+    expect("callId" in toolCallsOf(trace)[0]).toBe(false);
   });
 });

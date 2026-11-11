@@ -27,6 +27,20 @@ export interface Run {
   bound: number | null;
 }
 
+/// The ledger entries recorded for one tool call, oldest first.
+///
+/// The daemon's reporter files a tool result under the engine's id for the call,
+/// and the card keeps that id as `callId`. A call that carries none (a
+/// conversation saved before the id was kept) matches nothing: an empty answer
+/// is "not known", and matching on an absent id would hand it every entry that
+/// has no chain.
+export function entriesForCall(entries: ActivityEntry[], callId: string | undefined): ActivityEntry[] {
+  if (!callId) return [];
+  return entries
+    .filter((e) => e.callChainId === callId)
+    .sort((a, b) => a.timestampMicros - b.timestampMicros || a.index - b.index);
+}
+
 /// Group a ledger page into runs by `call_chain_id`, newest run first, each
 /// run's steps oldest first. Entries without a chain id are not part of a run.
 /// A completion entry (same chain, same subject, carrying the duration) is
