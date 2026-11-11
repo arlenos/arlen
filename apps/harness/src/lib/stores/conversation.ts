@@ -447,6 +447,11 @@ async function piTurn(
   }
 }
 
+/// The turn `send` put into the thread last. The thread reads it once, when a
+/// turn mounts, to tell the message somebody just sent from one that a session
+/// switch or a reload drew: only the first lands with a gesture.
+export const sentTurn: { id: number } = { id: -1 };
+
 /// and a pending assistant placeholder synchronously into the active session,
 /// then fills the placeholder with the answer or replaces it with an error. The
 /// turn targets the session it was asked in even if the user switches mid-flight.
@@ -460,9 +465,11 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
   // The prompt is now sent, so its saved composer draft is spent.
   clearDraft(id);
   const names = mentions.map((m) => m.name);
+  const sentId = nextMsgId++;
+  sentTurn.id = sentId;
   updateSession(id, (m) => [
     ...m,
-    { id: nextMsgId++, role: "user", text, mentions: names.length ? names : undefined },
+    { id: sentId, role: "user", text, mentions: names.length ? names : undefined },
   ]);
   const pendingId = nextMsgId++;
   updateSession(id, (m) => [...m, { id: pendingId, role: "assistant", text: "", pending: true }]);

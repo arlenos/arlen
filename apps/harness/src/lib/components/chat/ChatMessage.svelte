@@ -34,6 +34,7 @@
     editAndResend,
     fork,
     regenerate,
+    sentTurn,
     togglePin,
     type Message,
   } from "$lib/stores/conversation";
@@ -108,9 +109,14 @@
     if (!canRegenerate || $busy) return;
     await regenerate();
   }
+
+  // Read once at mount: the id moves on with the next send, and a turn that
+  // has landed must not land again when something else re-renders it.
+  // svelte-ignore state_referenced_locally
+  const sent = message.id === sentTurn.id;
 </script>
 
-<div class="turn" class:highlighted data-role={message.role} data-mid={message.id}>
+<div class="turn" class:highlighted class:sent data-role={message.role} data-mid={message.id}>
   <p class="role">{message.role === "user" ? $t("h.msg.you") : $t("h.msg.assistant")}</p>
 
   {#if message.pending}
@@ -278,6 +284,18 @@
     transition:
       background-color var(--duration-fast) var(--ease-out),
       box-shadow var(--duration-fast) var(--ease-out);
+  }
+  /* The harness's own act is sending. The turn somebody just sent rises a step
+     into its place as it fades in, once, on `--duration-normal`, which the
+     theme zeroes under reduce motion. Turns a session switch draws stay still. */
+  .turn.sent {
+    animation: turn-lands var(--duration-normal) var(--ease-out) both;
+  }
+  @keyframes turn-lands {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
   }
   /* The current find-in-chat match: a quiet monochrome wash + ring, never a
      browser-find yellow. */
