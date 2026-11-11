@@ -25,7 +25,7 @@ const GATE = join(ROOT, "dev/scripts/check-crate-coverage.py");
 const failures = [];
 
 /// `rust` and `front` are the four lists; `crates` are the roots on disk.
-function check(name, { rustCi, rustJust, frontCi, frontJust, crates, fronts }, expect) {
+function check(name, { rustCi, rustJust, frontCi, frontJust, tauriCi, crates, fronts }, expect) {
   const dir = mint("arlen-cratecov-");
   const write = (rel, body) => {
     mkdirSync(join(dir, dirname(rel)), { recursive: true });
@@ -36,7 +36,8 @@ function check(name, { rustCi, rustJust, frontCi, frontJust, crates, fronts }, e
     ".github/workflows/ci.yml",
     `jobs:\n  matrix:\n    steps:\n      - run: |\n` +
       `          RUST_ALL='${JSON.stringify(rustCi)}'\n` +
-      `          FRONT_ALL='${JSON.stringify(frontCi)}'\n`,
+      `          FRONT_ALL='${JSON.stringify(frontCi)}'\n` +
+      `          TAURI_ALL='${JSON.stringify(tauriCi ?? [])}'\n`,
   );
   write(
     "dev/justfile",
@@ -111,7 +112,7 @@ check(
 
 check(
   "an excluded crate root is not asked to be in the matrix",
-  { ...agreed, crates: ["contracts/probe", "apps/probe/src-tauri"] },
+  { ...agreed, crates: ["contracts/probe", "daemons/kernel-layer/probe"] },
   (code) => code === 0,
 );
 
@@ -132,6 +133,22 @@ check(
   "a matrix entry with no crate behind it is named, not a traceback",
   { ...agreed, rustCi: ["contracts/probe", "contracts/ghost"], rustJust: ["contracts/probe", "contracts/ghost"] },
   (code, out) => code === 1 && out.includes("contracts/ghost") && !out.includes("Traceback"),
+);
+// The Tauri hosts have their own list, held to the tree both ways.
+check(
+  "a Tauri host missing from TAURI_ALL is named",
+  { ...agreed, crates: [...agreed.crates, "apps/probe/src-tauri"] },
+  (code, out) => code === 1 && out.includes("apps/probe/src-tauri") && out.includes("TAURI_ALL"),
+);
+check(
+  "a Tauri host that is listed passes",
+  { ...agreed, crates: [...agreed.crates, "apps/probe/src-tauri"], tauriCi: ["apps/probe/src-tauri"] },
+  (code) => code === 0,
+);
+check(
+  "a TAURI_ALL entry with no crate behind it is named",
+  { ...agreed, tauriCi: ["apps/ghost/src-tauri"] },
+  (code, out) => code === 1 && out.includes("apps/ghost/src-tauri"),
 );
 
 if (failures.length) {

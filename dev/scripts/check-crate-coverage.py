@@ -56,7 +56,7 @@ EXCLUDED = {
     # `cargo check --tests` would catch it without linking a binary, but it still
     # needs the webkit headers the runner does not carry, so closing this is a CI
     # image decision rather than an edit here. Left accurate instead of tidy.
-    "apps/*/src-tauri": "Tauri hosts need system webkit2gtk; the frontend job covers only their TypeScript",
+    "apps/*/src-tauri": "not a matrix leg each: ci.yml's `tauri` job tests them from TAURI_ALL, one after another",
     # The same reason, for the two Tauri hosts that do not live under `apps/`.
     # Named rather than folded into a `*/src-tauri` glob: this file's patterns are
     # matched left-anchored by the integration test that reads them, and a glob
@@ -136,6 +136,16 @@ def main() -> int:
             problems.append(f"{label}: CI builds these, the justfile does not: {only_ci}")
         if only_just:
             problems.append(f"{label}: the justfile builds these, CI does not: {only_just}")
+
+    # The Tauri hosts have a list of their own, and it is held to the tree both
+    # ways: a host missing from it is a crate nothing tests, which is what all of
+    # them were until November 2026, and a path that is gone fails the job.
+    tauri_ci = set(listed("TAURI_ALL", ci, r"TAURI_ALL='(\[.*?\])'"))
+    tauri_tree = {str(m.parent.relative_to(ROOT)) for m in ROOT.glob("apps/*/src-tauri/Cargo.toml")}
+    for c in sorted(tauri_tree - tauri_ci):
+        problems.append(f"{c} is a Tauri host nothing tests: add it to TAURI_ALL")
+    for c in sorted(tauri_ci - tauri_tree):
+        problems.append(f"TAURI_ALL lists {c}, which has no Cargo.toml")
 
     # Every path in the matrix has to exist, or the job fails on a missing manifest.
     for c in rust_ci:

@@ -42,6 +42,7 @@ jobs:
       rust: ${{ steps.detect.outputs.rust }}
       rust_touched: ${{ steps.detect.outputs.rust_touched }}
       frontend: ${{ steps.detect.outputs.frontend }}
+      tauri: ${{ steps.detect.outputs.tauri }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,26 +57,23 @@ jobs:
         run: |
           set -euo pipefail
           # Deliberately NOT in RUST_ALL, so nobody "closes the gap" into a red build:
-          #   apps/*/src-tauri  - see below; the stated reasons no longer hold, so the
-          #                       fence is a build-time choice now, not a hard block
+          #   apps/*/src-tauri  - in TAURI_ALL below and tested by the `tauri` job
           #   daemons/kernel-layer/* - need the bpf toolchain / a VM
           #
-          # On `apps/*/src-tauri`: the reason recorded here was webkit2gtk + the tauri
-          # toolchain, plus `cosmic-comp-config` for settings. Both are stale. This
-          # job already installs `libwebkit2gtk-4.1-dev`, `libgtk-3-dev` and
-          # `libsoup-3.0-dev` (see the system-deps step), and `apps/settings/src-tauri`
-          # builds and tests on a plain host today - its `cosmic-comp-config` git dep
-          # resolves. `apps/desktop-shell/src-tauri` builds and runs its 350 tests too.
-          #
-          # So what keeps them out is BUILD TIME, not capability, and that is worth
-          # deciding on purpose: those 350 shell tests never run in CI, which is how a
-          # test that failed under the default parallel runner stayed "a known flake"
-          # for as long as it did. The matrix is path-filtered, so adding one would
-          # only cost on commits that touch it.
+          # On `apps/*/src-tauri`: they were fenced out for build time, and for that
+          # long the shell's tests (about 480 by November) never ran in CI, which is
+          # how a test that failed under the default parallel runner stayed "a known
+          # flake" for as long as it did. A matrix leg each would compile the webkit
+          # stack seventeen times; one job that walks the list compiles it once.
           # Everything else that defines a [package] IS listed. Same rule for FRONT_ALL:
           # every package.json declaring a `test` script is listed.
           RUST_ALL='["contracts/audit-proto","contracts/notification-proto","contracts/modulesd-proto","contracts/ai-engine-contract","contracts/graph-schema","contracts/forage-recipe","contracts/capsule","contracts/artifact","contracts/file-change","contracts/launch","contracts/lenv","contracts/run-consent-token","contracts/consent-contract","contracts/extensions","contracts/transcript","contracts/meeting-note","contracts/freedesktop-trash","sdk","sdk/secret-vault","sdk/worker-sandbox","sdk/config-format","sdk/i18n","ai","daemons/event-bus","daemons/knowledge","daemons/notification-daemon","daemons/audit-daemon","daemons/anomaly-detector","daemons/modulesd","daemons/installd","daemons/knowledge-mcp","daemons/file-manager-mcp","daemons/system-monitor-mcp","daemons/xdg-portal","daemons/calendar","daemons/capsuled","daemons/clock","daemons/arlen-run","daemons/online-accounts","daemons/connections","daemons/power-daemon","daemons/journald-parser","daemons/code-indexer","daemons/print","daemons/transfer-daemon","daemons/lock-auth","daemons/wallpaper","daemons/integration-packages","daemons/bridge-ingest","daemons/consent-broker","daemons/config-broker","daemons/settings-broker","daemons/session-supervisor","daemons/session","daemons/undo-service","daemons/ai-engine-daemon","daemons/terminal-run-mcp","daemons/sentinel-detect","daemons/sentineld","store-backend","apps/trash-rm/core","apps/trash-rm/cli","forage","forage/store","forage/fetch","forage/build","forage/package","forage/extract","forage/pipeline","forage/signing","forage/patch","forage/capabilities","forage/cookbook-index","forage/cookbook-sign","forage/cookbook-registry","forage/cookbook-resolve","forage/bridge-install","apps/terminal/core","apps/terminal/engine","apps/files/core","apps/viewers/core","apps/viewers/decode-image","apps/viewers/decode-jxl","apps/viewers/decode-heic","apps/viewers/host","apps/viewers/decode-audio","apps/greeter/core","apps/system-monitor/core","apps/text-editor/core","apps/calendar/core","apps/mail/core","apps/pdf/core","apps/pdf/decode-page","apps/settings/core","apps/screenshot/core","apps/meetings/core","apps/desktop-shell/core","daemons/bottled","dev/integration","dev/dogfood","dev/event-emit","dev/ai-drive","dev/kg-probe","modules/unicode","modules/man","dev/fixtures/module-reaches-graph"]'
           FRONT_ALL='["sdk/module-sdk","apps/clock","apps/knowledge","daemons/xdg-portal/picker-ui","apps/settings","apps/harness","apps/desktop-shell","apps/terminal","apps/files","apps/greeter","apps/meetings","apps/system-monitor","apps/text-editor","apps/screenshot","apps/store","apps/viewers","apps/calendar","apps/mail","apps/pdf","sdk/ui-kit","ai/pi-plugins"]'
+          # The Tauri hosts. Not in RUST_ALL, where each would be a matrix leg of its
+          # own compiling the same webkit stack: the `tauri` job below takes this
+          # list and tests the selected crates one after another into the one
+          # shared target, so the stack compiles once per run.
+          TAURI_ALL='["apps/calendar/src-tauri","apps/clock/src-tauri","apps/desktop-shell/src-tauri","apps/files/src-tauri","apps/greeter/src-tauri","apps/harness/src-tauri","apps/knowledge/src-tauri","apps/mail/src-tauri","apps/meetings/src-tauri","apps/pdf/src-tauri","apps/screenshot/src-tauri","apps/settings/src-tauri","apps/store/src-tauri","apps/system-monitor/src-tauri","apps/terminal/src-tauri","apps/text-editor/src-tauri","apps/viewers/src-tauri"]'
 
           if [ "$EVENT_NAME" = "pull_request" ]; then
             base="$PR_BASE"; head="$PR_HEAD"
@@ -147,6 +145,15 @@ jobs:
               '. as $ch | $all | map(select(. as $c | $ch | any(startswith($c + "/"))))')"
           fi
 
+          # A Tauri host depends on the sdk and the contracts, so a shared rust
+          # change selects all of them, exactly as it selects every daemon.
+          if [ "$rust_full" = "1" ]; then
+            tauri="$TAURI_ALL"
+          else
+            tauri="$(printf '%s' "$changed_rust_json" | jq -c --argjson all "$TAURI_ALL" \
+              '. as $ch | $all | map(select(. as $c | $ch | any(startswith($c + "/"))))')"
+          fi
+          echo "tauri=$tauri" >> "$GITHUB_OUTPUT"
           echo "rust=$rust" >> "$GITHUB_OUTPUT"
           echo "rust_touched=$rust_touched" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
@@ -701,6 +708,111 @@ jobs:
         run: dev/check-crate.sh check ${{ matrix.component }}
       - name: test
         run: dev/check-crate.sh test ${{ matrix.component }}
+  tauri:
+    name: tauri hosts test
+    needs: changes
+    if: ${{ needs.changes.outputs.tauri != '[]' }}
+    runs-on: ubuntu-latest
+    # A CEILING, so a job that stops making progress fails with a name instead of
+    # holding a matrix slot until someone with the CI view happens to look. On
+    # 18 August six unrelated crates sat in_progress for over two hours on run
+    # 32083341071 - the same six had taken one to five minutes on the run before
+    # - and nothing in this file could end them; GitHub's default is six hours.
+    #
+    # 75 minutes is picked against the one job that is legitimately slow: a cold
+    # `knowledge` build runs about 35 minutes (lbug compiles a C++ engine), so a
+    # cache miss on the slowest crate has better than double its measured time
+    # before this fires. Anything past that is not building.
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: free disk space
+        # The knowledge crate vendors a large C++ graph engine (lbug); linking
+        # it can exhaust a default runner's disk and crash the linker with a
+        # bus error. Reclaim the preinstalled toolchains we do not use.
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h /
+      # The package bodies, so 118 jobs do not each pull the same 200 MB from
+      # the same mirror at the same moment. That contention is what made
+      # `system deps` fail a different unrelated job on every run. The key is
+      # the script, because the script holds the package list.
+      # `ImageOS` is set on the runner PROCESS, not in the workflow's `env` map,
+      # so `${{ env.ImageOS }}` in the key below resolved to nothing and the key
+      # read `apt-Linux--<hash>` on the first run that used it. Harmless in the
+      # sense that a stale entry only costs a re-download, but a key that does not
+      # vary with the image is a key that quietly stops matching what it names.
+      # Reading it in a step is the way to get it into an expression.
+      - name: runner image identity
+        id: runner-image
+        run: echo "key=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      # RESTORE and SAVE as separate steps, deliberately. `actions/cache` saves in a
+      # post-job step that runs only when the job SUCCEEDED - and the job dies
+      # inside `system deps` below, so the archive was never written, so the next
+      # run restored nothing and hit the same mirror contention. Two runs in a row
+      # got worse that way (16 jobs, then 18): a cache that only fills on success
+      # cannot help the failure it exists to prevent. Saving with `always()`
+      # breaks that: whatever apt did manage to fetch before the ceiling is there
+      # for the next run, and a truncated archive costs a re-download rather than
+      # a wrong build, because apt checksums what it reuses.
+      - name: restore system packages
+        id: apt-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/apt-archive-cache
+          key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-packages.txt') }}
+      - name: system deps
+        # A step ceiling, because THIS is the step that hangs - and the same
+        # command succeeds beside it. All 118 rust jobs come from one matrix
+        # with one copy of this step, so on run 32104354507 the identical apt
+        # line finished for 101 of them and three sat in it for an hour. Not
+        # the package list, not a missing package: too many jobs against one
+        # mirror. The cache above is the fix; this ceiling is what turns a
+        # leftover stall into a red naming the step rather than a job burning
+        # its 75-minute allowance.
+        timeout-minutes: 10
+        run: dev/scripts/ci-system-deps.sh
+      # `always()`, so a run that timed out still leaves what it fetched behind.
+      # A key that already exists makes this a no-op with a warning, which is the
+      # steady state once one run has filled it.
+      - name: save system packages
+        if: always() && steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-archive-cache
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # One cache for all of them: they share the target dir and nearly all
+          # of their dependency tree. Keyed on the shell's lockfile, the largest.
+          workspaces: apps/desktop-shell/src-tauri -> target
+      # `generate_context!` refuses to compile without the frontend's build
+      # directory, and a checkout has none: `build/` is the frontend job's
+      # output and is not tracked. The tests never serve it, so empty is enough.
+      - name: stand-in frontend directories
+        env:
+          CRATES: ${{ needs.changes.outputs.tauri }}
+        run: |
+          for c in $(printf '%s' "$CRATES" | jq -r '.[]'); do
+            mkdir -p "$(dirname "$c")/build"
+          done
+      # Every selected crate runs even after one fails, so a red names all of
+      # them and not only the first.
+      - name: test
+        env:
+          CRATES: ${{ needs.changes.outputs.tauri }}
+        run: |
+          status=0
+          for c in $(printf '%s' "$CRATES" | jq -r '.[]'); do
+            echo "::group::$c"
+            dev/check-crate.sh test "$c" || status=1
+            echo "::endgroup::"
+          done
+          exit "$status"
   i18n-lint:
     # Its own job, and the name says what it scans. It used to be a step inside
     # "rust check + test (sdk/i18n)", where it was cheap - that leg's toolchain

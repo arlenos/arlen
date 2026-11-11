@@ -349,7 +349,7 @@ console.log("ci-system-deps:");
 {
   const wf = readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8");
   const keys = [...wf.matchAll(/^\s+key: (apt-.*)$/gm)].map((m) => m[1]);
-  check("every job caches packages under a key", keys.length === 3, `found ${keys.length}`);
+  check("every job caches packages under a key", keys.length === 4, `found ${keys.length}`);
   // NB this one reads the source text, so it catches a literally empty segment
   // and NOT the bug above, which was empty only at runtime. The check below is
   // the one that would have caught it; this is here because both shapes exist.
