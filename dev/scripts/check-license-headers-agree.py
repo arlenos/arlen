@@ -76,6 +76,8 @@ KNOWN = {
         "a Wayland protocol XML, upstream GPL-2.0-or-later",
     "dev/mkosi/mkosi.extra/etc/systemd/system/default.target":
         "systemd's own unit, shipped verbatim under LGPL-2.1-or-later",
+    "dev/pi/arlen-proxy-socket.patch":
+        "a patch against the pi engine, which is MIT; it carries pi's lines",
 }
 
 # An SPDX expression, not "the rest of the line". The first cut took everything

@@ -1,0 +1,70 @@
+SPDX-FileCopyrightText: 2026 Tim Kicker
+SPDX-License-Identifier: MIT
+
+Arlen's one change to the pi engine, against the tag `prepare.sh` pins.
+
+The confined engine has no network. Its only way out is a Unix socket the
+ai-engine-daemon serves, named by ARLEN_AI_PROXY_SOCKET: the daemon
+authenticates the caller and forwards the request through the governed proxy,
+so pi never holds a provider key and never dials a model itself. Without this
+change pi dials the URL's host and every model call fails inside the sandbox.
+
+MIT like the file it changes. Applied by `dev/pi/prepare.sh`; nothing else
+should apply it.
+
+diff --git a/packages/coding-agent/src/core/http-dispatcher.ts b/packages/coding-agent/src/core/http-dispatcher.ts
+index 0910f4d6c..1110eecc3 100644
+--- a/packages/coding-agent/src/core/http-dispatcher.ts
++++ b/packages/coding-agent/src/core/http-dispatcher.ts
+@@ -46,18 +46,44 @@ export function applyHttpProxySettings(httpProxy: string | undefined): void {
+ 	process.env.HTTPS_PROXY ??= proxy;
+ }
+ 
++/**
++ * When set, every provider request is routed through this Unix domain socket
++ * instead of the network. This is the Arlen daemon-mediated egress: the confined
++ * pi runs with no network at all, so its only channel out is this socket, which
++ * the ai-engine-daemon serves - it authenticates the caller and forwards the raw
++ * request through the governed ai-proxy. So pi never holds a provider key and
++ * never dials the model directly (the two-class egress rule), and the request URL
++ * host is irrelevant (the daemon chooses the upstream).
++ */
++const ARLEN_PROXY_SOCKET_ENV = "ARLEN_AI_PROXY_SOCKET";
++
+ export function configureHttpDispatcher(timeoutMs: number = DEFAULT_HTTP_IDLE_TIMEOUT_MS): void {
+ 	const normalizedTimeoutMs = parseHttpIdleTimeoutMs(timeoutMs);
+ 	if (normalizedTimeoutMs === undefined) {
+ 		throw new Error(`Invalid HTTP idle timeout: ${String(timeoutMs)}`);
+ 	}
+-	undici.setGlobalDispatcher(
+-		new undici.EnvHttpProxyAgent({
+-			allowH2: false,
+-			bodyTimeout: normalizedTimeoutMs,
+-			headersTimeout: normalizedTimeoutMs,
+-		}),
+-	);
++	const arlenSocket = process.env[ARLEN_PROXY_SOCKET_ENV]?.trim();
++	if (arlenSocket) {
++		// A per-origin `connect: { socketPath }` makes undici dial this Unix socket
++		// for every request regardless of the URL host, which is exactly the
++		// confined-egress shape: one socket out, the daemon govern-forwards.
++		undici.setGlobalDispatcher(
++			new undici.Agent({
++				allowH2: false,
++				bodyTimeout: normalizedTimeoutMs,
++				headersTimeout: normalizedTimeoutMs,
++				connect: { socketPath: arlenSocket },
++			}),
++		);
++	} else {
++		undici.setGlobalDispatcher(
++			new undici.EnvHttpProxyAgent({
++				allowH2: false,
++				bodyTimeout: normalizedTimeoutMs,
++				headersTimeout: normalizedTimeoutMs,
++			}),
++		);
++	}
+ 	// Keep fetch and the dispatcher on the same undici implementation. Node 26.0's
+ 	// bundled fetch can otherwise consume compressed responses through npm undici's
+ 	// dispatcher without decompressing them, causing response.json() failures.

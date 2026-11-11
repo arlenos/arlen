@@ -60,7 +60,7 @@ echo ">> staged node v$NODE_VER into the image ($($node_dest/bin/node --version)
 pi_src="$SRCDIR/pi"
 if [ ! -f "$pi_src/packages/coding-agent/dist/cli.js" ]; then
     echo "!! pi is not built at $pi_src (expected packages/coding-agent/dist/cli.js)" >&2
-    echo "!! clone earendil-works/pi @ v0.79.10, npm ci --ignore-scripts, npm run build" >&2
+    echo "!! build it on the host with dev/pi/prepare.sh (the pinned tag plus the proxy-socket patch)" >&2
     exit 1
 fi
 pi_dest="$DESTDIR/usr/lib/arlen/pi"

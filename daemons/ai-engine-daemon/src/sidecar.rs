@@ -182,6 +182,14 @@ pub fn pi_sidecar_confinement(
     env.insert("ARLEN_AI_ENGINE_SOCKET".to_string(), SANDBOX_CONTRACT_SOCKET.to_string());
     env.insert("ARLEN_AI_PROXY_SOCKET".to_string(), SANDBOX_PROXY_SOCKET.to_string());
     env.insert("HOME".to_string(), require_abs(&paths.pi_state)?);
+    // pi's two defaults that reach outward on their own. Install telemetry adds
+    // attribution headers naming pi to gateway requests, and the startup network
+    // operations (package updates, a model list refresh) are requests nobody
+    // asked for. Inside the sandbox every request leaves through the proxy
+    // socket whatever its host, so each of these would arrive at the daemon
+    // looking like a model call.
+    env.insert("PI_TELEMETRY".to_string(), "0".to_string());
+    env.insert("PI_OFFLINE".to_string(), "1".to_string());
     if let Some(path) = token_file {
         env.insert("ARLEN_AI_ENGINE_TOKEN_FILE".to_string(), require_abs(path)?);
     }
@@ -687,6 +695,15 @@ mod tests {
         assert_eq!(dest_of(&args(), "--setenv", "HOME"), Some("/home/u/.local/state/arlen/pi".to_string()));
         // The plugins read the in-sandbox socket path, not the host one.
         assert_eq!(dest_of(&args(), "--setenv", "ARLEN_AI_ENGINE_SOCKET"), Some(SANDBOX_CONTRACT_SOCKET.to_string()));
+    }
+
+    /// pi reads both from its environment and both default the other way: an
+    /// engine that lost either line would send attribution headers and startup
+    /// requests through the proxy socket.
+    #[test]
+    fn telemetry_is_off_and_startup_network_is_off() {
+        assert_eq!(dest_of(&args(), "--setenv", "PI_TELEMETRY"), Some("0".to_string()));
+        assert_eq!(dest_of(&args(), "--setenv", "PI_OFFLINE"), Some("1".to_string()));
     }
 
     #[test]
