@@ -4,9 +4,12 @@
 //! A submitter captures inverse receipts and proposes lifecycle transitions; the
 //! separate-uid signer (`arlen-ai-undo-signer`) seals and chains them. Both sides
 //! need the same record vocabulary and the same chain scheme, so they live here
-//! rather than in either binary's crate. The original submitter (the native
-//! `arlen-ai-agent`) is retired; this vocabulary is the substrate a future pi-side
-//! persisted-undo re-home builds on (pi's in-memory compensation is the interim).
+//! rather than in either binary's crate. The submitter today is the
+//! `ai-engine-daemon`: its write, file and settings executors submit a created
+//! entry to the signer as they apply an effect, and at start the daemon drains
+//! the reversals a previous run left half done and re-arms its store from the
+//! signer's live entries. The signed log is the record; the daemon's memory is a
+//! cache of it.
 //!
 //! [`effect_model`] is the pure inverse + classification vocabulary; [`undo_log`]
 //! is the event-sourced lifecycle state machine, the in-memory store, and the

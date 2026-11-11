@@ -8,10 +8,12 @@
 //! so the inverse targets the precise edge the daemon created, never an
 //! engine-supplied identifier.
 //!
-//! The store is in-memory and bounded (oldest ages out): receipts do not survive
-//! a restart, and a persisted/signed undo log is a separate increment. The undo
-//! TRIGGER (the activity-view undo) is a later consumer; this is the mechanism it
-//! reads, built ahead of it like the executor was.
+//! The store is in-memory and bounded (oldest ages out), and it is a cache, not
+//! the record. The executors submit each receipt to the undo signer as they
+//! apply the effect, and `main.rs` re-arms this store from the signer's live
+//! entries at start, so an undo issued after a restart finds the write. What
+//! ages out of the cache is still in the signed log and is looked up there
+//! (`agent_iface.rs`). The activity view's undo is the consumer.
 
 use std::collections::{HashMap, VecDeque};
 
