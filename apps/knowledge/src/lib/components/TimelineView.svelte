@@ -43,6 +43,7 @@
   } from "$lib/stores/timeline";
   import TimelineScrub from "./TimelineScrub.svelte";
   import { t, locale } from "$lib/i18n/messages";
+  import { cubicOut } from "svelte/easing";
 
   let { onselect }: { onselect: (event: TimelineEvent) => void } = $props();
 
@@ -258,11 +259,40 @@
     d.setHours(0, 0, 0, 0);
     return Math.floor(d.getTime() / 1000);
   }
+  // The days a confirmed delete takes away slide a step aside and fade, and
+  // their gap closes behind them in the second half, on `--duration-slow` from
+  // the root, where the shell's theme zeroes it under reduce motion. It is the
+  // leave Mail and the Task manager use. A Svelte transition needs a number, so
+  // the token is read here. A day that goes for any other reason (a range
+  // change, a refresh) leaves in 0 ms, which is no gesture at all.
+  function slow(): number {
+    const v = getComputedStyle(document.documentElement).getPropertyValue("--duration-slow").trim();
+    const n = parseFloat(v);
+    if (!Number.isFinite(n)) return 0;
+    return v.endsWith("ms") ? n : n * 1000;
+  }
+  let forgetting = false;
+  function leave(node: HTMLElement) {
+    if (!forgetting) return { duration: 0 };
+    const h = node.offsetHeight;
+    return {
+      duration: slow(),
+      easing: cubicOut,
+      css: (t: number) =>
+        `opacity: ${t}; transform: translateX(${(1 - t) * 16}px); overflow: hidden; height: ${Math.min(1, t * 2) * h}px`,
+    };
+  }
+
   async function confirmDelete(): Promise<void> {
     if (pendingDelete === null) return;
+    // Raised before the delete and lowered a tick after it: the store drops the
+    // days inside `deleteRange`, and the outro reads the flag when they go.
+    forgetting = true;
     deleteFailed = !(await deleteRange(pendingDelete.from));
     pendingDelete = null;
     pendingCount = null;
+    await tick();
+    forgetting = false;
   }
 
   $effect(() => {
@@ -366,7 +396,9 @@
       {/if}
     {:else if $days}
       {#each $days as day, i (day.date)}
-        <section class="tl-day" data-day={day.date}>
+        <!-- `|global`: on a delete of everything the whole branch goes, and a
+             local outro never runs when its parent block is the one removed. -->
+        <section class="tl-day" data-day={day.date} out:leave|global>
           <h2 class="tl-day-head">{dayLabel(day.date, $locale)}</h2>
           {#each day.items as item (item.kind === "event" ? item.event.id : item.session.id)}
             {#if item.kind === "event"}
