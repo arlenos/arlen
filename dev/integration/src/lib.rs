@@ -1760,8 +1760,6 @@ mod crate_reachability {
     const KNOWN_UNCONSUMED: &[(&str, &str)] = &[
         ("sdk/proc-collect",
          "Superseded, genuinely: `apps/system-monitor/core`'s `procmon` reads the process list, CPU and memory through `system-monitor-mcp`'s sysinfo, which is this crate's whole job."),
-        ("sdk/config",
-         "`sdk/config-format` and `daemons/config-broker` do this work, and the compositor parses its own keybindings. The one mention left is a commented-out dependency in `apps/settings/src-tauri/Cargo.toml` pointing at `github.com/arlenos/sdk`, a repo from before the monorepo."),
         ("sdk/tauri-plugin-clipboard",
          "Not superseded - the clipboard client it wraps is live in `os-sdk` and used there. This is the Tauri-plugin shell around it, waiting for an app to register the plugin."),
         ("daemons/integration-packages",

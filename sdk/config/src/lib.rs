@@ -212,8 +212,54 @@ pub fn deep_merge(
 // Tests
 // ---------------------------------------------------------------------------
 
+/// The write half of [`deep_merge`]: copy into `doc` (a file as it is on disk)
+/// only what changed between `before` and `after` (a whole config, defaults
+/// included, before and after one change), recursing into tables, and drop a key
+/// `after` no longer has. A leaf that did not change stays as the file had it,
+/// present or absent.
+///
+/// For a writer that must not freeze defaults. Writing the whole struct back after
+/// one change puts every default into the file as if the person had chosen it, and
+/// a default the code changes later then never reaches them (`config-system.md`).
+/// With this, the file holds what the person set and [`deep_merge`] puts the rest
+/// back on every read.
+pub fn apply_changes(doc: &mut toml::Table, before: &toml::Value, after: &toml::Value) {
+    let (Some(b), Some(a)) = (before.as_table(), after.as_table()) else {
+        return;
+    };
+    for (key, new) in a {
+        let old = b.get(key);
+        match (new.as_table(), old.and_then(|o| o.as_table())) {
+            (Some(_), Some(_)) => {
+                let sub = doc
+                    .entry(key.clone())
+                    .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+                if !sub.is_table() {
+                    *sub = toml::Value::Table(toml::Table::new());
+                }
+                if let (Some(t), Some(o)) = (sub.as_table_mut(), old) {
+                    apply_changes(t, o, new);
+                    if t.is_empty() {
+                        doc.remove(key);
+                    }
+                }
+            }
+            _ if old != Some(new) => {
+                doc.insert(key.clone(), new.clone());
+            }
+            _ => {}
+        }
+    }
+    for key in b.keys() {
+        if !a.contains_key(key) {
+            doc.remove(key);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use serde::Deserialize;
     use std::io::Write;
@@ -503,5 +549,22 @@ section = "replaced"
 
         // Override wins even if types differ.
         assert_eq!(merged["section"].as_str(), Some("replaced"));
+    }
+
+    #[test]
+    fn apply_changes_writes_only_what_changed() {
+        let before: toml::Value = toml::from_str("[a]\nx = 1\ny = 2\n[b]\nz = true\n").unwrap();
+        let after: toml::Value = toml::from_str("[a]\nx = 1\ny = 5\n[b]\nz = true\n").unwrap();
+        // The file held one key the person set earlier.
+        let mut doc: toml::Table = toml::from_str("[a]\nx = 1\n").unwrap();
+        apply_changes(&mut doc, &before, &after);
+        assert_eq!(doc["a"]["x"].as_integer(), Some(1), "kept as the file had it");
+        assert_eq!(doc["a"]["y"].as_integer(), Some(5), "the change");
+        assert!(doc.get("b").is_none(), "an untouched default stays out");
+
+        // A key `after` no longer has is dropped from the file.
+        let gone: toml::Value = toml::from_str("[a]\nx = 1\n[b]\nz = true\n").unwrap();
+        apply_changes(&mut doc, &after, &gone);
+        assert!(doc["a"].get("y").is_none());
     }
 }

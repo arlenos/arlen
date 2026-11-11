@@ -350,22 +350,40 @@ where
     F: FnOnce(&mut ShellConfig),
 {
     let mut cfg = read_at(path)?;
+    let before = toml::Value::try_from(&cfg).map_err(|e| format!("serialize: {e}"))?;
     patch(&mut cfg);
-    write_atomic_at(path, &cfg)?;
+    let after = toml::Value::try_from(&cfg).map_err(|e| format!("serialize: {e}"))?;
+    // Only what this write changed goes into the file, onto what the file
+    // already held. It used to write the whole struct, so the first change a
+    // person made froze every default beside it: a default the code changed
+    // later never reached anyone who had once moved one slider
+    // (`config-system.md`, item 9 of 8 October). Reading still merges the file
+    // over the defaults, through serde's field defaults in `read_at`.
+    let mut doc = read_raw_at(path)?;
+    arlen_config::apply_changes(&mut doc, &before, &after);
+    write_table_at(path, &doc)?;
     Ok(cfg)
 }
 
+/// The file as it is on disk, as a table: only the keys somebody set.
+fn read_raw_at(path: &Path) -> Result<toml::Table, String> {
+    if !path.exists() {
+        return Ok(toml::Table::new());
+    }
+    let content = fs::read_to_string(path).map_err(|e| format!("read: {e}"))?;
+    content.parse::<toml::Table>().map_err(|e| format!("parse: {e}"))
+}
 
 /// The atomic write over an explicit path. See [`read_at`] for why the path is a
 /// parameter rather than read from the environment.
-fn write_atomic_at(path: &Path, cfg: &ShellConfig) -> Result<(), String> {
+fn write_table_at(path: &Path, doc: &toml::Table) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
     }
     // Per INSTANCE, not per app (`app-instance-model.md`): two windows sharing a
     // temp name cross over rather than tear.
     let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
-    let content = toml::to_string_pretty(cfg).map_err(|e| format!("serialize: {e}"))?;
+    let content = toml::to_string_pretty(doc).map_err(|e| format!("serialize: {e}"))?;
     fs::write(&tmp, content).map_err(|e| format!("write tmp: {e}"))?;
     fs::rename(&tmp, path).map_err(|e| format!("rename: {e}"))
 }
@@ -455,6 +473,32 @@ pub fn start_shell_config_watcher(app: tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A write puts only what it changed into the file: the defaults beside it
+    /// stay out, so a default the code changes later still reaches this person.
+    #[test]
+    fn a_write_persists_only_what_it_changed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("shell.toml");
+        update_at_locked(&path, |cfg| cfg.night_light.temperature = 4500).expect("write");
+        let raw = read_raw_at(&path).expect("raw");
+        assert_eq!(raw.len(), 1, "one section, not every section: {raw:?}");
+        let night = raw["night_light"].as_table().expect("the changed section");
+        assert_eq!(night.len(), 1, "one key, not the section's defaults: {night:?}");
+        assert_eq!(night["temperature"].as_integer(), Some(4500));
+
+        // A key the file holds is kept by a later write that does not touch it,
+        // and one written back to its default stays written: the person set it.
+        update_at_locked(&path, |cfg| cfg.night_light.enabled = true).expect("second write");
+        update_at_locked(&path, |cfg| cfg.night_light.enabled = false).expect("back to default");
+        let raw = read_raw_at(&path).expect("raw");
+        let night = raw["night_light"].as_table().expect("section");
+        assert_eq!(night["temperature"].as_integer(), Some(4500));
+        assert_eq!(night["enabled"].as_bool(), Some(false));
+        assert!(raw.get("display").is_none(), "nothing the person never set");
+        // And the merged read still has every default.
+        assert!((read_at(&path).unwrap().display.brightness - 1.0).abs() < f32::EPSILON);
+    }
 
     /// These tests write to a temp path they are handed, not to
     /// `XDG_CONFIG_HOME`. The env var is process-global and three other

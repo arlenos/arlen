@@ -378,12 +378,26 @@ pub fn parse(text: &str) -> Result<Config, toml::de::Error> {
 /// Written to a sibling temp file and renamed, so a person who opens their config
 /// mid-write never sees half a document, and a crash leaves the previous switches
 /// rather than an empty file that would read as the defaults.
-pub fn save(path: &Path, cfg: &Config) -> std::io::Result<()> {
+pub fn save(path: &Path, before: &Config, after: &Config) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let text = toml::to_string_pretty(cfg)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let invalid = |e: String| std::io::Error::new(std::io::ErrorKind::InvalidData, e);
+    // Only what this change touched goes into the file, onto what it held. The
+    // whole struct used to be written, so the first change froze every default
+    // beside it (`config-system.md`); `parse` fills the rest from the defaults.
+    // Absent is the one empty case. A file that cannot be read or parsed is left
+    // as it is and the change refused, so a person can still fix it by hand
+    // rather than find it replaced by the one key this change set.
+    let mut doc = match std::fs::read_to_string(path) {
+        Ok(t) => t.parse::<toml::Table>().map_err(|e| invalid(format!("the file does not parse: {e}")))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => toml::Table::new(),
+        Err(e) => return Err(e),
+    };
+    let b = toml::Value::try_from(before).map_err(|e| invalid(e.to_string()))?;
+    let a = toml::Value::try_from(after).map_err(|e| invalid(e.to_string()))?;
+    arlen_config::apply_changes(&mut doc, &b, &a);
+    let text = toml::to_string_pretty(&doc).map_err(|e| invalid(e.to_string()))?;
     let tmp = path.with_extension("toml.tmp");
     std::fs::write(&tmp, text)?;
     std::fs::rename(&tmp, path)
@@ -453,10 +467,38 @@ mod tests {
         set_detector(&mut cfg, "tracker", true).unwrap();
         set_sensitivity(&mut cfg, "tracker", "strict").unwrap();
         set_alerts(&mut cfg, "exposure", "notify").unwrap();
-        save(&p, &cfg).unwrap();
+        save(&p, &Config::default(), &cfg).unwrap();
         let (back, problem) = load(&p);
         assert!(problem.is_none());
         assert_eq!(back, cfg);
+    }
+
+    /// The file holds what the person changed, not the defaults beside it, so a
+    /// default this daemon changes later still reaches them.
+    #[test]
+    fn a_save_writes_only_what_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("arlen/sentinel.toml");
+        let before = Config::default();
+        let mut after = before.clone();
+        set_detector(&mut after, "tracker", true).unwrap();
+        save(&p, &before, &after).unwrap();
+        let raw: toml::Table = std::fs::read_to_string(&p).unwrap().parse().unwrap();
+        assert_eq!(raw.len(), 1, "only the tracker section: {raw:?}");
+        assert_eq!(raw["tracker"].as_table().unwrap().len(), 1, "only its switch: {raw:?}");
+        assert_eq!(load(&p).0, after, "and the read puts the defaults back");
+    }
+
+    /// A file that does not parse is refused, not overwritten.
+    #[test]
+    fn a_save_over_a_broken_file_refuses() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("sentinel.toml");
+        std::fs::write(&p, "[tracker\non = ").unwrap();
+        let mut after = Config::default();
+        set_detector(&mut after, "tracker", true).unwrap();
+        assert!(save(&p, &Config::default(), &after).is_err());
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "[tracker\non = ", "left as it was");
     }
 
     #[test]

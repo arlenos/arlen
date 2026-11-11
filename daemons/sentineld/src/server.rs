@@ -204,12 +204,13 @@ fn apply(
     cfg: &mut Config,
     change: impl FnOnce(&mut Config) -> Result<(), config::Refused>,
 ) -> Response {
+    let before = cfg.clone();
     if let Err(refused) = change(cfg) {
         return Response::Refused {
             message: refused.message(),
         };
     }
-    match config::save(&ctx.config_path, cfg) {
+    match config::save(&ctx.config_path, &before, cfg) {
         Ok(()) => Response::Done,
         Err(e) => Response::Failed {
             message: format!(
