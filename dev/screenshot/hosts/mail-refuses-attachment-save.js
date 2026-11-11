@@ -54,7 +54,7 @@
   // a finding when it is only an empty frame.
   var tries = 0;
   function tick() {
-    var chip = document.querySelector("button.chip");
+    var chip = document.querySelector(".attachments .chips button");
     if (chip) { chip.click(); return; }
     if (tries++ < 60) setTimeout(tick, 100);
   }

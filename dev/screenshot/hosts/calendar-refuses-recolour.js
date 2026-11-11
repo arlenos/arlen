@@ -50,7 +50,7 @@
   // when it is only an empty frame.
   var tries = 0;
   function pressSwatch() {
-    var sw = document.querySelector(".palette .swatch:not(.on)");
+    var sw = document.querySelector('.palette button[aria-pressed="false"]');
     if (sw) { sw.click(); return; }
     if (tries++ < 40) setTimeout(pressSwatch, 100);
   }
