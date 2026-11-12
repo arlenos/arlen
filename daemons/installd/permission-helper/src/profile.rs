@@ -6,6 +6,8 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+use arlen_permissions::revoke::{RestoreOutcome, RevokeOutcome, RevokedReach};
+use arlen_permissions::revoke_apply::{restore_at, revoke_at, RemovalLedger};
 use thiserror::Error;
 
 const DEFAULT_BASE: &str = "/var/lib/arlen/permissions";
@@ -17,6 +19,8 @@ pub enum ProfileError {
     InvalidAppId(String),
     #[error("invalid TOML: {0}")]
     InvalidToml(String),
+    #[error("invalid removal record: {0}")]
+    InvalidRecord(String),
     #[error("IO: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -125,6 +129,119 @@ pub fn write_profile_in(
     Ok(path)
 }
 
+/// Where the helper keeps what a person revoked from a system-tier profile, so
+/// a later restore has a ceiling this process can check itself.
+///
+/// The knowledge daemon bounds a restore by its audit ledger, and the helper
+/// cannot: the ledger is keyed and read by another process, and a root writer
+/// that widens a profile on a caller's word is the hole the system tier exists
+/// to close. So the helper records each reach it removed beside the profile, in
+/// the same root-owned directory, and re-adds only what that record names.
+///
+/// Not `.toml`, so nothing that lists profiles reads it as one.
+pub fn removed_path_in(base: &Path, uid: u32, app_id: &str) -> PathBuf {
+    base.join(uid.to_string()).join(format!("{app_id}.removed.json"))
+}
+
+/// The reaches recorded as removed for one app.
+///
+/// Absent is nothing removed. A record that is there and cannot be read or
+/// parsed is an error: the callers write this file back, and answering an empty
+/// record for a damaged one would overwrite every removal it held, after which
+/// nothing a person revoked could be given back.
+fn removed_in(base: &Path, uid: u32, app_id: &str) -> Result<RemovalLedger, ProfileError> {
+    match fs::read(removed_path_in(base, uid, app_id)) {
+        Ok(bytes) => {
+            serde_json::from_slice(&bytes).map_err(|e| ProfileError::InvalidRecord(e.to_string()))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(RemovalLedger::default()),
+        Err(e) => Err(ProfileError::Io(e)),
+    }
+}
+
+/// Replace the removal record, through a sibling temp file and a rename.
+fn write_removed_in(
+    base: &Path,
+    uid: u32,
+    app_id: &str,
+    ledger: &RemovalLedger,
+) -> Result<(), ProfileError> {
+    let path = removed_path_in(base, uid, app_id);
+    let tmp = path.with_extension("json.tmp");
+    let bytes =
+        serde_json::to_vec(ledger).map_err(|e| ProfileError::InvalidRecord(e.to_string()))?;
+    fs::write(&tmp, bytes)?;
+    let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o644));
+    fs::rename(&tmp, &path)?;
+    Ok(())
+}
+
+/// Remove one reach from a system-tier profile at the default location.
+pub fn narrow_profile(
+    uid: u32,
+    app_id: &str,
+    reach: &RevokedReach,
+) -> Result<RevokeOutcome, ProfileError> {
+    narrow_profile_in(&base_dir(), uid, app_id, reach)
+}
+
+/// Remove one reach from the system-tier profile under `base`.
+///
+/// The edit and its proof are `arlen_permissions::revoke_apply::revoke_at`, the
+/// same function the knowledge daemon runs on a user-tier profile: nothing is
+/// written unless the re-derived scopes strictly shrank. The removal is recorded
+/// only after the profile is written. The other order would let a revoke that
+/// changed nothing leave a record behind, and a restore could then add a reach
+/// the app never held. The record is READ first, though: one that cannot be read
+/// refuses the revoke before the profile changes, so a removal is never made
+/// that the record could not then hold.
+pub fn narrow_profile_in(
+    base: &Path,
+    uid: u32,
+    app_id: &str,
+    reach: &RevokedReach,
+) -> Result<RevokeOutcome, ProfileError> {
+    validate_app_id(app_id)?;
+    let path = profile_path_in(base, uid, app_id);
+    let mut ledger = removed_in(base, uid, app_id)?;
+    let outcome = revoke_at(&path, reach)?;
+    if outcome == RevokeOutcome::Revoked {
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o644));
+        ledger.record(reach.clone());
+        write_removed_in(base, uid, app_id, &ledger)?;
+    }
+    Ok(outcome)
+}
+
+/// Give back one reach to a system-tier profile at the default location.
+pub fn restore_reach(
+    uid: u32,
+    app_id: &str,
+    reach: &RevokedReach,
+) -> Result<RestoreOutcome, ProfileError> {
+    restore_reach_in(&base_dir(), uid, app_id, reach)
+}
+
+/// Give back one reach to the system-tier profile under `base`, and only a reach
+/// this helper removed: the ceiling is the record [`narrow_profile_in`] keeps.
+pub fn restore_reach_in(
+    base: &Path,
+    uid: u32,
+    app_id: &str,
+    reach: &RevokedReach,
+) -> Result<RestoreOutcome, ProfileError> {
+    validate_app_id(app_id)?;
+    let path = profile_path_in(base, uid, app_id);
+    let mut ledger = removed_in(base, uid, app_id)?;
+    let outcome = restore_at(&path, reach, &ledger)?;
+    if outcome == RestoreOutcome::Restored {
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o644));
+        ledger.clear(reach);
+        write_removed_in(base, uid, app_id, &ledger)?;
+    }
+    Ok(outcome)
+}
+
 /// Delete a permission profile from the default location.
 pub fn delete_profile(uid: u32, app_id: &str) -> Result<(), ProfileError> {
     delete_profile_in(&base_dir(), uid, app_id)
@@ -136,6 +253,12 @@ pub fn delete_profile_in(base: &Path, uid: u32, app_id: &str) -> Result<(), Prof
     let path = profile_path_in(base, uid, app_id);
     if path.exists() {
         fs::remove_file(&path)?;
+    }
+    // The removal record goes with the profile it bounds. Left behind, it would
+    // let a reinstall be widened by what a person revoked from the old install.
+    let removed = removed_path_in(base, uid, app_id);
+    if removed.exists() {
+        fs::remove_file(&removed)?;
     }
     Ok(())
 }
@@ -272,4 +395,111 @@ documents = true
         let file_mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(file_mode, 0o644, "profile must be world-readable, root-write-only");
     }
+    /// The defect this exists for: the loader lets the system tier win outright,
+    /// so a revoke written to the user's own overlay changed nothing for an app
+    /// the image ships. The overlay here still grants the reach after the
+    /// revoke, and the app must read without it.
+    /// A record that is there and does not parse refuses both directions, and
+    /// neither the profile nor the record is touched: reading it as empty would
+    /// have the next write replace every removal it held.
+    #[test]
+    fn a_damaged_removal_record_refuses_and_is_left_alone() {
+        use arlen_permissions::revoke::RevokedReach;
+        let base = tempfile::TempDir::new().unwrap();
+        let shipped = "[info]\napp_id = \"dev.arlen.files\"\ntier = \"first-party\"\n\n[graph]\nread = [\"system.File\", \"system.Project\"]\n";
+        write_profile_in(base.path(), 1000, "dev.arlen.files", shipped).unwrap();
+        let profile = profile_path_in(base.path(), 1000, "dev.arlen.files");
+        let before = std::fs::read_to_string(&profile).unwrap();
+        let record = removed_path_in(base.path(), 1000, "dev.arlen.files");
+        std::fs::write(&record, b"{ not json").unwrap();
+
+        let reach = RevokedReach::Read { entity_pattern: "system.Project".into() };
+        assert!(matches!(
+            narrow_profile_in(base.path(), 1000, "dev.arlen.files", &reach),
+            Err(ProfileError::InvalidRecord(_))
+        ));
+        assert!(matches!(
+            restore_reach_in(base.path(), 1000, "dev.arlen.files", &reach),
+            Err(ProfileError::InvalidRecord(_))
+        ));
+        assert_eq!(std::fs::read_to_string(&profile).unwrap(), before);
+        assert_eq!(std::fs::read(&record).unwrap(), b"{ not json");
+    }
+
+    #[test]
+    fn a_revoke_on_a_system_tier_profile_is_what_the_app_reads() {
+        use arlen_permissions::revoke::{RestoreOutcome, RevokeOutcome, RevokedReach};
+        let base = tempfile::TempDir::new().unwrap();
+        let user = tempfile::TempDir::new().unwrap();
+        let shipped = r#"
+[info]
+app_id = "dev.arlen.files"
+tier = "first-party"
+
+[graph]
+read = ["system.File", "system.Project"]
+"#;
+        write_profile_in(base.path(), 1000, "dev.arlen.files", shipped).unwrap();
+        std::fs::write(user.path().join("dev.arlen.files.toml"), shipped).unwrap();
+        std::env::set_var("ARLEN_SYSTEM_PERMISSIONS_DIR", base.path().join("1000"));
+        std::env::set_var("ARLEN_PERMISSIONS_DIR", user.path());
+        let reads = || arlen_permissions::load_profile("dev.arlen.files").unwrap().graph.read;
+        assert_eq!(reads(), ["system.File", "system.Project"]);
+
+        let reach = RevokedReach::Read { entity_pattern: "system.Project".into() };
+        let never_held = RevokedReach::Read { entity_pattern: "system.Mail".into() };
+        assert_eq!(
+            narrow_profile_in(base.path(), 1000, "dev.arlen.files", &reach).unwrap(),
+            RevokeOutcome::Revoked
+        );
+        assert_eq!(reads(), ["system.File"], "the app reads the narrowed system tier");
+
+        // A second revoke of the same reach changes nothing, and a revoke that
+        // changed nothing leaves no record a restore could lean on.
+        assert_eq!(
+            narrow_profile_in(base.path(), 1000, "dev.arlen.files", &never_held).unwrap(),
+            RevokeOutcome::NoChange
+        );
+        assert_eq!(
+            restore_reach_in(base.path(), 1000, "dev.arlen.files", &never_held).unwrap(),
+            RestoreOutcome::NotPermitted,
+            "a reach this helper never removed is not one it gives back"
+        );
+        assert_eq!(reads(), ["system.File"]);
+
+        assert_eq!(
+            restore_reach_in(base.path(), 1000, "dev.arlen.files", &reach).unwrap(),
+            RestoreOutcome::Restored
+        );
+        assert!(reads().contains(&"system.Project".to_string()));
+        assert_eq!(
+            restore_reach_in(base.path(), 1000, "dev.arlen.files", &reach).unwrap(),
+            RestoreOutcome::NotPermitted,
+            "given back once, the record is spent"
+        );
+        std::env::remove_var("ARLEN_SYSTEM_PERMISSIONS_DIR");
+        std::env::remove_var("ARLEN_PERMISSIONS_DIR");
+    }
+
+    #[test]
+    fn deleting_a_profile_takes_its_removal_record_along() {
+        use arlen_permissions::revoke::RevokedReach;
+        let base = tempfile::TempDir::new().unwrap();
+        write_profile_in(base.path(), 1000, "com.test", VALID_PROFILE).unwrap();
+        let reach = RevokedReach::Read { entity_pattern: "com.test.*".into() };
+        narrow_profile_in(base.path(), 1000, "com.test", &reach).unwrap();
+        assert!(removed_path_in(base.path(), 1000, "com.test").exists());
+        delete_profile_in(base.path(), 1000, "com.test").unwrap();
+        assert!(!removed_path_in(base.path(), 1000, "com.test").exists());
+    }
+
+    #[test]
+    fn narrowing_refuses_an_id_that_is_not_a_path_component() {
+        use arlen_permissions::revoke::RevokedReach;
+        let base = tempfile::TempDir::new().unwrap();
+        let reach = RevokedReach::InstanceAll;
+        assert!(narrow_profile_in(base.path(), 1000, "../evil", &reach).is_err());
+        assert!(restore_reach_in(base.path(), 1000, "a/b", &reach).is_err());
+    }
+
 }

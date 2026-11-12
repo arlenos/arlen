@@ -24,6 +24,19 @@ fn is_allowed_caller(app_id: &str) -> bool {
     ALLOWED_CALLERS.contains(&app_id)
 }
 
+/// Whether an attested app id may ask for one reach to be removed or given
+/// back: every caller above, and the knowledge daemon.
+///
+/// The knowledge daemon is admitted here and nowhere else. It is where a revoke
+/// from Settings is authorised and audited, and it runs as the user, so it
+/// cannot write the system tier itself. What it can ask for is bounded by this
+/// process and not by its word: a removal is proved to shrink the profile, and a
+/// return is limited to what this helper recorded as removed. It may not call
+/// `WriteProfile`, which takes a whole profile and has no such bound.
+fn may_change_one_reach(app_id: &str) -> bool {
+    is_allowed_caller(app_id) || app_id == "knowledge"
+}
+
 /// D-Bus interface implementation.
 pub struct PermissionHelper;
 
@@ -79,6 +92,66 @@ impl PermissionHelper {
         }
     }
 
+    /// Remove one reach from an app's system-tier profile. `reach_json` is a
+    /// `RevokedReach`. The reply's string is the outcome's wire token on
+    /// success, the same one the knowledge daemon answers a user-tier revoke
+    /// with, and the reason on failure.
+    async fn narrow_profile(
+        &self,
+        app_id: &str,
+        uid: u32,
+        reach_json: &str,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+    ) -> (bool, String) {
+        if let Err(e) = validate_caller_as(&header, connection, uid, may_change_one_reach).await {
+            return (false, e);
+        }
+        let reach = match serde_json::from_str(reach_json) {
+            Ok(r) => r,
+            Err(e) => return (false, format!("invalid reach: {e}")),
+        };
+        match profile::narrow_profile(uid, app_id, &reach) {
+            Ok(outcome) => {
+                tracing::info!("narrow {app_id} (uid {uid}): {}", outcome.wire_token());
+                (true, outcome.wire_token().to_string())
+            }
+            Err(e) => {
+                tracing::warn!("narrow_profile failed for {app_id}: {e}");
+                (false, e.to_string())
+            }
+        }
+    }
+
+    /// Give one reach back to an app's system-tier profile, if this helper
+    /// removed it. Shaped like [`Self::narrow_profile`].
+    async fn restore_reach(
+        &self,
+        app_id: &str,
+        uid: u32,
+        reach_json: &str,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+    ) -> (bool, String) {
+        if let Err(e) = validate_caller_as(&header, connection, uid, may_change_one_reach).await {
+            return (false, e);
+        }
+        let reach = match serde_json::from_str(reach_json) {
+            Ok(r) => r,
+            Err(e) => return (false, format!("invalid reach: {e}")),
+        };
+        match profile::restore_reach(uid, app_id, &reach) {
+            Ok(outcome) => {
+                tracing::info!("restore {app_id} (uid {uid}): {}", outcome.wire_token());
+                (true, outcome.wire_token().to_string())
+            }
+            Err(e) => {
+                tracing::warn!("restore_reach failed for {app_id}: {e}");
+                (false, e.to_string())
+            }
+        }
+    }
+
     /// Check if a profile exists for an app.
     async fn profile_exists(&self, app_id: &str, uid: u32) -> bool {
         profile::profile_exists(uid, app_id)
@@ -126,7 +199,18 @@ async fn validate_caller(
     connection: &Connection,
     target_uid: u32,
 ) -> Result<(), String> {
-    let r = validate_caller_inner(header, connection, target_uid).await;
+    validate_caller_as(header, connection, target_uid, is_allowed_caller).await
+}
+
+/// [`validate_caller`] with the admit list named, for the two methods that
+/// admit one caller more.
+async fn validate_caller_as(
+    header: &zbus::message::Header<'_>,
+    connection: &Connection,
+    target_uid: u32,
+    admitted: fn(&str) -> bool,
+) -> Result<(), String> {
+    let r = validate_caller_inner(header, connection, target_uid, admitted).await;
     if let Err(reason) = &r {
         tracing::warn!("refused a caller: {reason}");
     }
@@ -137,6 +221,7 @@ async fn validate_caller_inner(
     header: &zbus::message::Header<'_>,
     connection: &Connection,
     target_uid: u32,
+    admitted: fn(&str) -> bool,
 ) -> Result<(), String> {
     let sender = header
         .sender()
@@ -160,7 +245,7 @@ async fn validate_caller_inner(
     let app_id = arlen_permissions::identity::app_id_from_pid(pid)
         .map_err(|e| format!("caller pid {pid} has no attested identity: {e}"))?;
 
-    if !is_allowed_caller(&app_id) {
+    if !admitted(&app_id) {
         return Err(format!("unauthorized caller: {app_id} (pid {pid})"));
     }
 
@@ -185,6 +270,16 @@ mod caller_tests {
     use super::is_allowed_caller;
     use arlen_permissions::identity::path_to_app_id;
     use std::path::Path;
+
+    /// The knowledge daemon may ask for one reach and may not hand over a
+    /// profile.
+    #[test]
+    fn the_knowledge_daemon_changes_one_reach_and_writes_no_profile() {
+        let id = path_to_app_id(Path::new("/usr/bin/arlen-graph-daemon")).unwrap();
+        assert!(super::may_change_one_reach(&id));
+        assert!(!is_allowed_caller(&id));
+        assert!(!super::may_change_one_reach("ai-agent"));
+    }
 
     #[test]
     fn installd_at_its_install_path_is_admitted() {

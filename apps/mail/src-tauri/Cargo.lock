@@ -105,6 +105,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "toml 0.8.23",
+ "toml_edit 0.22.27",
  "tracing",
 ]
 

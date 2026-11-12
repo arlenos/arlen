@@ -20,6 +20,7 @@ pub mod stamped_identity;
 pub mod unit_identity;
 pub mod profile_watcher;
 pub mod revoke;
+pub mod revoke_apply;
 
 pub use connection_auth::{AuthError, ConnectionAuth};
 pub use peer_pidfd::{PeerPidfd, PidfdError};

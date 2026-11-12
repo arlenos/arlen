@@ -81,7 +81,7 @@ thiserror = "2"
 toml = "0.8"
 # Format-preserving profile edits for revoke: keep the user's comments/ordering
 # and never drop a field the daemon's profile models but a re-serialize would not.
-toml_edit = "0.22"
+zbus = { version = "5", default-features = false, features = ["tokio"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
 shellexpand = "3"

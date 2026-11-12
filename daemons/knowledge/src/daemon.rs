@@ -1501,7 +1501,7 @@ async fn removal_ledger_for(target_app: &str) -> crate::revoke::RemovalLedger {
     crate::revoke::fold_removal_ledger(pairs.iter().map(|(o, r)| (o.as_str(), r)))
 }
 
-fn handle_revoke(app_id: &str, body: &[u8]) -> String {
+async fn handle_revoke(app_id: &str, body: &[u8]) -> String {
     // NB the capability-change audit for a revoke is NOT here - it is at the
     // dispatch site, keyed on this function's `Revoked` response token, because
     // the audit sink is async and this is not. Reading only this function makes
@@ -1543,16 +1543,26 @@ fn handle_revoke(app_id: &str, body: &[u8]) -> String {
     if !crate::revoke::tier_allows_revoke(&req.target_app_id) {
         return "ERROR: SystemTier: this app is managed by the system".to_string();
     }
-    let path = match arlen_permissions::profile_path(&req.target_app_id) {
-        Ok(p) => p,
+    // The revoke goes to the tier the app reads. A system-tier profile is
+    // root-owned, so the helper that owns it applies the same narrowing.
+    let path = match crate::revoke::tier_of(&req.target_app_id) {
+        Ok(crate::revoke::ProfileTier::System) => {
+            return match crate::revoke::change_system_tier(
+                "NarrowProfile",
+                &req.target_app_id,
+                &req.reach,
+            )
+            .await
+            {
+                Ok(token) => token,
+                Err(e) => format!("ERROR: {e}"),
+            };
+        }
+        Ok(crate::revoke::ProfileTier::User(p)) => p,
         Err(e) => return format!("ERROR: {e}"),
     };
     match crate::revoke::revoke_at(&path, &req.reach) {
-        Ok(crate::revoke::RevokeOutcome::Revoked) => "OK: revoked".to_string(),
-        Ok(crate::revoke::RevokeOutcome::NoChange) => "OK: no-change".to_string(),
-        Ok(crate::revoke::RevokeOutcome::NotNarrowing) => "OK: not-narrowing".to_string(),
-        Ok(crate::revoke::RevokeOutcome::NotFound) => "OK: not-found".to_string(),
-        Ok(crate::revoke::RevokeOutcome::Required) => "OK: required".to_string(),
+        Ok(outcome) => outcome.wire_token().to_string(),
         Err(e) => format!("ERROR: {e}"),
     }
 }
@@ -1593,12 +1603,14 @@ async fn handle_restore(app_id: &str, body: &[u8], audit: &Arc<dyn AuditSink>) -
     if !crate::revoke::tier_allows_revoke(&req.target_app_id) {
         return "ERROR: SystemTier: this app is managed by the system".to_string();
     }
-    let path = match arlen_permissions::profile_path(&req.target_app_id) {
-        Ok(p) => p,
+    let tier = match crate::revoke::tier_of(&req.target_app_id) {
+        Ok(t) => t,
         Err(e) => return format!("ERROR: {e}"),
     };
-    if !path.exists() {
-        return crate::revoke::RestoreOutcome::NotFound.wire_token().to_string();
+    if let crate::revoke::ProfileTier::User(path) = &tier {
+        if !path.exists() {
+            return crate::revoke::RestoreOutcome::NotFound.wire_token().to_string();
+        }
     }
     // The authority-growth ceiling: reconstruct what this user actually revoked from
     // the durable audit ledger. A reach the ledger does not record as removed is not
@@ -1607,9 +1619,30 @@ async fn handle_restore(app_id: &str, body: &[u8], audit: &Arc<dyn AuditSink>) -
     if !ledger.contains(&req.reach) {
         return crate::revoke::RestoreOutcome::NotPermitted.wire_token().to_string();
     }
-    let outcome = match crate::revoke::restore_at(&path, &req.reach, &ledger) {
-        Ok(o) => o,
-        Err(e) => return format!("ERROR: {e}"),
+    // Both ceilings hold for a system-tier profile: the audit ledger above, and
+    // the helper's own record of what it removed.
+    let outcome = match tier {
+        crate::revoke::ProfileTier::System => {
+            match crate::revoke::change_system_tier(
+                "RestoreReach",
+                &req.target_app_id,
+                &req.reach,
+            )
+            .await
+            {
+                Ok(token) if token == crate::revoke::RestoreOutcome::Restored.wire_token() => {
+                    crate::revoke::RestoreOutcome::Restored
+                }
+                Ok(token) => return token,
+                Err(e) => return format!("ERROR: {e}"),
+            }
+        }
+        crate::revoke::ProfileTier::User(path) => {
+            match crate::revoke::restore_at(&path, &req.reach, &ledger) {
+                Ok(o) => o,
+                Err(e) => return format!("ERROR: {e}"),
+            }
+        }
     };
     // Record the restore ONLY on a confirmed write (`Restored`), best-effort: the
     // `restored` record clears the reach from the removal set, so writing it for a
@@ -3941,7 +3974,7 @@ async fn handle_client(
             let response = if let Some(reason) = violation {
                 format!("ERROR: RateLimited: {reason}")
             } else {
-                handle_revoke(&app_id, &buf[1..])
+                handle_revoke(&app_id, &buf[1..]).await
             };
             // Record the narrowing as a capability-change provenance event: the
             // durable "what was removed" the profile-first restore reads back as its
@@ -5530,11 +5563,11 @@ mod tests {
         assert!(bad.starts_with("ERROR: malformed"), "{bad}");
     }
 
-    #[test]
-    fn handle_revoke_refuses_a_non_settings_caller() {
+    #[tokio::test]
+    async fn handle_revoke_refuses_a_non_settings_caller() {
         // Even a well-formed body is refused before parsing if the caller is not
         // the admitted Settings principal.
-        let r = handle_revoke("com.attacker", b"{\"target_app_id\":\"com.x\",\"reach\":{\"InstanceAll\":null},\"initiator\":{\"User\":null}}");
+        let r = handle_revoke("com.attacker", b"{\"target_app_id\":\"com.x\",\"reach\":{\"InstanceAll\":null},\"initiator\":{\"User\":null}}").await;
         assert!(r.starts_with("ERROR: revoke not permitted"), "got {r}");
     }
 
@@ -5608,25 +5641,25 @@ mod tests {
         assert!(r.starts_with("ERROR: an agent-initiated restore"), "got {r}");
     }
 
-    #[test]
-    fn handle_revoke_rejects_a_malformed_request() {
-        let r = handle_revoke("dev.arlen.settings", b"not json");
+    #[tokio::test]
+    async fn handle_revoke_rejects_a_malformed_request() {
+        let r = handle_revoke("dev.arlen.settings", b"not json").await;
         assert!(r.starts_with("ERROR: invalid revoke request"), "got {r}");
     }
 
-    #[test]
-    fn handle_revoke_refuses_an_agent_initiated_revoke() {
+    #[tokio::test]
+    async fn handle_revoke_refuses_an_agent_initiated_revoke() {
         // §6.3: a literal `Agent` initiator at the apply site is a proposal, never a
         // confirmed revoke, so it is refused even from the admitted Settings caller
         // (a confirmed revoke is replayed as `User`). The refusal lands before the
         // target is turned into a path, so no profile is touched.
         let body = b"{\"target_app_id\":\"com.x\",\"reach\":{\"InstanceAll\":null},\"initiator\":{\"Agent\":{\"suggestion_id\":\"s1\"}}}";
-        let r = handle_revoke("dev.arlen.settings", body);
+        let r = handle_revoke("dev.arlen.settings", body).await;
         assert!(r.starts_with("ERROR: an agent-initiated revoke"), "got {r}");
     }
 
-    #[test]
-    fn handle_revoke_rejects_a_traversal_target() {
+    #[tokio::test]
+    async fn handle_revoke_rejects_a_traversal_target() {
         // A target app id that would escape the permissions dir is refused before
         // it becomes a path, so revoke can never read+rewrite an arbitrary file.
         for target in ["../../../etc/cron.d/evil", "/etc/passwd", "..", "a/b", "x\0y"] {
@@ -5634,7 +5667,7 @@ mod tests {
                 "{{\"target_app_id\":\"{}\",\"reach\":{{\"InstanceAll\":null}},\"initiator\":{{\"User\":null}}}}",
                 target.escape_default()
             );
-            let r = handle_revoke("dev.arlen.settings", body.as_bytes());
+            let r = handle_revoke("dev.arlen.settings", body.as_bytes()).await;
             assert!(
                 r.starts_with("ERROR: invalid target app id") || r.starts_with("ERROR: invalid revoke request"),
                 "traversal target {target:?} must be refused, got {r}"
