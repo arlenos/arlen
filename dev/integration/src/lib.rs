@@ -1510,9 +1510,6 @@ mod module_reachability {
         // as evidence. Each is real work waiting on the piece that would call
         // it, named here rather than deleted, because deleting a tested core to
         // shorten a list is the wrong direction:
-        //   code-indexer/resolve    CG-R2 query-time cross-file resolution; the
-        //                           extractor records reference names and
-        //                           nothing yet asks this to bind them.
         //   integration-packages/manifest  IP-R5's manifest, parsed by nothing
         //                           until the installer path reaches it.
         //
@@ -1528,7 +1525,6 @@ mod module_reachability {
         // start. What SEN-4 still waits on is §6 job 1, the GeoClue2 bridge that
         // puts a fix on a sighting: the store and the criteria are there, the thing
         // that says WHERE a tag was seen is not.
-        "daemons/code-indexer/resolve",
         "daemons/integration-packages/manifest",
         // Diagnosed rather than assumed: the transfer daemon's live per-uid
         // listeners are deliberately deferred to PR-R1's per-uid sockets, which

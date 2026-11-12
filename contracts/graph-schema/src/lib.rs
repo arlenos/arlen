@@ -217,6 +217,19 @@ const NODES: &[NodeSchema] = &[
             ("kind", FieldType::Text),
         ],
     },
+    // A name a definition refers to, kept beside the edges it was bound to
+    // (`daemons/knowledge/src/code_edges.rs`): a later save of another file can
+    // move or double the definition, and the name is what binds again.
+    NodeSchema {
+        label: "CodeRef",
+        fields: &[
+            ("id", FieldType::Text),
+            ("from_symbol", FieldType::Text),
+            ("source_file", FieldType::Text),
+            ("name", FieldType::Text),
+            ("kind", FieldType::Text),
+        ],
+    },
     // Reserved git node types (foundation §04 pre-provision): a future
     // git-ingestion tier writes rows without a schema migration. No producer
     // yet; mirrors the `Commit`/`Branch` tables in `daemons/knowledge/src/graph.rs`.
@@ -522,7 +535,7 @@ mod tests {
         // `check-graph-schema-contract.py` excludes by name and reason (the
         // authority projection and the merge-suggestion queue). That gate is
         // what keeps this in step; the counts only catch an entry lost here.
-        assert_eq!(s.node_labels().count(), 19);
+        assert_eq!(s.node_labels().count(), 20);
         assert_eq!(s.edge_labels().count(), 23);
     }
 }

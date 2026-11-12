@@ -1,50 +1,22 @@
-//! The per-file extraction core (code-graph-layer.md CG-R1 + CG-R3).
+//! The per-file extraction core (code-graph-layer.md).
 //!
 //! Parses ONE source file in complete isolation (tree-sitter, purely syntactic,
 //! no build, no cross-file visibility) and returns its [`FileIndex`]: the
 //! `CodeSymbol` definitions it declares, and the outgoing references (calls,
-//! imports) it makes. This is the load-bearing "per-file isolation at index"
-//! design - a file-save re-runs only this, never a whole-project reindex.
+//! imports, types it uses) it makes. This is the load-bearing "per-file
+//! isolation at index" design - a file-save re-runs only this, never a
+//! whole-project reindex.
 //!
 //! Multi-language ([`Language`]): Rust, Python and TypeScript share this one
 //! extractor. Each language brings its own tree-sitter grammar and capture query
 //! ([`Language::query`]); the classification, dedup and reference handling are
-//! shared. Adding a language is a grammar + a query, nothing more (CG-R3).
+//! shared. Adding a language is a grammar + a query, nothing more.
 //!
 //! What it does NOT do: resolve a reference to its target definition. A call to
-//! `bar()` records the NAME `bar`; which `CodeSymbol` it binds to is cross-file
-//! and is resolved at QUERY time (CG-R2, stack-graph path-finding). So the
-//! definitions here are [`Confidence::Extracted`] (syntactically present), and
-//! the eventual CALLS/IMPORTS edges carry their resolution confidence when CG-R2
-//! materialises them. Honest by construction: this layer never claims to know a
-//! binding it cannot see.
-
-/// The confidence label on an extracted fact (code-graph-layer.md §5). Mandatory:
-/// syntactic-only analysis loses overrides/shadowing/aliases/types, so a fact is
-/// never presented as ground truth above what the method can actually know.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Confidence {
-    /// Explicit in the source (a definition, an `import`/`use`, a direct call
-    /// site). The fact's EXISTENCE is certain.
-    Extracted,
-    /// A reasonable deduction (a cross-file resolution with a single candidate).
-    /// Produced by CG-R2 resolution, not by this per-file extractor.
-    Inferred,
-    /// Uncertain - multiple candidate targets. Every candidate is kept; the
-    /// resolution is never collapsed to one. Produced by CG-R2.
-    Ambiguous,
-}
-
-impl Confidence {
-    /// The stable lowercase key stored on the KG edge.
-    pub fn as_key(self) -> &'static str {
-        match self {
-            Confidence::Extracted => "extracted",
-            Confidence::Inferred => "inferred",
-            Confidence::Ambiguous => "ambiguous",
-        }
-    }
-}
+//! `bar()` records the NAME `bar`; which `CodeSymbol` it binds to is cross-file,
+//! and the knowledge daemon decides it when it promotes the file, with the
+//! confidence the binding deserves. Honest by construction: this layer never
+//! claims to know a binding it cannot see.
 
 /// What kind of code definition a [`Symbol`] is. A small shared core
 /// (code-graph-layer.md §4); per-language extras would attach as attributes.
@@ -76,6 +48,11 @@ pub enum SymbolKind {
     /// An interface (TypeScript `interface`). Distinct from a Rust `trait`
     /// (which keeps [`SymbolKind::Trait`]) so the language's own vocabulary shows.
     Interface,
+    /// The source file itself, as the module it is. The extractor never emits
+    /// one; the payload builder adds exactly one per file, so that a reference
+    /// made outside every definition (a top-level `use`, a call in a script's
+    /// body) still has a symbol to start from.
+    File,
 }
 
 impl SymbolKind {
@@ -94,6 +71,7 @@ impl SymbolKind {
             SymbolKind::Macro => "macro",
             SymbolKind::Class => "class",
             SymbolKind::Interface => "interface",
+            SymbolKind::File => "file",
         }
     }
 }
@@ -113,6 +91,11 @@ pub struct Symbol {
     /// (e.g. two `impl` blocks' `fn x` on one line) get distinct symbol ids -
     /// without it they collide on the KG primary key and stall promotion.
     pub column: usize,
+    /// 1-based last line of the whole definition (the closing brace of a
+    /// function, the last field of a struct). A reference on a line between
+    /// `line` and this one was made inside the definition, which is how a call
+    /// finds its caller.
+    pub end_line: usize,
 }
 
 /// What kind of outgoing reference a [`Reference`] is.
@@ -122,6 +105,9 @@ pub enum RefKind {
     Call,
     /// An import (`use a::b::c;`).
     Import,
+    /// A type named where it is used (a field's type, a parameter, a base
+    /// class, a struct literal).
+    TypeUse,
 }
 
 impl RefKind {
@@ -130,13 +116,14 @@ impl RefKind {
         match self {
             RefKind::Call => "calls",
             RefKind::Import => "imports",
+            RefKind::TypeUse => "references",
         }
     }
 }
 
-/// An outgoing reference the file makes - the NAME referenced, not yet resolved
-/// to a target [`Symbol`] (cross-file resolution is CG-R2). The `name` is the
-/// callee identifier or the imported path's final segment.
+/// An outgoing reference the file makes - the NAME referenced, not resolved to
+/// a target [`Symbol`], which is cross-file. The `name` is the callee
+/// identifier, the imported path's final segment or the type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reference {
     /// The referenced name (callee, imported path tail).
@@ -151,10 +138,10 @@ pub struct Reference {
 /// references it makes. Built in isolation from a single file's source.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FileIndex {
-    /// The `CodeSymbol` definitions in this file (all [`Confidence::Extracted`]).
+    /// The `CodeSymbol` definitions in this file.
     pub symbols: Vec<Symbol>,
-    /// The outgoing call/import references (names only; targets resolved at
-    /// query time, CG-R2).
+    /// The outgoing references (names only; the targets are bound when the
+    /// file is promoted).
     pub references: Vec<Reference>,
 }
 
@@ -238,7 +225,9 @@ const RUST_QUERY: &str = r#"
 (call_expression function: (identifier) @call)
 (call_expression function: (scoped_identifier name: (identifier) @call))
 (call_expression function: (field_expression field: (field_identifier) @call))
+(macro_invocation macro: (identifier) @call)
 (use_declaration) @use
+(type_identifier) @typeref
 "#;
 
 /// Python definitions + references. A `function_definition` inside a class body
@@ -258,6 +247,8 @@ const PYTHON_QUERY: &str = r#"
 (import_statement name: (dotted_name (identifier) @import))
 (import_from_statement name: (dotted_name (identifier) @import))
 (aliased_import alias: (identifier) @import)
+(class_definition superclasses: (argument_list (identifier) @typeref))
+(type (identifier) @typeref)
 "#;
 
 /// TypeScript (and TSX) definitions + references. `function_declaration` and
@@ -279,6 +270,8 @@ const TYPESCRIPT_QUERY: &str = r#"
 (import_specifier name: (identifier) @import)
 (import_clause (identifier) @import)
 (namespace_import (identifier) @import)
+(new_expression constructor: (identifier) @call)
+(type_identifier) @typeref
 "#;
 
 /// Extract the [`FileIndex`] from one Rust source file, in isolation.
@@ -287,7 +280,7 @@ const TYPESCRIPT_QUERY: &str = r#"
 /// whatever tree-sitter can recover (error-tolerant parse) plus the symbols it
 /// did recognise, never a panic. Definitions are deduplicated only by
 /// (name, kind, line); a genuinely duplicated name on different lines is kept
-/// (it is a real second definition the resolver must disambiguate).
+/// (it is a real second definition, and a reference to it is ambiguous).
 pub fn extract(language: Language, source: &str) -> FileIndex {
     // Svelte is not a single grammar: its symbols live in `<script>` block(s),
     // extracted via the TypeScript grammar with the block's line offset applied.
@@ -309,6 +302,11 @@ pub fn extract(language: Language, source: &str) -> FileIndex {
     let bytes = source.as_bytes();
     let mut symbols = Vec::new();
     let mut references = Vec::new();
+    // A type's own declaration is a type identifier too, so the broad type-use
+    // capture also lands on every definition's name. Kept apart with their
+    // column until the definitions are known, then the ones sitting on a
+    // definition are dropped.
+    let mut type_uses: Vec<(Reference, usize)> = Vec::new();
     let mut cursor = tree_sitter::QueryCursor::new();
     let capture_names = query.capture_names();
 
@@ -327,7 +325,7 @@ pub fn extract(language: Language, source: &str) -> FileIndex {
             match cap_name {
                 "use" => {
                     // `use a::b::c;` / `use a::b::{c, d};` - record the imported
-                    // tail name(s). The site is EXTRACTED; resolution is CG-R2.
+                    // tail name(s).
                     for name in import_names(text) {
                         references.push(Reference {
                             name,
@@ -352,13 +350,28 @@ pub fn extract(language: Language, source: &str) -> FileIndex {
                     kind: RefKind::Call,
                     line,
                 }),
+                "typeref" => type_uses.push((
+                    Reference {
+                        name: text.to_string(),
+                        kind: RefKind::TypeUse,
+                        line,
+                    },
+                    column,
+                )),
                 other => {
                     if let Some(kind) = symbol_kind(other) {
+                        // The captured node is the name; its parent is the
+                        // whole definition, whose last row closes the span.
+                        let end_line = node
+                            .parent()
+                            .map(|def| def.end_position().row + 1)
+                            .unwrap_or(line);
                         symbols.push(Symbol {
                             name: text.to_string(),
                             kind,
                             line,
                             column,
+                            end_line,
                         });
                     }
                 }
@@ -382,6 +395,15 @@ pub fn extract(language: Language, source: &str) -> FileIndex {
     symbols.retain(|s| {
         s.kind != SymbolKind::Function || !dup.iter().any(|(n, l)| n == &s.name && *l == s.line)
     });
+
+    let declared: std::collections::HashSet<(usize, usize)> =
+        symbols.iter().map(|s| (s.line, s.column)).collect();
+    references.extend(
+        type_uses
+            .into_iter()
+            .filter(|(r, column)| !declared.contains(&(r.line, *column)))
+            .map(|(r, _)| r),
+    );
 
     FileIndex {
         symbols,
@@ -410,6 +432,7 @@ fn extract_svelte(source: &str) -> FileIndex {
         let offset = start_line.saturating_sub(1);
         for mut s in block.symbols {
             s.line += offset;
+            s.end_line += offset;
             out.symbols.push(s);
         }
         for mut r in block.references {
@@ -473,8 +496,8 @@ fn symbol_kind(capture: &str) -> Option<SymbolKind> {
 /// Handles the common shapes syntactically: `use a::b::c;` -> `c`;
 /// `use a::b::{c, d};` -> `c`, `d`; `use a::b as e;` -> `e` (the alias is what
 /// the local scope binds). A glob `use a::*;` contributes no specific name (the
-/// targets are unknowable per-file; CG-R2's resolution covers globs). Best-effort
-/// + syntactic; the resolution to a real symbol is CG-R2.
+/// targets are unknowable per-file). Best-effort and syntactic; binding the
+/// name to a real symbol is not done here.
 fn import_names(use_text: &str) -> Vec<String> {
     // Strip the leading `use`, the trailing `;`, and any `pub`/whitespace.
     let body = use_text
@@ -665,6 +688,41 @@ mod tests {
     }
 
     #[test]
+    fn a_definition_knows_where_it_ends_and_a_type_use_is_a_reference() {
+        let src = "struct Size(u32);\n\
+                   struct Widget {\n\
+                       size: Size,\n\
+                   }\n\
+                   fn build() -> Widget {\n\
+                       log!(\"x\");\n\
+                       Widget { size: Size(1) }\n\
+                   }\n";
+        let idx = extract_rust(src);
+        let widget = idx.symbols.iter().find(|s| s.name == "Widget").unwrap();
+        assert_eq!((widget.line, widget.end_line), (2, 4), "the struct spans its fields");
+        let build = idx.symbols.iter().find(|s| s.name == "build").unwrap();
+        assert_eq!((build.line, build.end_line), (5, 8), "the function spans its body");
+
+        let uses: Vec<(&str, usize)> = idx
+            .references
+            .iter()
+            .filter(|r| r.kind == RefKind::TypeUse)
+            .map(|r| (r.name.as_str(), r.line))
+            .collect();
+        assert!(uses.contains(&("Size", 3)), "a field's type");
+        assert!(uses.contains(&("Widget", 5)), "a return type");
+        assert!(uses.contains(&("Widget", 7)), "a struct literal");
+        assert!(
+            !uses.contains(&("Widget", 2)) && !uses.contains(&("Size", 1)),
+            "a declaration is not a use of itself"
+        );
+        assert!(
+            idx.references.iter().any(|r| r.kind == RefKind::Call && r.name == "log"),
+            "a macro invocation is a call"
+        );
+    }
+
+    #[test]
     fn dogfoods_this_files_own_symbols() {
         // Parse the extractor's own source - the CG-R1 promise (index Arlen's
         // own Rust) and a regression guard over the real grammar shapes.
@@ -677,15 +735,15 @@ mod tests {
         let structs = names_of(&idx, SymbolKind::Struct);
         assert!(structs.contains(&"Symbol") && structs.contains(&"FileIndex"));
         let enums = names_of(&idx, SymbolKind::Enum);
-        assert!(enums.contains(&"Confidence") && enums.contains(&"SymbolKind") && enums.contains(&"RefKind"));
+        assert!(enums.contains(&"SymbolKind") && enums.contains(&"RefKind"));
         // It also records its own outgoing calls (e.g. into tree-sitter).
         assert!(!idx.references.is_empty(), "the file makes calls/imports");
     }
 
     #[test]
-    fn confidence_and_kind_keys_are_stable() {
-        assert_eq!(Confidence::Extracted.as_key(), "extracted");
-        assert_eq!(Confidence::Ambiguous.as_key(), "ambiguous");
+    fn kind_keys_are_stable() {
+        assert_eq!(SymbolKind::File.as_key(), "file");
+        assert_eq!(RefKind::TypeUse.as_key(), "references");
         assert_eq!(SymbolKind::TypeAlias.as_key(), "type_alias");
         assert_eq!(SymbolKind::Class.as_key(), "class");
         assert_eq!(SymbolKind::Interface.as_key(), "interface");

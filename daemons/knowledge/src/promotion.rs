@@ -1218,60 +1218,14 @@ async fn promote_service_transition(
     Ok(())
 }
 
-/// Promote a `code.indexed` event into the code-graph layer (code-graph-layer.md
-/// CG-R1): replace the file's prior `CodeSymbol`s with the freshly-parsed set and
-/// fuse each to its `File` via a `DEFINES` edge (confidence `extracted` - the
-/// definition is syntactically explicit). The whole file is replaced atomically
-/// in one transaction (per-file isolation: a re-parse wholly supersedes the
-/// file's previous symbols, so a crash mid-replace never leaves a partial set).
-/// Cross-file call/import edges are resolved at query time (CG-R2); this promotes
-/// only the definitions and their file fusion. All interpolated values are
-/// escaped, so file content cannot inject Cypher.
+/// Promote a `code.indexed` event into the code-graph layer
+/// (code-graph-layer.md): the file's `CodeSymbol`s are replaced by the freshly
+/// parsed set, each fused to its `File` by a `DEFINES` edge, and the names the
+/// file refers to are bound to definitions as `CALLS`, `IMPORTS` and
+/// `REFERENCES`. The work is [`crate::code_edges::replace_file`].
 async fn promote_code_indexed(graph: &GraphHandle, payload: &[u8]) -> Result<()> {
     let p = CodeFileIndexPayload::decode(payload)?;
-    if p.source_file.is_empty() {
-        return Ok(());
-    }
-    let file_esc = escape_cypher(&p.source_file);
-    let lang_esc = escape_cypher(&p.language);
-
-    let mut stmts = Vec::new();
-    // Per-file replace: detach-delete the file's prior CodeSymbols (and their
-    // DEFINES/edges). A re-parse fully supersedes them.
-    stmts.push(format!(
-        "MATCH (s:CodeSymbol {{source_file: '{file_esc}'}}) DETACH DELETE s"
-    ));
-    // The fusion anchor: the File node the symbols hang off (the activity graph
-    // already carries its provenance/project/timeline).
-    stmts.push(crate::cypher::merge_node("f", "File", &p.source_file));
-    // Defence in depth at the write boundary: a duplicate id in the payload would
-    // make two `CREATE`s collide on the primary key, failing the whole transaction
-    // and stalling ALL promotion. The daemon already dedups, but a crafted bus
-    // message must not be able to wedge the pipeline - skip a repeated id here too.
-    let mut seen_ids = std::collections::HashSet::new();
-    for sym in &p.symbols {
-        if sym.id.is_empty() || sym.name.is_empty() || !seen_ids.insert(sym.id.as_str()) {
-            continue;
-        }
-        let id_esc = escape_cypher(&sym.id);
-        let name_esc = escape_cypher(&sym.name);
-        let loc_esc = escape_cypher(&sym.source_location);
-        let kind_esc = escape_cypher(&sym.kind);
-        stmts.push(format!(
-            "CREATE (:CodeSymbol {{id: '{id_esc}', name: '{name_esc}', \
-             source_file: '{file_esc}', source_location: '{loc_esc}', \
-             language: '{lang_esc}', kind: '{kind_esc}'}})"
-        ));
-        stmts.push(format!(
-            "{} CREATE (f)-[:DEFINES {{confidence: 'extracted'}}]->(s)",
-            crate::cypher::match_two_nodes("f", "File", &p.source_file, "s", "CodeSymbol", &sym.id)
-        ));
-    }
-
-    let count = p.symbols.len();
-    graph.transaction(stmts).await?;
-    debug!(source_file = %p.source_file, symbols = count, "promoted code.indexed");
-    Ok(())
+    crate::code_edges::replace_file(graph, &p).await
 }
 
 /// Check if a file belongs to a known project and create a `FILE_PART_OF`
@@ -2710,6 +2664,7 @@ mod shell_event_tests {
                 sym("/p/lib.rs#function:helper@1", "helper", "1", "function"),
                 sym("/p/lib.rs#function:main@2", "main", "2", "function"),
             ],
+            references: vec![],
         };
         let mut buf = Vec::new();
         first.encode(&mut buf).unwrap();
@@ -2735,6 +2690,7 @@ mod shell_event_tests {
             source_file: "/p/lib.rs".to_string(),
             language: "rust".to_string(),
             symbols: vec![sym("/p/lib.rs#struct:Widget@1", "Widget", "1", "struct")],
+            references: vec![],
         };
         let mut buf2 = Vec::new();
         second.encode(&mut buf2).unwrap();
@@ -2769,6 +2725,7 @@ mod shell_event_tests {
             source_file: "/p/lib.rs".to_string(),
             language: "rust".to_string(),
             symbols: vec![dup.clone(), dup],
+            references: vec![],
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();

@@ -597,11 +597,23 @@ message CodeSymbolPayload {
 // The complete per-file code index, emitted on a file (re)parse. Event type
 // "code.indexed". The knowledge daemon replaces the file's prior CodeSymbols
 // with this set (per-file isolation, code-graph-layer.md §3) and fuses each to
-// the source File via a DEFINES edge. Cross-file call/import resolution is CG-R2.
+// the source File via a DEFINES edge, then binds the references by name.
 message CodeFileIndexPayload {
   string source_file = 1;  // the File node id (absolute path)
   string language    = 2;  // "rust"
-  repeated CodeSymbolPayload symbols = 3;
+  repeated CodeSymbolPayload symbols = 3;  // the first one is the file itself, kind "file"
+  repeated CodeReferencePayload references = 4;
+}
+
+// One thing a definition names: a call, an import or a type it uses. It carries
+// the NAME only. Which definition the name binds to needs the whole project, so
+// the knowledge daemon decides that and the indexer, which sees one file, does
+// not.
+message CodeReferencePayload {
+  uint32 from = 1;  // position in `symbols` of the definition the reference is made in
+  string name = 2;  // the callee, the imported name or the type
+  string kind = 3;  // calls|imports|references
+  uint32 line = 4;  // 1-based line of the reference
 }
 
 // A meeting about to start, emitted by the calendar daemon shortly before it

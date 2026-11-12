@@ -95,6 +95,29 @@ def proto_messages(text: str) -> dict[str, list[str]]:
     return out
 
 
+def handed_on(body: str, var: str, message: str) -> tuple[str, str] | None:
+    """Where a handler hands its whole payload: the parameter's name and the body
+    of the function that takes it.
+
+    `promote_code_indexed` decodes and passes `&p` to `crate::code_edges::
+    replace_file`, which is where the fields are read. Followed one step and only
+    into a function whose parameter is typed as this payload, so a handler cannot
+    pass by mentioning some other module.
+    """
+    call = re.search(rf"crate::(\w+)::(\w+)\([^;]*&{re.escape(var)}\b", body)
+    if not call:
+        return None
+    path = ROOT / "daemons/knowledge/src" / f"{call.group(1)}.rs"
+    if not path.is_file():
+        return None
+    taken = re.search(
+        rf"fn {re.escape(call.group(2))}\((?:[^)]*?)\b(\w+): &(?:\w+::)*{re.escape(message)}\b.*?\n\}}\n",
+        path.read_text(encoding="utf-8"),
+        re.S,
+    )
+    return (taken.group(1), taken.group(0)) if taken else None
+
+
 def main() -> int:
     src_path, proto_path = ROOT / PROMOTION, ROOT / PROTO
     if not src_path.is_file() or not proto_path.is_file():
@@ -118,9 +141,13 @@ def main() -> int:
             findings.append(f"  - {name} decodes `{message}`, which this proto does not define")
             continue
         handlers += 1
+        handed = handed_on(body, var, message)
         for field in fields:
             # `r#type` in Rust for the proto's `type`.
             if re.search(rf"\b{re.escape(var)}\.(?:r#)?{re.escape(field)}\b", body):
+                continue
+            # rustfmt breaks a long chain after the receiver, so `p\n.symbols`.
+            if handed and re.search(rf"\b{re.escape(handed[0])}\s*\.(?:r#)?{re.escape(field)}\b", handed[1]):
                 continue
             key = f"{name}.{field}"
             seen.add(key)

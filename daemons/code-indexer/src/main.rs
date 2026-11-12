@@ -4,8 +4,8 @@
 //! Consumes `file.opened` from the event bus; for each project-scoped source
 //! file (Rust, Python, TypeScript) whose content has changed since it was last
 //! seen, it re-parses ONLY that file (per-file isolation) and emits a
-//! `code.indexed` event the knowledge daemon promotes into `CodeSymbol` +
-//! `DEFINES`. Per-user daemon (the journald-parser shape): it reads the user's
+//! `code.indexed` event the knowledge daemon promotes into `CodeSymbol`s,
+//! `DEFINES` and the call, import and reference edges between them. Per-user daemon (the journald-parser shape): it reads the user's
 //! own project source and emits onto the per-uid event bus.
 //!
 //! The anti-Nepomuk guardrails (§6) live here: only supported source extensions

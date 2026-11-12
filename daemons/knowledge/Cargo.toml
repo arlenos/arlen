@@ -94,6 +94,9 @@ regex = "1"
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3"
+# The code-graph test parses a real crate with the real extractor, so that what
+# it asserts is what the indexer would send and not a hand-written payload.
+arlen-code-indexer = { path = "../code-indexer" }
 [build-dependencies]
 prost-build = "0.13"
 

@@ -110,6 +110,43 @@ console.log("check-promoted-fields:");
   cleanup(root);
 }
 
+// A handler may hand the whole payload to another module, as the code graph's
+// does. The fields are read there, and one that is read nowhere still fails.
+const handedOn = (reads) => {
+  const root = tree([...census()]);
+  const src = join(root, "daemons/knowledge/src");
+  writeFileSync(
+    join(src, "promotion.rs"),
+    readFileSync(join(src, "promotion.rs"), "utf8") +
+      "async fn promote_far(payload: &[u8]) -> Result<()> {\n    let p = farPayload::decode(payload)?;\n    crate::far::take(graph, &p).await\n}\n\n",
+  );
+  writeFileSync(
+    join(src, "far.rs"),
+    `pub async fn take(graph: &Graph, q: &farPayload) -> Result<()> {\n${reads.map((f) => `    let _ = q.${f};`).join("\n")}\n    Ok(())\n}\n`,
+  );
+  const proto = join(root, "daemons/knowledge/proto/event.proto");
+  writeFileSync(proto, readFileSync(proto, "utf8") + "message farPayload {\n  string label = 1;\n  string subject = 2;\n}\n");
+  return root;
+};
+
+{
+  const root = handedOn(["label", "subject"]);
+  const r = run(root);
+  r.code === 0
+    ? ok("a field read by the function the payload is handed to passes")
+    : bad("a field read by the function the payload is handed to passes", r.out);
+  cleanup(root);
+}
+
+{
+  const root = handedOn(["label"]);
+  const r = run(root);
+  r.code === 1 && r.out.includes("promote_far.subject") && !r.out.includes("promote_far.label")
+    ? ok("a field the handed-on function never reads is still caught")
+    : bad("a field the handed-on function never reads is still caught", `got ${r.code}: ${r.out}`);
+  cleanup(root);
+}
+
 {
   const root = mint("promoted-fields-empty-");
   const r = run(root);

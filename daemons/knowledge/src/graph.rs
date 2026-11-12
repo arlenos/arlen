@@ -1344,6 +1344,22 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create REFERENCES rel: {e}"))?;
 
+    // What a definition refers to, by name: the callee, the imported name, the
+    // type. Kept because a binding is not settled when it is written - another
+    // file's save can move the definition it points at - so the names have to
+    // be there to bind again (`code_edges.rs`).
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS CodeRef(
+            id          STRING,
+            from_symbol STRING,
+            source_file STRING,
+            name        STRING,
+            kind        STRING,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create CodeRef table: {e}"))?;
+
     debug!("schema created");
     Ok(())
 }

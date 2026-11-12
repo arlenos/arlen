@@ -31,6 +31,7 @@ pub mod consumer;
 pub mod auth;
 pub mod backup;
 pub mod code_analysis;
+pub mod code_edges;
 pub mod curation;
 pub mod cypher;
 pub mod db;
