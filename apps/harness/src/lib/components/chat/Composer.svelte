@@ -19,7 +19,7 @@
   import { openBookmarks, openFind } from "$lib/stores/chatNav";
   import { t } from "$lib/i18n/messages";
   import ContextChips from "./ContextChips.svelte";
-  import ModelPickerBar from "./ModelPickerBar.svelte";
+  import ModelBar from "./ModelBar.svelte";
   import AutonomyDial from "./AutonomyDial.svelte";
   import {
     activeSessionId,
@@ -271,7 +271,7 @@
   {/if}
 
   <div class="composer" class:disabled>
-    <ModelPickerBar />
+    <ModelBar />
     <ContextChips attached={$attached} onremove={removeAttached} />
     <Textarea
       bind:ref={textareaRef}

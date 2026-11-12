@@ -15,6 +15,7 @@ use crate::compensation::CompensationStore;
 use crate::engine_config;
 use crate::write_executor::RelationWriter;
 use arlen_ai_core::audit::behaviour_action_event;
+use arlen_ai_core::capability::BaselineMode;
 use arlen_ai_skills::behaviour::{BehaviourKind, ReadScope};
 use arlen_ai_skills::loader::{DisableReason, LoadOutcome, Provenance, Status};
 use audit_proto::sink::AuditSink;
@@ -407,6 +408,15 @@ fn compensate_caller_admitted(app_id: &str) -> bool {
 /// Same list as [`COMPENSATE_ADMITTED`] today and deliberately a separate name: a
 /// read surface and a destructive one may diverge, and a shared constant would
 /// make that divergence look like a mistake.
+/// The `action_state` answer for a baseline mode and the executor gate.
+pub(crate) fn action_state_json(mode: BaselineMode, executor_live: bool) -> String {
+    let action_mode = match mode {
+        BaselineMode::Suggest => "suggest",
+        BaselineMode::Supervised => "supervised",
+    };
+    serde_json::json!({ "action_mode": action_mode, "executor_live": executor_live }).to_string()
+}
+
 /// Whether `app_id` is a user-facing surface allowed to ask the engine to read on
 /// the user's behalf.
 ///
@@ -656,6 +666,7 @@ pub struct AgentAdminInterface {
     compensation: Arc<Mutex<CompensationStore>>,
     writer: Arc<dyn RelationWriter>,
     audit: Arc<dyn AuditSink>,
+    knowledge_socket: String,
 }
 
 impl AgentAdminInterface {
@@ -667,7 +678,22 @@ impl AgentAdminInterface {
         writer: Arc<dyn RelationWriter>,
         audit: Arc<dyn AuditSink>,
     ) -> Self {
-        Self { status, compensation, writer, audit }
+        Self {
+            status,
+            compensation,
+            writer,
+            audit,
+            knowledge_socket: os_sdk::runtime::knowledge_socket_path()
+                .to_string_lossy()
+                .into_owned(),
+        }
+    }
+
+    /// Read grants from `socket` instead of the default knowledge socket, so the
+    /// grant read follows the same override the rest of the daemon resolved.
+    pub fn with_knowledge_socket(mut self, socket: String) -> Self {
+        self.knowledge_socket = socket;
+        self
     }
 }
 
@@ -732,6 +758,66 @@ impl AgentAdminInterface {
             load_status(&self.status).as_str(),
             &crate::orchestrator::load_behaviours(),
         )
+    }
+
+    /// What the assistant is allowed to read: its own capability grants, as the
+    /// JSON array of grant views the harness draws under "what it may reach".
+    ///
+    /// The knowledge daemon scopes its grant read to the attested caller, so a
+    /// surface asking it directly would be shown its own grants and not the
+    /// assistant's. This daemon is the assistant, so it asks and passes the
+    /// answer on. A failed read is an error and never an empty array, because an
+    /// empty list states that the assistant reaches nothing.
+    #[zbus(name = "access_grants")]
+    async fn access_grants(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        match resolve_dbus_caller(&header, connection).await {
+            Ok(c) if user_surface_admitted(&c) => {}
+            _ => {
+                return Err(zbus::fdo::Error::AccessDenied(
+                    "not a user surface".to_string(),
+                ));
+            }
+        }
+        let grants = os_sdk::graph::UnixGraphClient::new(self.knowledge_socket.clone())
+            .access_grants()
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(format!("grants unread: {e}")))?;
+        serde_json::to_string(&grants)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("grants unencodable: {e}")))
+    }
+
+    /// How freely the assistant acts right now, as `{ action_mode, executor_live }`.
+    ///
+    /// Both values are the ones this daemon enforces, read the way the gate reads
+    /// them (the config-broker first, the file behind it), so a surface showing
+    /// them cannot disagree with what happens. Read-only: the switches belong to
+    /// the config-broker and only Settings may write them.
+    ///
+    /// Admitted to the user surfaces, like the other reads here: the bus is
+    /// default-allow, and whether the assistant may act is worth knowing to
+    /// something that wants to act through it.
+    #[zbus(name = "action_state")]
+    async fn action_state(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        match resolve_dbus_caller(&header, connection).await {
+            Ok(c) if user_surface_admitted(&c) => {}
+            _ => {
+                return Err(zbus::fdo::Error::AccessDenied(
+                    "not a user surface".to_string(),
+                ));
+            }
+        }
+        Ok(action_state_json(
+            crate::engine_config::action_mode(),
+            crate::engine_config::executor_live(),
+        ))
     }
 
     /// **Superseded by `org.arlen.Undo1`, and kept only until its caller moves.**
@@ -906,6 +992,18 @@ mod tests {
         assert_eq!(arr[0]["from"], "File/f-1");
         assert_eq!(arr[0]["to"], "Project/proj-1");
         assert_eq!(arr[1]["id"], "corr-2");
+    }
+
+    #[test]
+    fn the_action_state_names_the_mode_and_the_gate() {
+        let v: serde_json::Value =
+            serde_json::from_str(&action_state_json(BaselineMode::Supervised, false)).unwrap();
+        assert_eq!(v["action_mode"], "supervised");
+        assert_eq!(v["executor_live"], false);
+        let v: serde_json::Value =
+            serde_json::from_str(&action_state_json(BaselineMode::Suggest, true)).unwrap();
+        assert_eq!(v["action_mode"], "suggest");
+        assert_eq!(v["executor_live"], true);
     }
 
     #[test]

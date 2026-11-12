@@ -11,7 +11,6 @@ mod ai_client;
 mod capsule;
 mod drive;
 mod ai_manage;
-mod app_meta;
 mod behaviours;
 mod capability;
 mod file_ref;
@@ -60,24 +59,13 @@ pub fn run() {
             ai_client::ai_explain,
             activity::ai_activity_recent,
             activity::ai_reads_recent,
-            ai_manage::ai_models_list,
             ai_manage::ai_active,
-            ai_manage::ai_set_active,
-            ai_manage::ai_set_action_mode,
-            ai_manage::ai_set_autonomous_app,
             ai_manage::ai_usage,
             ai_manage::ai_providers_list,
-            ai_manage::ai_provider_set_enabled,
-            ai_manage::ai_provider_test,
-            ai_manage::ai_defaults_get,
             ai_manage::open_ai_settings,
             ai_manage::ai_working_set,
-            ai_manage::pending_proposals,
             ai_manage::completed_actions,
             ai_manage::ai_access_grants,
-            app_meta::app_metadata,
-            ai_manage::deny,
-            ai_manage::approve,
             ai_manage::undo_action,
             ai_manage::action_state,
             capability::ai_capability,

@@ -147,7 +147,6 @@ KNOWN: dict[str, tuple[int, str]] = {
     # of them is arlen-ui's to answer. Listed rather than silenced: a new sentence
     # in any of these files still raises the count and goes red.
     "apps/harness/src/lib/stores/conversation.ts": (5, "arlen-ui's; a fixture conversation, and theirs to mark"),
-    "apps/harness/src/routes/_gatetest/+page.svelte": (2, "arlen-ui's; the gate demo's sample proposals"),
     "apps/harness/src/routes/_rendertest/+page.svelte": (2, "arlen-ui's; the render demo's chart titles"),
     "apps/store/src/lib/stores/catalog.ts": (15, "arlen-ui's app; a fixture catalogue of other people's software"),
     "sdk/ui-kit/src/routes/_i18n/+page.svelte": (1, "the kit's i18n demo route; the string is the demo"),

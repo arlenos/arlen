@@ -94,31 +94,9 @@ pub async fn ai_explain() -> Result<String, String> {
     }
 }
 
-/// Call a String-returning member on the AI daemon, reporting a failure as one.
-///
-/// This used to substitute an empty value and call the reads advisory: "a down
-/// daemon shows an empty surface rather than erroring the page". Both members it
-/// serves - `ai_defaults_get` and `ai_models_list` - are dialled on
-/// `org.arlen.AI1`, which serves neither (it serves `ask` and `explain_system`).
-/// So the substitution was not a graceful degradation for a daemon that happened
-/// to be down, it was the only path either call ever took, and the page has been
-/// showing an empty catalogue and no default as though it had looked.
-async fn ai_call_string(member: &str) -> Result<String, String> {
-    let connection = zbus::Connection::session()
-        .await
-        .map_err(|e| format!("session bus: {e}"))?;
-    let proxy = zbus::Proxy::new(&connection, AI_DAEMON_NAME, AI_OBJECT_PATH, AI_DAEMON_NAME)
-        .await
-        .map_err(|e| format!("AI daemon unavailable: {e}"))?;
-    proxy
-        .call::<_, _, String>(member, &())
-        .await
-        .map_err(|e| format!("{member}: {e}"))
-}
-
 /// The catalogued providers for the Settings AI-providers manager
-/// (`ai_providers_list`): a JSON array of `{ id, name, kind, enabled,
-/// configured, status }`. An error when the proxy cannot be reached, never an
+/// (`ai_providers_list`): a JSON array of `{ id, name, kind, configured,
+/// builtin }`. An error when the proxy cannot be reached, never an
 /// empty array - see [`proxy_call_string`].
 #[tauri::command]
 pub async fn ai_providers_list() -> Result<String, String> {
@@ -262,60 +240,6 @@ pub async fn ai_uncensored_set_enabled(enabled: bool) -> Result<(), String> {
     .await
 }
 
-
-/// The model catalog for the Settings Default-Models page (`ai_models_list`): a
-/// JSON array of `{ provider, model, contextWindow, kind, available }`, the same
-/// catalog the harness picker reads. The page pairs it with `ai_defaults_get`/
-/// `ai_defaults_set` to choose the default.
-///
-/// An error rather than `[]`. No Settings surface reads this yet, so the change
-/// costs nothing today and stops the next caller inheriting an empty catalogue
-/// that means "we did not look".
-#[tauri::command]
-pub async fn ai_models_list() -> Result<String, String> {
-    ai_call_string("ai_models_list").await
-}
-
-/// Enable or disable a catalogued provider (`ai_provider_set_enabled`). Returns
-/// the daemon's `ok` / `error: ...` status; a transport failure maps to an
-/// `error:` string so the manager surfaces it.
-#[tauri::command]
-pub async fn ai_provider_set_enabled(id: String, enabled: bool) -> String {
-    let Ok(connection) = zbus::Connection::session().await else {
-        return "error: session bus unavailable".to_string();
-    };
-    let Ok(proxy) =
-        zbus::Proxy::new(&connection, AI_DAEMON_NAME, AI_OBJECT_PATH, AI_DAEMON_NAME).await
-    else {
-        return "error: AI daemon unavailable".to_string();
-    };
-    proxy
-        .call::<_, _, String>("ai_provider_set_enabled", &(id.as_str(), enabled))
-        .await
-        .unwrap_or_else(|e| format!("error: {e}"))
-}
-
-/// Test a catalogued provider's connectivity (`ai_provider_test`). Returns the
-/// daemon's verdict JSON `{ ok, httpStatus?, network? }`; the daemon GETs the
-/// provider's catalogued model-list endpoint through the proxy (no caller URL,
-/// so no egress-consent step). A transport failure maps to a `network` verdict
-/// so the manager always gets the uniform shape.
-#[tauri::command]
-pub async fn ai_provider_test(id: String) -> String {
-    let network = |reason: &str| format!(r#"{{"ok":false,"network":"{reason}"}}"#);
-    let Ok(connection) = zbus::Connection::session().await else {
-        return network("session bus unavailable");
-    };
-    let Ok(proxy) =
-        zbus::Proxy::new(&connection, AI_DAEMON_NAME, AI_OBJECT_PATH, AI_DAEMON_NAME).await
-    else {
-        return network("AI daemon unavailable");
-    };
-    proxy
-        .call::<_, _, String>("ai_provider_test", &(id.as_str(),))
-        .await
-        .unwrap_or_else(|_| network("test failed"))
-}
 
 async fn name_has_owner(dbus: &zbus::fdo::DBusProxy<'_>, name: &str) -> bool {
     let Ok(bus_name) = zbus::names::BusName::try_from(name) else {

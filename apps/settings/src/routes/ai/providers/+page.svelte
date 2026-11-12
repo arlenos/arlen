@@ -1,13 +1,10 @@
 <script lang="ts">
-  /// AI providers, the manager surface (ai-providers-plan.md §Settings): the
-  /// branded list of providers with per-provider enable and a connection test,
-  /// plus the escape hatch to add a custom one. Local and EU-sovereign
-  /// providers are featured first (on-brand: sovereignty by default). Choosing
-  /// which model answers lives on the separate Default models page; this page
-  /// is the catalogue + login, not the live switch (that is the in-chat
-  /// picker). The catalogue + per-provider enable come from the daemon
-  /// (`ai_providers_list` / `ai_provider_set_enabled`); add + test are the
-  /// broker-gated escape hatch, still mocked until that backend lands.
+  /// AI providers (ai-providers-plan.md §Settings): the branded list of
+  /// providers the proxy knows, with what each one is and where it sits, plus
+  /// the escape hatch to add a custom one. Local and EU-sovereign providers are
+  /// featured first. Choosing which model answers lives on the Default models
+  /// page. The catalogue comes from the proxy (`ai_providers_list`); a row
+  /// carries no switch and no test, because nothing serves either.
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
@@ -17,7 +14,6 @@
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
-  import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
@@ -27,18 +23,14 @@
   import AddProviderDialog from "$lib/components/AddProviderDialog.svelte";
 
   /// One provider as the catalogue + the broker report it. `configured` means
-  /// credentials exist (or none are needed, for a local provider); an enabled
-  /// provider that is not configured prompts to connect. `status` is the last
-  /// connection-test outcome. `region` is an optional sovereignty note when the
-  /// catalogue carries one.
+  /// credentials exist (or none are needed, for a local provider). `region` is
+  /// an optional sovereignty note when the catalogue carries one.
   interface Provider {
     id: string;
     name: string;
     kind: "local" | "cloud";
     region?: string;
-    enabled: boolean;
     configured: boolean;
-    status: "ok" | "error" | "untested";
     /// How you connect: a per-token key, your existing subscription, or a free
     /// tier with no login. From the catalogue (`authMethod`); shapes the chip.
     authMethod?: "api-key" | "subscription-login" | "free";
@@ -75,11 +67,11 @@
   // auth-method plus an unofficial reverse-engineered path. The live catalogue
   // replaces it the moment `ai_providers_list` answers.
   const DEV_FIXTURE: Provider[] = [
-    { id: "ollama", name: "Ollama", kind: "local", enabled: true, configured: true, status: "ok" },
-    { id: "mistral", name: "Mistral", kind: "cloud", region: "EU", enabled: true, configured: true, status: "ok", authMethod: "api-key", jurisdiction: "eu", trainsOnYou: "no-paid", openWeight: true },
-    { id: "claude", name: "Claude", kind: "cloud", enabled: true, configured: true, status: "ok", authMethod: "subscription-login", jurisdiction: "us", trainsOnYou: "no-paid", openWeight: false },
-    { id: "groq", name: "Groq", kind: "cloud", enabled: false, configured: false, status: "untested", authMethod: "free", jurisdiction: "us", trainsOnYou: "no", openWeight: true },
-    { id: "copilot", name: "GitHub Copilot", kind: "cloud", enabled: false, configured: false, status: "untested", authMethod: "subscription-login", unofficial: true, jurisdiction: "us", trainsOnYou: "no-paid", openWeight: false },
+    { id: "ollama", name: "Ollama", kind: "local", configured: true },
+    { id: "mistral", name: "Mistral", kind: "cloud", region: "EU", configured: true, authMethod: "api-key", jurisdiction: "eu", trainsOnYou: "no-paid", openWeight: true },
+    { id: "claude", name: "Claude", kind: "cloud", configured: true, authMethod: "subscription-login", jurisdiction: "us", trainsOnYou: "no-paid", openWeight: false },
+    { id: "groq", name: "Groq", kind: "cloud", configured: false, authMethod: "free", jurisdiction: "us", trainsOnYou: "no", openWeight: true },
+    { id: "copilot", name: "GitHub Copilot", kind: "cloud", configured: false, authMethod: "subscription-login", unofficial: true, jurisdiction: "us", trainsOnYou: "no-paid", openWeight: false },
   ];
 
   async function loadProviders() {
@@ -131,76 +123,15 @@
     return chips;
   }
 
-  /// Enable or disable a provider. Optimistic, reverted if the daemon does not
-  /// return `ok` (the bridge returns a status string).
-  async function setEnabled(id: string, value: boolean) {
-    providers.update((list) => list.map((p) => (p.id === id ? { ...p, enabled: value } : p)));
-    let ok = false;
-    try {
-      ok = (await invoke<string>("ai_provider_set_enabled", { id, enabled: value })) === "ok";
-    } catch {
-      ok = false;
-    }
-    if (!ok) {
-      providers.update((list) =>
-        list.map((p) => (p.id === id ? { ...p, enabled: !value } : p)),
-      );
-    }
-  }
-
   function meta(p: Provider): string {
     if (p.kind === "local") return $t("s.prov.local");
     return p.region ? $t("s.prov.cloudRegion", { region: p.region }) : $t("s.prov.cloud");
   }
 
-  // The connection test runs the real `ai_provider_test` (the proxy GETs the
-  // provider's catalogued models endpoint). Per-provider so two rows can test
-  // independently; the verdict shape is { ok, httpStatus?, network? }.
-  type TestVerdict =
-    | { state: "testing" }
-    | { state: "ok" }
-    | { state: "http"; status: number }
-    | { state: "network" };
-  const tests = writable<Record<string, TestVerdict>>({});
-
   // The escape hatch: add a provider the catalogue does not carry. The dialog owns
   // the form + the broker-gated save; reload the catalogue on close so a new one
   // shows once that backend lands.
   let showAdd = $state(false);
-
-  async function testProvider(id: string) {
-    tests.update((m) => ({ ...m, [id]: { state: "testing" } }));
-    let verdict: TestVerdict = { state: "network" };
-    try {
-      const r = parse<{ ok?: boolean; httpStatus?: number; network?: string }>(
-        await invoke<string>("ai_provider_test", { id }),
-        {},
-      );
-      if (r.ok) verdict = { state: "ok" };
-      else if (typeof r.httpStatus === "number") verdict = { state: "http", status: r.httpStatus };
-      else verdict = { state: "network" };
-    } catch {
-      verdict = { state: "network" };
-    }
-    tests.update((m) => ({ ...m, [id]: verdict }));
-  }
-
-  /// The plain-language result line for a finished test.
-  function testLabel(v: TestVerdict): string {
-    switch (v.state) {
-      case "testing":
-        return $t("s.prov.test.testing");
-      case "ok":
-        return $t("s.prov.test.works");
-      case "network":
-        return $t("s.prov.test.network");
-      case "http":
-        if (v.status === 401) return $t("s.prov.test.needsKey");
-        if (v.status === 403) return $t("s.prov.test.notAllowed");
-        if (v.status === 429) return $t("s.prov.test.rateLimited");
-        return $t("s.prov.test.failed", { status: v.status });
-    }
-  }
 </script>
 
 <Page
@@ -237,7 +168,6 @@
 />
 
 {#snippet row(p: Provider)}
-  {@const verdict = $tests[p.id]}
   <Row label={p.name} description={meta(p)} id={`provider-${p.id}`}>
     {#snippet leading()}
       <ProviderLogo id={p.id} name={p.name} size={24} />
@@ -262,25 +192,6 @@
           {/if}
         </span>
       {/if}
-    {/snippet}
-    {#snippet control()}
-      <span class="pctl">
-        {#if verdict && verdict.state !== "testing"}
-          <span class="verdict">
-            <span class="dot {verdict.state === 'ok' ? 'ok' : 'err'}" aria-hidden="true"></span>{testLabel(verdict)}
-          </span>
-        {/if}
-        <Button
-          variant={p.configured ? "outline" : "secondary"}
-          size="sm"
-          class="pbtn"
-          disabled={verdict?.state === "testing"}
-          onclick={() => testProvider(p.id)}
-        >
-          {verdict?.state === "testing" ? $t("s.prov.test.testing") : $t("s.prov.test.action")}
-        </Button>
-        <Switch value={p.enabled} ariaLabel={$t("s.prov.enable", { name: p.name })} onchange={(v) => setEnabled(p.id, v)} />
-      </span>
     {/snippet}
     {#snippet below()}
       {#if p.kind === "local"}
@@ -318,27 +229,6 @@
     display: flex;
     padding-top: 0.5rem;
   }
-  /* The test verdict sits with the Test button in the control cluster. */
-  .verdict {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    white-space: nowrap;
-  }
-  .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: var(--radius-chip);
-    flex-shrink: 0;
-  }
-  .dot.ok {
-    background: var(--color-success);
-  }
-  .dot.err {
-    background: var(--color-error);
-  }
   /* The attribute chips (how you connect, plus any unofficial warning) sit in
      the row's preview slot, between the name and the control cluster. */
   .chips {
@@ -370,16 +260,5 @@
     padding-inline-start: 2.375rem;
     font-size: var(--text-2xs);
     color: var(--color-fg-secondary, #a1a1aa);
-  }
-  .pctl {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  /* Test and Connect share a width so the toggle column stays aligned down the
-     list; Connect (the setup action) reads as secondary, Test (a check on an
-     already-connected provider) stays a quiet outline. */
-  :global(.pbtn) {
-    min-width: 5.5rem;
   }
 </style>

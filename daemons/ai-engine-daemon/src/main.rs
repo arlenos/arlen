@@ -543,7 +543,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             compensation.clone(),
             build_write_runner(),
             audit.clone(),
-        );
+        )
+        .with_knowledge_socket(resolve_knowledge_socket());
         match conn
             .object_server()
             .at(arlen_ai_engine_daemon::agent_iface::AGENT_OBJECT_PATH, surface)

@@ -66,10 +66,8 @@
   // What each waits on is DIFFERENT, so they are named separately:
   //  - Fetch waits on `ai_provider_fetch_models`, which does not exist anywhere.
   //  - Test waits on a command that can reach an endpoint the CALLER typed.
-  //    `ai_provider_test` exists, and it is not that one: it tests a CATALOGUED
-  //    provider through the proxy, deliberately taking no caller URL so there is
-  //    no egress-consent step. Pointing this button at it would test a different
-  //    provider than the one on screen. A command that dials a caller-supplied
+  //    The proxy's own test takes a catalogued name and no URL, on purpose,
+  //    so there is no egress-consent step. A command that dials a caller-supplied
   //    host crosses the line that doc draws on purpose, so it is a decision
   //    rather than a missing function.
   //
