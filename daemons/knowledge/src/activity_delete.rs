@@ -143,29 +143,138 @@ fn cutoff_micros(from_secs: i64) -> i64 {
 }
 
 
-/// Destroy the RAW events for the range, in the SQLite store the promotion pass
-/// reads from.
+/// Destroy the RECORD of the range: the raw events the promotion pass reads
+/// from, and the facts the graph is rebuilt from. One transaction, because both
+/// live in the same SQLite store and a delete that took one and left the other
+/// is the failure each half exists to prevent.
 ///
-/// Without this the delete is a delayed failure rather than a smaller version of
-/// itself. A user clears a range while raw events inside it are still waiting to
-/// be promoted; the pass runs half a minute later and puts the nodes back. "This
-/// cannot be undone" would then be false because the system undoes it itself,
-/// which is the worst available way for that sentence to be wrong.
+/// The raw events, because without them gone the delete is a delayed failure
+/// rather than a smaller version of itself. A user clears a range while raw
+/// events inside it are still waiting to be promoted; the pass runs half a
+/// minute later and puts the nodes back. "This cannot be undone" would then be
+/// false because the system undoes it itself, which is the worst available way
+/// for that sentence to be wrong.
 ///
-/// Not a tombstone the pass agrees to skip: that keeps the data and adds a rule to
-/// remember, and a store holding what it was told to delete is the thing this
+/// The facts, for the same reason on a longer clock. The journal is the
+/// canonical record and the graph a projection of it (`journal.rs`), so a
+/// delete that only reached the graph lasted until the next rebuild, which
+/// replayed the range back out of the journal. See [`delete_facts_since`].
+///
+/// Not a tombstone the pass agrees to skip: that keeps the data and adds a rule
+/// to remember, and a store holding what it was told to delete is the thing this
 /// feature exists to refuse. Deletion is already routine here - retention drops
 /// promoted events past thirty days through the same table.
 ///
-/// Same microseconds as the graph, from the same one conversion, which is how the
-/// two halves stay in step.
+/// Same microseconds as the graph, from the same one conversion, which is how
+/// the stores stay in step. Returns the number of raw events removed.
 pub async fn delete_raw_events_since(pool: &sqlx::SqlitePool, from_secs: i64) -> Result<u64> {
     let from = cutoff_micros(from_secs);
+    let mut tx = pool.begin().await?;
     let result = sqlx::query("DELETE FROM events WHERE timestamp >= ?")
         .bind(from)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+    delete_facts_since(&mut tx, from).await?;
+    tx.commit().await?;
     Ok(result.rows_affected())
+}
+
+/// The access edges a file loses when its access is deleted, as the journal
+/// spells them. The same four `deletion_statements` removes from the graph.
+const ACCESS_RELS: [&str; 4] = ["ACCESSED_BY", "MODIFIED_BY", "ACCESSED_IN", "CO_ACCESSED"];
+
+/// Remove from the fact journal what [`deletion_statements`] removes from the
+/// graph, so a rebuild arrives at the graph the delete left behind.
+///
+/// Statement for statement the same selection, on purpose. The rule is not
+/// "delete what looks like activity" but "the journal replays to exactly what
+/// the live graph now holds": anything narrower brings the range back at the
+/// next rebuild, and anything wider is an irreversible feature growing a scope
+/// nobody agreed to, discovered months later when a rebuild loses something
+/// the delete never showed the user.
+///
+/// - An `Event` node at or after `from` goes whole, with every edge that names
+///   it.
+/// - A file accessed at or after `from` loses its access edges and the
+///   `last_accessed` stamp on EVERY node fact it has, older ones included: the
+///   graph holds one stamp per file and the delete clears it, so a replay that
+///   kept an earlier fact's stamp would show an access time the live graph does
+///   not.
+/// - A `FILE_PART_OF` membership that began at or after `from` goes, closed or
+///   not, together with the fact that closed it.
+///
+/// Takes MICROSECONDS, inside the caller's transaction.
+async fn delete_facts_since(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    from: i64,
+) -> Result<()> {
+    // Events: the edges that name one first, while the node facts still say
+    // which ids are in range.
+    for side in ["from", "to"] {
+        sqlx::query(&format!(
+            "DELETE FROM facts WHERE {side}_label = 'Event' AND {side}_id IN ( \
+               SELECT id FROM facts WHERE op = 'node' AND label = 'Event' \
+               AND json_extract(props, '$.timestamp') >= ?)"
+        ))
+        .bind(from)
+        .execute(&mut **tx)
+        .await?;
+    }
+    sqlx::query(
+        "DELETE FROM facts WHERE op = 'node' AND label = 'Event' AND id IN ( \
+           SELECT id FROM facts WHERE op = 'node' AND label = 'Event' \
+           AND json_extract(props, '$.timestamp') >= ?)",
+    )
+    .bind(from)
+    .execute(&mut **tx)
+    .await?;
+
+    // Files: fix the set once, because the last step removes the very stamp
+    // that selects it.
+    sqlx::query("CREATE TEMP TABLE IF NOT EXISTS deleted_access (id TEXT PRIMARY KEY)")
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM deleted_access").execute(&mut **tx).await?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO deleted_access (id) \
+         SELECT id FROM facts WHERE op = 'node' AND label = 'File' \
+         AND json_extract(props, '$.last_accessed') >= ?",
+    )
+    .bind(from)
+    .execute(&mut **tx)
+    .await?;
+    let rels = ACCESS_RELS.map(|r| format!("'{r}'")).join(", ");
+    sqlx::query(&format!(
+        "DELETE FROM facts WHERE label IN ({rels}) AND ( \
+           (from_label = 'File' AND from_id IN (SELECT id FROM deleted_access)) \
+           OR (label = 'CO_ACCESSED' AND to_label = 'File' \
+               AND to_id IN (SELECT id FROM deleted_access)))"
+    ))
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        "UPDATE facts SET props = json_remove(props, '$.last_accessed'), \
+                          on_create = json_remove(on_create, '$.last_accessed') \
+         WHERE op = 'node' AND label = 'File' AND id IN (SELECT id FROM deleted_access)",
+    )
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query("DELETE FROM deleted_access").execute(&mut **tx).await?;
+
+    // Memberships: the close of one that is going, then the membership.
+    sqlx::query(
+        "DELETE FROM facts WHERE op = 'close' AND label = 'FILE_PART_OF' AND id IN ( \
+           SELECT id FROM facts WHERE op = 'edge' AND label = 'FILE_PART_OF' \
+           AND id != '' AND valid_at >= ?)",
+    )
+    .bind(from)
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query("DELETE FROM facts WHERE op = 'edge' AND label = 'FILE_PART_OF' AND valid_at >= ?")
+        .bind(from)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
 }
 
 /// Count what is about to go, so the act can be audited and reported.
@@ -290,6 +399,113 @@ mod tests {
             "a file accessed a year before the cut-off was destroyed by a delete \
              of today's activity"
         );
+    }
+
+    /// A rebuild from the journal does not bring a deleted range back.
+    ///
+    /// The journal is the record and the graph its projection, so a delete that
+    /// stopped at the graph lasted until the next rebuild. Everything here goes
+    /// in through the journal, the way promotion writes it, and the assertions
+    /// are made on a FRESH graph replayed from what the delete left - the live
+    /// graph was already right before this test existed.
+    ///
+    /// Each kind has an older twin that must come back, for the reason the
+    /// tests above grew theirs: emptying the journal would pass a test that
+    /// only checked the range was gone.
+    #[tokio::test]
+    async fn a_rebuild_from_the_journal_keeps_a_deleted_range_gone() {
+        use crate::journal::{commit_and_project, Fact, Origin, Stamps};
+        use serde_json::json;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = crate::db::open(tmp.path().join("events.db").to_str().unwrap())
+            .await
+            .expect("event store");
+        let graph = crate::graph::spawn(tmp.path().join("g1").to_str().unwrap()).unwrap();
+
+        let cutoff_secs: i64 = 1_754_784_000;
+        let inside = cutoff_secs * 1_000_000 + 5_000_000;
+        let outside: i64 = 1_723_000_000_000_000;
+
+        let member = |file: &str, at: i64| Fact::Edge {
+            rel: "FILE_PART_OF".into(),
+            from: ("File".into(), file.into()),
+            to: ("Project".into(), "p1".into()),
+            op_id: Some(format!("link:{file}:{at}")),
+            stamps: Stamps { valid_at: Some(at), created_at: Some(at), ..Default::default() },
+            props: Default::default(),
+        };
+        let focus = |id: &str, at: i64| {
+            Fact::node("Event", id, &[("type", json!("window.focused")), ("timestamp", json!(at))])
+        };
+        let open = |path: &str, at: i64| {
+            Fact::node("File", path, &[("path", json!(path)), ("last_accessed", json!(at))])
+        };
+        let facts = vec![
+            Fact::node("App", "editor", &[("name", json!("editor"))]),
+            Fact::node("Project", "p1", &[("name", json!("p1"))]),
+            focus("ev-old", outside),
+            focus("ev-new", inside),
+            // A file last opened a year ago, with a membership from then.
+            open("/w/old.rs", outside),
+            Fact::link("ACCESSED_BY", ("File", "/w/old.rs"), ("App", "editor")),
+            member("/w/old.rs", outside),
+            // A file opened a year ago AND today, with a membership from today.
+            open("/w/new.rs", outside),
+            open("/w/new.rs", inside),
+            Fact::link("ACCESSED_BY", ("File", "/w/new.rs"), ("App", "editor")),
+            member("/w/new.rs", inside),
+            Fact::Close { rel: "FILE_PART_OF".into(), op_id: format!("link:/w/new.rs:{inside}"), at: inside + 1 },
+        ];
+        commit_and_project(&pool, &graph, facts, &Origin::event("seed")).await.expect("seed");
+
+        delete_raw_events_since(&pool, cutoff_secs).await.expect("record");
+        run_deletion(&graph, cutoff_secs).await.expect("graph");
+
+        let fresh = crate::graph::spawn(tmp.path().join("g2").to_str().unwrap()).unwrap();
+        crate::journal::set_projected_seq(&pool, 0).await.unwrap();
+        crate::journal::project_pending(&pool, &fresh).await.expect("rebuild");
+
+        let count = |g: GraphHandle, q: &str| {
+            let q = q.to_string();
+            async move { g.query_rows(q).await.unwrap().rows[0][0].as_i64() }
+        };
+        for (name, g) in [("live", graph.clone()), ("rebuilt", fresh.clone())] {
+            let n = |q: &'static str| count(g.clone(), q);
+            assert_eq!(n("MATCH (e:Event {id:'ev-new'}) RETURN count(e)").await, 0, "{name}: the focus in the range");
+            assert_eq!(n("MATCH (e:Event {id:'ev-old'}) RETURN count(e)").await, 1, "{name}: the older focus");
+            assert_eq!(
+                n("MATCH (f:File {id:'/w/new.rs'}) WHERE f.last_accessed IS NOT NULL RETURN count(f)").await,
+                0,
+                "{name}: the access stamp of a file opened in the range",
+            );
+            assert_eq!(n("MATCH (f:File {id:'/w/new.rs'}) RETURN count(f)").await, 1, "{name}: the file itself stays");
+            assert_eq!(
+                n("MATCH (:File {id:'/w/new.rs'})-[r:ACCESSED_BY]->() RETURN count(r)").await,
+                0,
+                "{name}: who opened it",
+            );
+            assert_eq!(
+                n("MATCH (:File {id:'/w/new.rs'})-[r:FILE_PART_OF]->() RETURN count(r)").await,
+                0,
+                "{name}: the membership recorded in the range",
+            );
+            assert_eq!(
+                n("MATCH (f:File {id:'/w/old.rs'}) WHERE f.last_accessed IS NOT NULL RETURN count(f)").await,
+                1,
+                "{name}: the older file keeps its stamp",
+            );
+            assert_eq!(
+                n("MATCH (:File {id:'/w/old.rs'})-[r:ACCESSED_BY]->() RETURN count(r)").await,
+                1,
+                "{name}: and who opened it",
+            );
+            assert_eq!(
+                n("MATCH (:File {id:'/w/old.rs'})-[r:FILE_PART_OF]->() RETURN count(r)").await,
+                1,
+                "{name}: and its membership",
+            );
+        }
     }
 
     /// The raw events for the range go, and the ones outside it stay.
