@@ -136,7 +136,7 @@ SWITCHES = {
         "fork's name. That is fixed (it is `/usr/bin/arlen-compositor` now and "
         "declares its publish list) and the flip was then measured, not argued. "
         "WHAT THE GREEN COVERS is written in full beside the switch itself, in "
-        "`arlen-event-bus.service.d/10-enforce.conf`, because \"zero denials\" is "
+        "`arlen-event-bus-system.service.d/10-enforce.conf`, because \"zero denials\" is "
         "true of what ran rather than of what ships: three declared components are "
         "exercised by a boot, `dev.arlen.files` is covered by "
         "`check-bus-declarations.py` reading its profile instead, everything else "

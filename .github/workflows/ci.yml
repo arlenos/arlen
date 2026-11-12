@@ -563,6 +563,8 @@ jobs:
           node dev/scripts/test-check-source-is-text.mjs
           python3 dev/scripts/check-unit-has-a-binary.py
           node dev/scripts/test-check-unit-has-a-binary.mjs
+          python3 dev/scripts/check-dropin-has-unit.py
+          node dev/scripts/test-check-dropin-has-unit.mjs
           python3 dev/scripts/check-gates-read-tracked.py
           node dev/scripts/test-check-gates-read-tracked.mjs
           python3 dev/scripts/check-dialog-named.py
