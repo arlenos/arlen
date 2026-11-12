@@ -86,7 +86,7 @@ SURFACES=(
   # in the place the looking happens.
   "ui-kit /_a11y|/_icons|/_i18n|/_companion"
   "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/_thumbtest?view=grid|/_thumbtest?view=miller|/?locale=de@@files-refuses-op|/?locale=de@@files-two-tabs"
-  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/?locale=de@@terminal-quick-connect|/?locale=de::#terminal-history-open@@terminal-history-refused"
+  "terminal /|/?sidebar=open|/?sidebar=open::#terminal-history-open|/?sidebar=open::#terminal-new-session|/_chrometest|/_rendertest|/?locale=de@@terminal-quick-connect|/?locale=de&sidebar=open::#terminal-history-open@@terminal-history-refused"
   # THE OTHER NINETEEN SETTINGS PAGES, and they were missing for the reason
   # this header keeps naming: the list IS the coverage. Settings has 38 route
   # pages and this row held 14, so more of that app was unmeasured than

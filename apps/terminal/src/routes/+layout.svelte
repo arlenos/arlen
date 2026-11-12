@@ -35,6 +35,15 @@
 
   let { children } = $props();
 
+  /// The session rail starts closed. `?sidebar=open` under the dev server starts
+  /// it open, so a render can reach the rail's own controls: closed, they are
+  /// hidden, and a sweep that pressed them anyway measured a state no pointer
+  /// and no keyboard gets to.
+  const railStartsOpen =
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("sidebar") === "open";
+
   // The topbar and the workspace overview show the NATIVE window title,
   // not the document one below, so it has to be set - and set again when
   // the language changes, which is why this reads `$t` instead of firing
@@ -133,7 +142,7 @@
 <div dir={$dir} style="display: contents">
 <!-- Sidebar collapsed by default (terminal.md / Tim): the stream + composer get
      the room; the session rail opens on demand via the trigger. -->
-<SidebarProvider defaultOpen={false}>
+<SidebarProvider defaultOpen={railStartsOpen}>
   <TerminalSidebar />
   <!-- `h-svh` locks the shell to the viewport; only the block stream
        inside the page scrolls. -->

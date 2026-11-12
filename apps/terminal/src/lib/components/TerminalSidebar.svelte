@@ -269,6 +269,6 @@
   }
   .ts-footer-hint {
     font-weight: 400;
-    color: color-mix(in srgb, var(--sidebar-foreground) 35%, transparent);
+    color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
   }
 </style>
