@@ -192,13 +192,12 @@ pub fn entity_upsert_event(app_id: &str, qualified_type: &str, outcome: &str) ->
     }
 }
 
-/// Build the content-free audit record for a shared-entity MERGE decision (0x10,
-/// SHARED-ENTITIES.md §4 owner-confirms). A merge folds a duplicate and DELETES a
-/// node, so it gets its own `entity.merge` subject rather than sharing the upsert
-/// one - an operator or the anomaly detector reviewing the ledger sees a
-/// destructive merge distinctly, not as a routine upsert. Content-free: the acting
-/// owner app + the entity type + the `merge-accepted`/`merge-rejected` outcome,
-/// never the merged ids or field bodies.
+/// Build the content-free audit record for a decision about who is who: a merge
+/// suggestion accepted or rejected (0x10) or a curation command (0x13). It has
+/// its own `entity.merge` subject so that a reader of the ledger sees an
+/// identity decision apart from a routine upsert. Content-free: the app that
+/// carried the decision (the review surface), the entity type and the kind of
+/// decision as the outcome, never the ids or field bodies.
 pub fn merge_decision_event(app_id: &str, qualified_type: &str, outcome: &str) -> IngestRequest {
     IngestRequest {
         kind: AuditKind::AppAction,

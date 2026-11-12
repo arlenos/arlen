@@ -1021,10 +1021,11 @@ impl UnixGraphClient {
             })
     }
 
-    /// Declare a duplicate entity instance the same as a canonical one via the
-    /// write socket: the daemon records the decision and links the two with a
-    /// `SAME_AS` edge. Both instances stay, so a wrong merge is undone by closing
-    /// the edge (bitemporal-knowledge-graph.md §4.11).
+    /// Propose that a duplicate entity instance is the same as a canonical one,
+    /// via the write socket. The daemon puts the pair on the review list and
+    /// links nothing: whether two entries are one is decided by the person, in
+    /// the Knowledge app (bitemporal-knowledge-graph.md §4.12). A pair the person
+    /// already called different is refused.
     /// Owner-gated (a `shared.*` type's declared owner, or the caller's own
     /// namespace); both keys address instances of `qualified_type`. A permission
     /// error maps to [`QueryError::PermissionDenied`].
@@ -1050,9 +1051,7 @@ impl UnixGraphClient {
         let response = String::from_utf8_lossy(&bytes);
         Self::check_error(&response)?;
         match response.trim() {
-            // The daemon links the two (`SAME_AS`) and keeps both; it never folds
-            // one into the other.
-            "OK: linked" => Ok(()),
+            "OK: proposed" => Ok(()),
             other => Err(QueryError::InvalidQuery(format!(
                 "unexpected daemon write response: {other}"
             ))),
@@ -2655,7 +2654,7 @@ mod tests {
             assert_eq!(body["duplicate_key"], "dup@example.com");
             assert_eq!(body["canonical_key"], "canon@example.com");
 
-            let reply = b"OK: linked";
+            let reply = b"OK: proposed";
             conn.write_all(&(reply.len() as u32).to_be_bytes()).await.unwrap();
             conn.write_all(reply).await.unwrap();
         });

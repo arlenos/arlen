@@ -1361,6 +1361,11 @@ fn revoke_caller_admitted(app_id: &str) -> bool {
 /// the harness extra-admit, never a broad `dev.` prefix - that would let any
 /// locally built crate wipe the timeline.
 fn activity_delete_caller_admitted(app_id: &str) -> bool {
+    is_knowledge_app(app_id)
+}
+
+/// Whether the caller is the Knowledge app, by its attested id.
+fn is_knowledge_app(app_id: &str) -> bool {
     if app_id == "dev.arlen.knowledge" {
         return true;
     }
@@ -1373,6 +1378,59 @@ fn activity_delete_caller_admitted(app_id: &str) -> bool {
         false
     }
 }
+
+/// Whether the caller may decide who is who: accept or reject a merge
+/// suggestion, or record a curation command.
+///
+/// Only the review surface, which is the Knowledge app
+/// (bitemporal-knowledge-graph.md §4.12). Whether two entries are one person is
+/// a person's call, made where the person can see both. The app that owns an
+/// entity type used to hold this, which let a contacts or calendar app link two
+/// people with nobody looking; it may now propose (`merge_entities`) and nothing
+/// more.
+fn curation_caller_admitted(app_id: &str) -> bool {
+    is_knowledge_app(app_id)
+}
+
+/// Put a pair an app says is one entity on the review list.
+///
+/// An app proposes and a person decides (§4.12): the pair becomes a pending
+/// suggestion, and nothing is linked until the Knowledge app accepts it. A pair
+/// the person already called different is refused, and one already waiting is
+/// not listed twice. Answers `OK: proposed`.
+async fn propose_merge(
+    pool: &sqlx::SqlitePool,
+    graph: &GraphHandle,
+    qualified_type: &str,
+    dup_id: &str,
+    canon_id: &str,
+    app_id: &str,
+) -> String {
+    match crate::curation::cannot_link(pool, qualified_type, dup_id, canon_id).await {
+        Ok(false) => {}
+        Ok(true) => return "ERROR: the two were marked as different".to_string(),
+        Err(e) => return format!("ERROR: read the decisions: {e}"),
+    }
+    match crate::shared::pending_suggestion_for(graph, qualified_type, dup_id, canon_id).await {
+        Ok(false) => {}
+        Ok(true) => return "OK: proposed".to_string(),
+        Err(e) => return format!("ERROR: read the review list: {e}"),
+    }
+    let candidate = crate::shared::DuplicateCandidate {
+        existing_id: canon_id.to_string(),
+        match_score: 1.0,
+        match_fields: Vec::new(),
+    };
+    let suggestion = crate::shared::MergeSuggestion::new(qualified_type, dup_id, &candidate, app_id);
+    if let Err(e) = crate::shared::persist_suggestion(graph, &suggestion).await {
+        return format!("ERROR: put the proposal on the review list: {e}");
+    }
+    "OK: proposed".to_string()
+}
+
+/// What a caller that may not decide is told. One sentence it can show.
+const CURATION_REFUSED: &str =
+    "ERROR: only the Knowledge app may decide which entries are the same; an app may propose a merge";
 
 /// The canonical Settings management principal: the only app trusted to browse
 /// the whole-system grant list (`access_grants`) and to issue revokes (`revoke`),
@@ -2163,28 +2221,13 @@ async fn handle_write_request(
                 return "ERROR: audit unavailable".to_string();
             };
             if let Err(e) = sink
-                .submit(crate::audit::entity_merge_event(&token.app_id, &qualified_type, "ok"))
+                .submit(crate::audit::entity_merge_event(&token.app_id, &qualified_type, "proposed"))
                 .await
             {
                 warn!("entity merge audit failed, refusing write: {e}");
                 return "ERROR: audit unavailable".to_string();
             }
-            // A merge is a decision that the two are one entity: a recorded
-            // `must_link`, replayed into a `SAME_AS` edge, with both nodes kept.
-            // It used to re-point every edge and delete the duplicate, which a
-            // wrong merge could not undo (bitemporal-knowledge-graph.md §4.11).
-            let decision = crate::curation::Command::MustLink {
-                entity_type: qualified_type.clone(),
-                a: dup_id,
-                b: canon_id,
-            };
-            if let Err(e) = crate::curation::record(pool, &decision, &token.app_id).await {
-                return format!("ERROR: record the decision: {e}");
-            }
-            if let Err(e) = crate::curation::replay(pool, graph).await {
-                warn!("merge decision recorded, link not yet in the graph: {e}");
-            }
-            "OK: linked".to_string()
+            propose_merge(pool, graph, &qualified_type, &dup_id, &canon_id, &token.app_id).await
         }
         WriteRequest::PersistConsentGrant {
             recipient,
@@ -2920,24 +2963,23 @@ struct MergeDecisionRequest {
     accept: bool,
 }
 
-/// Decide a merge suggestion (0x10, SHARED-ENTITIES.md §4 "owner confirms"). Only
-/// the OWNER app of the suggestion's entity type may act, and only on a `Pending`
-/// suggestion. An accept records a `must_link` decision and a reject a
-/// `cannot_link` (`crate::curation`), each replayed into the graph at once and
-/// again after every rebuild: an accept is a `SAME_AS` edge between the two
-/// entities, both of which stay. It used to fold the source into the target and
-/// delete it, which a wrong accept of two people could not undo
-/// (bitemporal-knowledge-graph.md §4.11). The pair is read from the stored
-/// suggestion, not the request. Audited before any mutation, fail-closed.
-async fn handle_merge_accept(
+/// Decide a merge suggestion (0x10). Only the review surface may
+/// ([`curation_caller_admitted`]), and only on a `Pending` suggestion. An accept
+/// records a `must_link` decision and a reject a `cannot_link`
+/// (`crate::curation`), each replayed into the graph at once and again after
+/// every rebuild: an accept is a `SAME_AS` edge between the two entities, both of
+/// which stay (bitemporal-knowledge-graph.md §4.11). The pair is read from the
+/// stored suggestion, not the request. Audited before any mutation, fail-closed.
+async fn handle_merge_decision(
     pool: &sqlx::SqlitePool,
     graph: &GraphHandle,
     audit: &Arc<dyn AuditSink>,
-    token: Option<&crate::token::CapabilityToken>,
     app_id: &str,
     body: &[u8],
-    uses: &Arc<Mutex<crate::lcg::UseTally>>,
 ) -> String {
+    if !curation_caller_admitted(app_id) {
+        return CURATION_REFUSED.to_string();
+    }
     let req: MergeDecisionRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
         Err(e) => return format!("ERROR: invalid request: {e}"),
@@ -2947,23 +2989,6 @@ async fn handle_merge_accept(
         Ok(None) => return "ERROR: no such suggestion".to_string(),
         Err(e) => return format!("ERROR: {e}"),
     };
-    // Owner-confirms: only the declared owner app of this shared type may decide
-    // (the same peer-attested owner gate the shared-entity write uses).
-    match crate::shared::shared_owner(&core.entity_type) {
-        Some(owner) if owner == app_id => {}
-        _ => {
-            return "ERROR: only the owner app may decide a suggestion for this entity type"
-                .to_string()
-        }
-    }
-    // Bind the destructive decision to the owner's LIVE capability, not only its
-    // compiled-in identity: a freshly minted token must resolve to the SAME owner
-    // identity AND grant write to the type. So a revoked / profile-less owner (or a
-    // pid-reuse race between connect and now) cannot drive a merge - the same
-    // defense-in-depth the entity-write path applies via `can_write`.
-    if !token.is_some_and(|t| t.app_id == app_id && t.can_write(&core.entity_type)) {
-        return format!("ERROR: permission denied for {}", core.entity_type);
-    }
     // Only a Pending suggestion is actionable; a terminal one is a no-op refusal
     // (so a merge is never re-applied through a stale suggestion id).
     if core.status != crate::shared::SuggestionStatus::Pending {
@@ -2974,14 +2999,13 @@ async fn handle_merge_accept(
         // destructive fold. Entity ids are natural-key-derived and reusable after
         // deletion, so a stale suggestion could otherwise fold an unrelated
         // reused-id entity; refuse if either is gone or they no longer match.
-        match crate::shared::suggestion_still_valid(
-            graph,
-            &core.entity_type,
-            &core.source_id,
-            &core.target_id,
-        )
-        .await
-        {
+        let still = if core.proposed {
+            crate::shared::pair_still_exists(graph, &core.entity_type, &core.source_id, &core.target_id).await
+        } else {
+            crate::shared::suggestion_still_valid(graph, &core.entity_type, &core.source_id, &core.target_id)
+                .await
+        };
+        match still {
             Ok(true) => {}
             Ok(false) => {
                 return "ERROR: suggestion is stale; the entities no longer match, not merging"
@@ -3014,10 +3038,6 @@ async fn handle_merge_accept(
             // Recorded, so it holds: the next replay links them.
             warn!("merge decision recorded, link not yet in the graph: {e}");
         }
-        // A merge is a write under the caller's grant for this entity type, and it
-        // has now happened, so it counts. The refusal above (`can_write`) returns
-        // before here, which is what keeps a denial out of the number.
-        record_capability_uses(graph, uses, app_id, std::slice::from_ref(&core.entity_type)).await;
         // The decision is recorded; mark accepted best-effort (a status-write
         // hiccup only leaves the suggestion listable, and a re-accept records the
         // same link again, which the replay applies once).
@@ -3064,6 +3084,91 @@ async fn handle_merge_accept(
         }
         "OK: rejected".to_string()
     }
+}
+
+/// A curation command from the review surface (0x13): one decision a person
+/// made about who is who, in the shape `crate::curation::Command` stores.
+#[derive(serde::Deserialize)]
+#[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
+enum CurationRequest {
+    /// `a` and `b` are the same entity.
+    MustLink { entity_type: String, a: String, b: String },
+    /// `a` and `b` are different entities.
+    CannotLink { entity_type: String, a: String, b: String },
+    /// Every identity claim on `entity` is undone.
+    Split { entity_type: String, entity: String },
+    /// `entity` is called `name`.
+    Rename { entity_type: String, entity: String, name: String },
+    /// `mention` names no entity.
+    NotAnEntity { mention: String },
+}
+
+impl CurationRequest {
+    /// The stored command, and the entity type the audit line names (none for a
+    /// mention, which has no type).
+    fn into_command(self) -> (crate::curation::Command, String) {
+        use crate::curation::Command;
+        match self {
+            Self::MustLink { entity_type, a, b } => {
+                (Command::MustLink { entity_type: entity_type.clone(), a, b }, entity_type)
+            }
+            Self::CannotLink { entity_type, a, b } => {
+                (Command::CannotLink { entity_type: entity_type.clone(), a, b }, entity_type)
+            }
+            Self::Split { entity_type, entity } => {
+                (Command::Split { entity_type: entity_type.clone(), entity }, entity_type)
+            }
+            Self::Rename { entity_type, entity, name } => {
+                (Command::Rename { entity_type: entity_type.clone(), entity, name }, entity_type)
+            }
+            Self::NotAnEntity { mention } => (Command::NotAnEntity { mention }, "Mention".to_string()),
+        }
+    }
+
+    /// The audit outcome: which kind of decision it was, never whom it names.
+    fn outcome(&self) -> &'static str {
+        match self {
+            Self::MustLink { .. } => "must-link",
+            Self::CannotLink { .. } => "cannot-link",
+            Self::Split { .. } => "split",
+            Self::Rename { .. } => "rename",
+            Self::NotAnEntity { .. } => "not-an-entity",
+        }
+    }
+}
+
+/// Record a curation command (0x13) and apply it. Only the review surface may
+/// ([`curation_caller_admitted`]). Audited before it is recorded, fail-closed.
+/// Answers `OK: recorded <seq>`; the number names the decision from then on.
+async fn handle_curation_command(
+    pool: &sqlx::SqlitePool,
+    graph: &GraphHandle,
+    audit: &Arc<dyn AuditSink>,
+    app_id: &str,
+    body: &[u8],
+) -> String {
+    if !curation_caller_admitted(app_id) {
+        return CURATION_REFUSED.to_string();
+    }
+    let req: CurationRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(e) => return format!("ERROR: invalid request: {e}"),
+    };
+    let outcome = req.outcome();
+    let (command, entity_type) = req.into_command();
+    if let Err(e) = audit.submit(crate::audit::merge_decision_event(app_id, &entity_type, outcome)).await {
+        warn!("curation audit failed, refusing: {e}");
+        return "ERROR: audit unavailable".to_string();
+    }
+    let seq = match crate::curation::record(pool, &command, app_id).await {
+        Ok(seq) => seq,
+        Err(e) => return format!("ERROR: record the decision: {e}"),
+    };
+    if let Err(e) = crate::curation::replay(pool, graph).await {
+        // Recorded, so it holds: the next replay applies it.
+        warn!("curation command recorded, not yet in the graph: {e}");
+    }
+    format!("OK: recorded {seq}")
 }
 
 ///
@@ -3540,11 +3645,10 @@ async fn handle_client(
             continue;
         }
 
-        // Merge-decision mode: a leading 0x10 byte confirms/dismisses a pending
-        // merge suggestion (SHARED-ENTITIES.md §4 owner-confirms). The body is a
-        // JSON `{suggestion_id, accept}`. It MUTATES the graph on accept (folds a
-        // duplicate + deletes it), gated to the entity type's owner app; query-
-        // rate-limited (user-initiated, infrequent).
+        // Merge-decision mode: a leading 0x10 byte accepts or rejects a pending
+        // merge suggestion. The body is a JSON `{suggestion_id, accept}`. Only
+        // the review surface may (§4.12); query-rate-limited (a person does it,
+        // seldom).
         if buf.first() == Some(&0x10) {
             let violation = {
                 let mut rs = rate.lock().await;
@@ -3553,15 +3657,31 @@ async fn handle_client(
             let response = if let Some(reason) = violation {
                 format!("ERROR: RateLimited: {reason}")
             } else {
-                // Mint the caller's live token from the kernel-attested peer pid so
-                // the merge is bound to the owner's CURRENT capability (revocation-
-                // honouring), the same way the entity-write path mints it.
-                let token = if let Some(p) = &peer {
-                    auth.lock().await.issue_token_for_app(p.uid, &p.app_id, p.pid).ok()
-                } else {
-                    None
-                };
-                handle_merge_accept(&pool, &graph, &audit, token.as_ref(), &app_id, &buf[1..], &uses).await
+                handle_merge_decision(&pool, &graph, &audit, &app_id, &buf[1..]).await
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
+        // Curation mode: a leading 0x13 byte records one decision a person made
+        // about who is who (`must_link`, `cannot_link`, `split`, `rename`,
+        // `not_an_entity`). The body is a JSON object tagged by `command`. Only
+        // the review surface may (§4.12); rate-limited like 0x10.
+        if buf.first() == Some(&0x13) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                handle_curation_command(&pool, &graph, &audit, &app_id, &buf[1..]).await
             };
             timing_noise().await;
             let response_bytes = response.as_bytes();
@@ -3745,7 +3865,7 @@ async fn handle_client(
         // `ENUMERABLE` list (a judgement made once, in the open - a message or a
         // contact never joins it, because for those the names ARE the content),
         // the caller's own read scope must include it (RS-R1, unchanged), and the
-        // limit is clamped before the query is built. 0x01-0x11 are taken; see
+        // limit is clamped before the query is built. 0x01-0x13 are taken; see
         // `mode_bytes_are_uniquely_assigned`.
         if buf.first() == Some(&0x12) {
             let violation = {
@@ -3886,7 +4006,7 @@ async fn handle_client(
         // bridged type that has rows, with the display identity its own schema
         // declares (bridge-architecture.md). Takes no body: the sections are what
         // the registry and the graph hold, and there is nothing for a caller to
-        // name. 0x01-0x10 are taken; see `mode_bytes_are_uniquely_assigned`.
+        // name. 0x01-0x13 are taken; see `mode_bytes_are_uniquely_assigned`.
         //
         // System-anchored, like the two code-analysis reads and for the same
         // reason: this is an AGGREGATE across every bridge's namespace, which is
@@ -6203,6 +6323,134 @@ mod tests {
     /// Spawn a fresh graph in a temp dir and wait for schema init. These tests
     /// touch a real Ladybug instance, so they flake under a parallel `cargo
     /// test` (multi-instance); run the suite with `--test-threads=1`.
+    /// A graph with two people in it, and the recording audit sink.
+    async fn two_people() -> (GraphHandle, tempfile::TempDir, Arc<audit_proto::MockAuditSink>) {
+        let (graph, tmp) = spawn_test_graph().await;
+        let table = crate::write::entity_table_name("shared.Person");
+        graph
+            .write(format!(
+                "CREATE NODE TABLE {table}(id STRING, email STRING, normalized_name STRING, PRIMARY KEY(id))"
+            ))
+            .await
+            .unwrap();
+        for id in ["p-anna", "p-a-m"] {
+            graph.write(format!("CREATE (:{table} {{id: '{id}'}})")).await.unwrap();
+        }
+        (graph, tmp, Arc::new(audit_proto::MockAuditSink::accepting()))
+    }
+
+    async fn pending_ids(graph: &GraphHandle) -> Vec<String> {
+        let rows = graph
+            .query_rows("MATCH (s:MergeSuggestion) WHERE s.status = 'pending' RETURN s.id".into())
+            .await
+            .unwrap();
+        rows.rows.iter().map(|r| r[0].as_str().to_string()).collect()
+    }
+
+    /// An app's merge is a proposal: it lands on the review list and links
+    /// nothing. The owning app cannot then accept it; the Knowledge app can.
+    #[tokio::test]
+    async fn an_app_proposes_a_merge_and_only_the_knowledge_app_accepts_it() {
+        let (graph, _tmp, sink) = two_people().await;
+        let (pool, _pool_tmp) = spawn_test_pool().await;
+        let audit: Arc<dyn AuditSink> = sink.clone();
+        let owner = "org.arlen.contacts";
+
+        let r = propose_merge(&pool, &graph, "shared.Person", "p-a-m", "p-anna", owner).await;
+        assert_eq!(r, "OK: proposed");
+        assert!(crate::curation::live(&pool).await.unwrap().is_empty(), "a proposal decides nothing");
+        // The same pair again, the other way round, is the one already waiting.
+        let r = propose_merge(&pool, &graph, "shared.Person", "p-anna", "p-a-m", owner).await;
+        assert_eq!(r, "OK: proposed");
+        let ids = pending_ids(&graph).await;
+        assert_eq!(ids.len(), 1, "one pair, one entry on the review list");
+
+        let body = format!(r#"{{"suggestion_id":"{}","accept":true}}"#, ids[0]);
+        let refused = handle_merge_decision(&pool, &graph, &audit, owner, body.as_bytes()).await;
+        assert_eq!(refused, CURATION_REFUSED, "the app that owns the type may not accept");
+        assert_eq!(sink.count().await, 0, "a refusal writes no audit line");
+        assert!(crate::curation::live(&pool).await.unwrap().is_empty());
+        assert_eq!(pending_ids(&graph).await, ids, "and the suggestion still waits");
+
+        let r = handle_merge_decision(&pool, &graph, &audit, "dev.arlen.knowledge", body.as_bytes()).await;
+        assert_eq!(r, "OK: linked");
+        assert_eq!(sink.count().await, 1);
+        let live = crate::curation::live(&pool).await.unwrap();
+        assert_eq!(
+            live.into_iter().map(|(_, c)| c).collect::<Vec<_>>(),
+            vec![crate::curation::Command::MustLink {
+                entity_type: "shared.Person".into(),
+                a: "p-a-m".into(),
+                b: "p-anna".into(),
+            }]
+        );
+        assert!(pending_ids(&graph).await.is_empty());
+    }
+
+    /// A rejected pair is never proposed again.
+    #[tokio::test]
+    async fn a_rejected_pair_cannot_be_proposed_again() {
+        let (graph, _tmp, sink) = two_people().await;
+        let (pool, _pool_tmp) = spawn_test_pool().await;
+        let audit: Arc<dyn AuditSink> = sink.clone();
+        propose_merge(&pool, &graph, "shared.Person", "p-a-m", "p-anna", "org.arlen.contacts").await;
+        let ids = pending_ids(&graph).await;
+        let body = format!(r#"{{"suggestion_id":"{}","accept":false}}"#, ids[0]);
+        let r = handle_merge_decision(&pool, &graph, &audit, "dev.arlen.knowledge", body.as_bytes()).await;
+        assert_eq!(r, "OK: rejected");
+        let r = propose_merge(&pool, &graph, "shared.Person", "p-anna", "p-a-m", "org.arlen.contacts").await;
+        assert_eq!(r, "ERROR: the two were marked as different");
+        assert!(pending_ids(&graph).await.is_empty());
+    }
+
+    /// A curation command is the Knowledge app's alone, whatever tier asks.
+    #[tokio::test]
+    async fn a_curation_command_is_taken_from_the_knowledge_app_only() {
+        let (graph, _tmp, sink) = two_people().await;
+        let (pool, _pool_tmp) = spawn_test_pool().await;
+        let audit: Arc<dyn AuditSink> = sink.clone();
+        let body = br#"{"command":"cannot_link","entity_type":"shared.Person","a":"p-anna","b":"p-a-m"}"#;
+
+        for other in ["org.arlen.contacts", "dev.arlen.settings", "ai-agent", "unknown"] {
+            let r = handle_curation_command(&pool, &graph, &audit, other, body).await;
+            assert_eq!(r, CURATION_REFUSED, "{other}");
+        }
+        assert_eq!(sink.count().await, 0);
+        assert!(crate::curation::live(&pool).await.unwrap().is_empty());
+
+        let r = handle_curation_command(&pool, &graph, &audit, "dev.arlen.knowledge", body).await;
+        assert_eq!(r, "OK: recorded 1");
+        assert_eq!(sink.count().await, 1);
+        assert!(crate::curation::cannot_link(&pool, "shared.Person", "p-a-m", "p-anna").await.unwrap());
+
+        // Every command the record knows has a wire shape.
+        for body in [
+            r#"{"command":"must_link","entity_type":"shared.Person","a":"p-anna","b":"p-a-m"}"#,
+            r#"{"command":"split","entity_type":"shared.Person","entity":"p-anna"}"#,
+            r#"{"command":"rename","entity_type":"shared.Person","entity":"p-anna","name":"Anna"}"#,
+            r#"{"command":"not_an_entity","mention":"m-1"}"#,
+        ] {
+            let r = handle_curation_command(&pool, &graph, &audit, "dev.arlen.knowledge", body.as_bytes()).await;
+            assert!(r.starts_with("OK: recorded "), "{body}: {r}");
+        }
+        assert_eq!(crate::curation::live(&pool).await.unwrap().len(), 5);
+
+        let r = handle_curation_command(&pool, &graph, &audit, "dev.arlen.knowledge", br#"{"command":"merge"}"#).await;
+        assert!(r.starts_with("ERROR: invalid request"), "{r}");
+    }
+
+    /// With the audit down nothing is decided.
+    #[tokio::test]
+    async fn a_curation_command_without_an_audit_line_is_refused() {
+        let (graph, _tmp, _sink) = two_people().await;
+        let (pool, _pool_tmp) = spawn_test_pool().await;
+        let audit: Arc<dyn AuditSink> = Arc::new(audit_proto::MockAuditSink::failing());
+        let body = br#"{"command":"split","entity_type":"shared.Person","entity":"p-anna"}"#;
+        let r = handle_curation_command(&pool, &graph, &audit, "dev.arlen.knowledge", body).await;
+        assert_eq!(r, "ERROR: audit unavailable");
+        assert!(crate::curation::live(&pool).await.unwrap().is_empty());
+    }
+
     async fn spawn_test_graph() -> (GraphHandle, tempfile::TempDir) {
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();

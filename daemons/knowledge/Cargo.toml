@@ -97,6 +97,8 @@ tempfile = "3"
 # The code-graph test parses a real crate with the real extractor, so that what
 # it asserts is what the indexer would send and not a hand-written payload.
 arlen-code-indexer = { path = "../code-indexer" }
+# The recording sink, to see that a refused decision reaches no audit line.
+audit-proto = { path = "../../contracts/audit-proto", features = ["test-util"] }
 [build-dependencies]
 prost-build = "0.13"
 

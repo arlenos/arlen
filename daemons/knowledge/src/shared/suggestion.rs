@@ -89,6 +89,53 @@ pub struct SuggestionCore {
     pub target_id: String,
     /// Current lifecycle status.
     pub status: SuggestionStatus,
+    /// An app proposed the pair (`merge_entities`); duplicate detection did not
+    /// find it. Such a pair carries no matching fields, and need not look alike:
+    /// the person who picked the two in the app saw something a scorer does not.
+    pub proposed: bool,
+}
+
+/// Whether both entities of a pair are still in the graph. What an accept of a
+/// proposed pair checks, where a detected one is scored again
+/// ([`suggestion_still_valid`]).
+pub async fn pair_still_exists(
+    graph: &crate::graph::GraphHandle,
+    entity_type: &str,
+    a: &str,
+    b: &str,
+) -> anyhow::Result<bool> {
+    use crate::utils::escape_cypher;
+    let table = crate::write::entity_table_name(entity_type);
+    let rows = graph
+        .query_rows(format!(
+            "MATCH (n:{table}) WHERE n.id IN ['{}', '{}'] RETURN count(*) AS c",
+            escape_cypher(a),
+            escape_cypher(b),
+        ))
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(a != b && rows.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap_or(0) == 2)
+}
+
+/// Whether a pending suggestion already names this pair, in either order. A
+/// proposal for a pair that is waiting on the review list adds nothing to it.
+pub async fn pending_suggestion_for(
+    graph: &crate::graph::GraphHandle,
+    entity_type: &str,
+    a: &str,
+    b: &str,
+) -> anyhow::Result<bool> {
+    use crate::utils::escape_cypher;
+    let (t, a, b) = (escape_cypher(entity_type), escape_cypher(a), escape_cypher(b));
+    let rows = graph
+        .query_rows(format!(
+            "MATCH (s:MergeSuggestion) WHERE s.status = 'pending' AND s.entity_type = '{t}' \
+             AND ((s.source_id = '{a}' AND s.target_id = '{b}') \
+               OR (s.source_id = '{b}' AND s.target_id = '{a}')) RETURN count(*) AS c"
+        ))
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(rows.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap_or(0) > 0)
 }
 
 /// Fetch a stored [`MergeSuggestion`]'s core fields by id, or `None` if absent.
@@ -103,7 +150,7 @@ pub async fn fetch_suggestion(
     let cypher = format!(
         "MATCH (s:MergeSuggestion {{id: '{id}'}}) \
          RETURN s.entity_type AS entity_type, s.source_id AS source_id, \
-         s.target_id AS target_id, s.status AS status LIMIT 1"
+         s.target_id AS target_id, s.status AS status, s.match_fields AS match_fields LIMIT 1"
     );
     let json = graph.query_rows_json(cypher).await?;
     let v: serde_json::Value = serde_json::from_str(&json)?;
@@ -123,7 +170,8 @@ pub async fn fetch_suggestion(
     if entity_type.is_empty() || source_id.is_empty() || target_id.is_empty() {
         return Ok(None);
     }
-    Ok(Some(SuggestionCore { entity_type, source_id, target_id, status }))
+    let proposed = cell(4) == "[]";
+    Ok(Some(SuggestionCore { entity_type, source_id, target_id, status, proposed }))
 }
 
 /// Re-validate that a suggestion's stored pair is STILL a live duplicate, just
