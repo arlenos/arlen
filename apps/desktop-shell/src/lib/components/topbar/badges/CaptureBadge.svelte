@@ -24,7 +24,10 @@
   }
 
   let active = $state(false);
-  let app = $state("an app");
+  /// The capturing app's name, or null when the host could not name it. The
+  /// sentence for that case is its own, so no stand-in word is spliced into a
+  /// translated one.
+  let app = $state<string | null>(null);
   let startedAt = $state<number | null>(null);
   let now = $state(Date.now());
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -63,7 +66,7 @@
     const s = await shellRead<CaptureStatus>("capture_status", "capture");
     if (s !== null) {
       active = s.captureActive;
-      app = s.capturingAppLabel ?? "an app";
+      app = s.capturingAppLabel ?? null;
       startedAt = s.startedAt ?? null;
       return;
     }
@@ -89,7 +92,7 @@
   );
   const label = $derived(
     elapsed === 0
-      ? "LIVE"
+      ? $t("sh.badge.capturing")
       : `${Math.floor(elapsed / 60)
           .toString()
           .padStart(2, "0")}:${(elapsed % 60).toString().padStart(2, "0")}`,
@@ -101,7 +104,7 @@
   active={active}
   pulsate
   label={label}
-  title={$t("sh.aria.sharing", { app })}
+  title={app === null ? $t("sh.aria.sharingUnnamed") : $t("sh.aria.sharing", { app })}
   onclick={handleClick}
 >
   {#snippet icon()}
