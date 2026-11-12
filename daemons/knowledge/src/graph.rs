@@ -931,10 +931,10 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // `count`, `first_seen` and `last_seen` are what the journal projection
     // computes from the launches it records (`journal::Fact::Occurrence`), not a
     // counter the edge increments. The graph holds the tally and no series. The
-    // series does exist, one fact per launch, in the SQLite journal - which keeps
-    // facts where the raw event log ages them out after 30 days, so folding old
-    // occurrences into a tally there is an open question in the coder report of
-    // 8 October.
+    // series does exist, one fact per launch, in the SQLite journal, for as long
+    // as the raw event log keeps the event: after 30 days the retention pass
+    // folds a pair's old launches into one summary fact (`fold_occurrences`),
+    // and the edge reads the same before and after.
     conn.query(
         "CREATE REL TABLE IF NOT EXISTS LAUNCHED(FROM App TO App, \
          first_seen INT64, last_seen INT64, count INT64)",

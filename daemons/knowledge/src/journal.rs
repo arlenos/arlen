@@ -102,6 +102,38 @@ pub enum Fact {
         to: (String, String),
         at: i64,
     },
+    /// What is left of a pair's occurrences once they are older than the raw
+    /// log keeps events ([`fold_occurrences`]): how many there were, the first
+    /// and the last, and how they fall over the week. `hours` has
+    /// [`HOURS_OF_WEEK`] counters, Monday 00:00 UTC first. It keeps what recurs
+    /// (this follows that, on weekday mornings) and no date of any one launch.
+    /// The pair's edge counts these in with the occurrences still on record.
+    OccurrenceSummary {
+        rel: String,
+        from: (String, String),
+        to: (String, String),
+        count: i64,
+        first: i64,
+        last: i64,
+        hours: Vec<u32>,
+    },
+}
+
+/// The counters in an [`Fact::OccurrenceSummary`]: one per hour of the week.
+pub const HOURS_OF_WEEK: usize = 7 * 24;
+
+/// The id column of a summary row. A pair has one, so the name says what it is.
+const SUMMARY_ID: &str = "summary";
+
+/// Which hour of the week a time in microseconds since the epoch falls in:
+/// 0 is Monday 00:00 to 01:00 UTC, 167 is Sunday 23:00 to 24:00.
+///
+/// UTC and not the machine's zone, so that the counters mean the same after a
+/// move or a clock change; a reader turns them by its own offset.
+pub fn hour_of_week(at_micros: i64) -> usize {
+    let hours = at_micros.div_euclid(3_600_000_000);
+    // 1 January 1970 was a Thursday, three days after a Monday.
+    (hours + 3 * 24).rem_euclid(HOURS_OF_WEEK as i64) as usize
 }
 
 impl Fact {
@@ -285,6 +317,26 @@ pub async fn record(tx: &mut Transaction<'_, Sqlite>, facts: &[(Fact, Origin)]) 
                 .bind(None::<i64>)
                 .bind(None::<i64>)
                 .bind(None::<i64>),
+            Fact::OccurrenceSummary { rel, from, to, count, first, last, hours } => {
+                if hours.len() != HOURS_OF_WEEK {
+                    bail!("an occurrence summary carries {} hour counters, not {HOURS_OF_WEEK}", hours.len());
+                }
+                q.bind("occurrence_summary")
+                    .bind(rel)
+                    .bind(SUMMARY_ID)
+                    .bind(&from.0)
+                    .bind(&from.1)
+                    .bind(&to.0)
+                    .bind(&to.1)
+                    .bind(serde_json::to_string(
+                        &serde_json::json!({ "count": count, "last": last, "hours": hours }),
+                    )?)
+                    .bind("{}")
+                    .bind(Some(*first))
+                    .bind(None::<i64>)
+                    .bind(None::<i64>)
+                    .bind(None::<i64>)
+            }
             Fact::CloseTo { rel, to, at } => q
                 .bind("close_to")
                 .bind(rel)
@@ -369,6 +421,21 @@ pub async fn read_since(pool: &SqlitePool, after: i64, limit: i64) -> Result<Vec
     rows.into_iter().map(|r| Ok((r.0, row_to_fact(r)?))).collect()
 }
 
+/// The count, the last time and the hour counters out of a summary row's props.
+fn summary_props(props: &str) -> Result<(i64, i64, Vec<u32>)> {
+    #[derive(serde::Deserialize)]
+    struct Props {
+        count: i64,
+        last: i64,
+        hours: Vec<u32>,
+    }
+    let p: Props = serde_json::from_str(props)?;
+    if p.hours.len() != HOURS_OF_WEEK {
+        bail!("journal occurrence summary with {} hour counters", p.hours.len());
+    }
+    Ok((p.count, p.last, p.hours))
+}
+
 fn row_to_fact(r: Row) -> Result<Fact> {
     let (_, op, label, id, fl, fi, tl, ti, props, on_create, va, ia, ca, ea) = r;
     Ok(match op.as_str() {
@@ -401,6 +468,21 @@ fn row_to_fact(r: Row) -> Result<Fact> {
                 from: (fl, fi),
                 to: (tl, ti),
                 at: va.ok_or_else(|| anyhow::anyhow!("journal occurrence row without its time"))?,
+            }
+        }
+        "occurrence_summary" => {
+            let (Some(fl), Some(fi), Some(tl), Some(ti)) = (fl, fi, tl, ti) else {
+                bail!("journal occurrence summary row without both endpoints");
+            };
+            let (count, last, hours) = summary_props(&props)?;
+            Fact::OccurrenceSummary {
+                rel: label,
+                from: (fl, fi),
+                to: (tl, ti),
+                count,
+                first: va.ok_or_else(|| anyhow::anyhow!("journal occurrence summary row without its first time"))?,
+                last,
+                hours,
             }
         }
         "close_to" => {
@@ -537,7 +619,7 @@ pub fn project(fact: &Fact) -> Result<String> {
                 None => Ok(format!("{head} MERGE (a)-[r:{rel}]->(b) SET {}", set.join(", "))),
             }
         }
-        Fact::Occurrence { .. } => {
+        Fact::Occurrence { .. } | Fact::OccurrenceSummary { .. } => {
             bail!("an occurrence is projected from the record's aggregate; see project_occurrence")
         }
         Fact::CloseTo { rel, to, at } => Ok(format!(
@@ -585,7 +667,8 @@ pub async fn commit_and_project(
 }
 
 /// How often `rel` has occurred between `from` and `to` in the record up to and
-/// including `seq`, and the first and last time: counted over distinct ids.
+/// including `seq`, and the first and last time: the occurrences still on
+/// record, counted over distinct ids, and whatever was folded into a summary.
 async fn occurrence_tally(
     pool: &SqlitePool,
     rel: &str,
@@ -606,14 +689,37 @@ async fn occurrence_tally(
     .bind(seq)
     .fetch_one(pool)
     .await?;
-    Ok((row.0, row.1.unwrap_or(0), row.2.unwrap_or(0)))
+    let (mut count, mut first, mut last) = row;
+    let folded: Vec<(String, Option<i64>)> = sqlx::query_as(
+        "SELECT props, valid_at FROM facts
+         WHERE op = 'occurrence_summary' AND label = ? AND from_label = ? AND from_id = ?
+           AND to_label = ? AND to_id = ? AND seq <= ?",
+    )
+    .bind(rel)
+    .bind(&from.0)
+    .bind(&from.1)
+    .bind(&to.0)
+    .bind(&to.1)
+    .bind(seq)
+    .fetch_all(pool)
+    .await?;
+    for (props, summary_first) in folded {
+        let (summary_count, summary_last, _) = summary_props(&props)?;
+        count += summary_count;
+        first = [first, summary_first].into_iter().flatten().min();
+        last = [last, Some(summary_last)].into_iter().flatten().max();
+    }
+    Ok((count, first.unwrap_or(0), last.unwrap_or(0)))
 }
 
-/// The Cypher for an occurrence: the pair's one edge, carrying the tally.
-fn project_occurrence(fact: &Fact, tally: (i64, i64, i64)) -> Result<String> {
-    let Fact::Occurrence { rel, from, to, .. } = fact else {
-        bail!("not an occurrence");
-    };
+/// The Cypher for an occurrence or a summary of them: the pair's one edge,
+/// carrying the tally.
+fn project_occurrence(
+    rel: &str,
+    from: &(String, String),
+    to: &(String, String),
+    tally: (i64, i64, i64),
+) -> Result<String> {
     let (count, first, last) = tally;
     Ok(format!(
         "MATCH (a:{} {{id: '{}'}}), (b:{} {{id: '{}'}}) MERGE (a)-[l:{}]->(b) \
@@ -629,11 +735,117 @@ fn project_occurrence(fact: &Fact, tally: (i64, i64, i64)) -> Result<String> {
 /// The statement that makes the fact at `seq` true in Ladybug.
 async fn statement(pool: &SqlitePool, seq: i64, fact: &Fact) -> Result<String> {
     match fact {
-        Fact::Occurrence { rel, from, to, .. } => {
-            project_occurrence(fact, occurrence_tally(pool, rel, from, to, seq).await?)
+        Fact::Occurrence { rel, from, to, .. } | Fact::OccurrenceSummary { rel, from, to, .. } => {
+            project_occurrence(rel, from, to, occurrence_tally(pool, rel, from, to, seq).await?)
         }
         other => project(other),
     }
+}
+
+/// Fold every occurrence older than `before` (microseconds) into its pair's
+/// summary and drop the rows. Returns how many rows were dropped.
+///
+/// The journal otherwise keeps one dated row per launch for ever, long after
+/// the raw log that produced them has aged the events out. After the fold the
+/// pair has one [`Fact::OccurrenceSummary`] holding the count, the first and the
+/// last time and the spread over the week, and the edge reads exactly as it did:
+/// the tally adds the summary to the occurrences still on record. A pair that
+/// already has a summary gets the new rows added to it.
+///
+/// One transaction, so a crash leaves either the rows or the summary and never
+/// both or neither. The summary is a new fact with a new `seq`; the caller
+/// projects it, which sets the edge to the value it already has.
+pub async fn fold_occurrences(pool: &SqlitePool, before: i64) -> Result<u64> {
+    type Pair = (String, String, String, String, String);
+    let mut tx = pool.begin().await?;
+    let pairs: Vec<Pair> = sqlx::query_as(
+        "SELECT DISTINCT label, from_label, from_id, to_label, to_id FROM facts
+         WHERE op = 'occurrence' AND valid_at < ?",
+    )
+    .bind(before)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut dropped = 0;
+    let mut summaries = Vec::new();
+    for (rel, from_label, from_id, to_label, to_id) in pairs {
+        // One row per distinct id: a launch journaled twice is one launch.
+        let old: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT id, min(valid_at) FROM facts
+             WHERE op = 'occurrence' AND label = ? AND from_label = ? AND from_id = ?
+               AND to_label = ? AND to_id = ? AND valid_at < ? GROUP BY id",
+        )
+        .bind(&rel)
+        .bind(&from_label)
+        .bind(&from_id)
+        .bind(&to_label)
+        .bind(&to_id)
+        .bind(before)
+        .fetch_all(&mut *tx)
+        .await?;
+        let earlier: Vec<(String, Option<i64>)> = sqlx::query_as(
+            "SELECT props, valid_at FROM facts
+             WHERE op = 'occurrence_summary' AND label = ? AND from_label = ? AND from_id = ?
+               AND to_label = ? AND to_id = ?",
+        )
+        .bind(&rel)
+        .bind(&from_label)
+        .bind(&from_id)
+        .bind(&to_label)
+        .bind(&to_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let mut count = old.len() as i64;
+        let mut first = old.iter().map(|(_, at)| *at).min();
+        let mut last = old.iter().map(|(_, at)| *at).max();
+        let mut hours = vec![0u32; HOURS_OF_WEEK];
+        for (_, at) in &old {
+            hours[hour_of_week(*at)] += 1;
+        }
+        for (props, earlier_first) in earlier {
+            let (earlier_count, earlier_last, earlier_hours) = summary_props(&props)?;
+            count += earlier_count;
+            first = [first, earlier_first].into_iter().flatten().min();
+            last = [last, Some(earlier_last)].into_iter().flatten().max();
+            for (slot, n) in hours.iter_mut().zip(earlier_hours) {
+                *slot += n;
+            }
+        }
+        let (Some(first), Some(last)) = (first, last) else {
+            continue;
+        };
+
+        let gone = sqlx::query(
+            "DELETE FROM facts
+             WHERE label = ? AND from_label = ? AND from_id = ? AND to_label = ? AND to_id = ?
+               AND ((op = 'occurrence' AND valid_at < ?) OR op = 'occurrence_summary')",
+        )
+        .bind(&rel)
+        .bind(&from_label)
+        .bind(&from_id)
+        .bind(&to_label)
+        .bind(&to_id)
+        .bind(before)
+        .execute(&mut *tx)
+        .await?;
+        dropped += gone.rows_affected();
+        summaries.push((
+            Fact::OccurrenceSummary {
+                rel,
+                from: (from_label, from_id),
+                to: (to_label, to_id),
+                count,
+                first,
+                last,
+                hours,
+            },
+            Origin { provenance: "graph".into(), valid_time_source: "observed".into(), event_id: None },
+        ));
+    }
+    record(&mut tx, &summaries).await?;
+    tx.commit().await?;
+    Ok(dropped)
 }
 
 /// What a fact makes true beyond its own statement.
@@ -736,6 +948,19 @@ mod tests {
                 from: ("App".into(), "shell".into()),
                 to: ("App".into(), "files".into()),
                 at: 12,
+            },
+            Fact::OccurrenceSummary {
+                rel: "LAUNCHED".into(),
+                from: ("App".into(), "shell".into()),
+                to: ("App".into(), "files".into()),
+                count: 7,
+                first: 3,
+                last: 11,
+                hours: {
+                    let mut hours = vec![0; HOURS_OF_WEEK];
+                    hours[42] = 7;
+                    hours
+                },
             },
         ];
         let tagged: Vec<_> = facts.iter().cloned().map(|f| (f, origin())).collect();
@@ -870,6 +1095,128 @@ mod tests {
             bytes,
             bytes / (opens as u64 * 5),
         );
+    }
+
+    #[test]
+    fn the_hour_of_the_week_starts_on_monday_in_utc() {
+        let micros = |secs: i64| secs * 1_000_000;
+        // 1 January 1970 00:00 UTC was a Thursday.
+        assert_eq!(hour_of_week(0), 3 * 24);
+        // Monday 5 January 1970, 00:00 and 00:59:59.
+        assert_eq!(hour_of_week(micros(4 * 86_400)), 0);
+        assert_eq!(hour_of_week(micros(4 * 86_400 + 3_599)), 0);
+        // Sunday 11 January 1970, 23:00: the last hour of that week.
+        assert_eq!(hour_of_week(micros(10 * 86_400 + 23 * 3_600)), 167);
+        // Thursday 12 November 2026, 13:30 UTC.
+        assert_eq!(hour_of_week(micros(1_794_490_200)), 3 * 24 + 13);
+        // A time before the epoch still lands inside the week.
+        assert_eq!(hour_of_week(micros(-3_600)), 3 * 24 - 1);
+    }
+
+    /// Old launches fold into one summary per pair, the edge reads the same
+    /// before and after, and a rebuild from the folded journal arrives at it.
+    #[tokio::test]
+    async fn folding_old_launches_keeps_the_edge_and_a_rebuild_agrees() {
+        let (pool, dir) = pool().await;
+        let hour: i64 = 3_600_000_000;
+        let monday = 4 * 24 * hour; // Monday 5 January 1970, 00:00 UTC
+        let occ = |from: &str, id: &str, at: i64| Fact::Occurrence {
+            rel: "LAUNCHED".into(),
+            id: id.into(),
+            from: ("App".into(), from.into()),
+            to: ("App".into(), "files".into()),
+            at,
+        };
+        let facts = vec![
+            Fact::node("App", "shell", &[]),
+            Fact::node("App", "term", &[]),
+            Fact::node("App", "files", &[]),
+            occ("shell", "e1", monday + 9 * hour),
+            occ("shell", "e2", monday + 9 * hour + 5),
+            occ("shell", "e2", monday + 9 * hour + 5),
+            occ("shell", "e3", monday + 24 * hour + 9 * hour),
+            occ("term", "e4", monday + 10 * hour),
+            occ("shell", "e5", monday + 100 * 24 * hour),
+            occ("shell", "e6", monday + 101 * 24 * hour),
+        ];
+        let mut tx = pool.begin().await.unwrap();
+        record(&mut tx, &facts.into_iter().map(|f| (f, origin())).collect::<Vec<_>>()).await.unwrap();
+        tx.commit().await.unwrap();
+        let graph = crate::graph::spawn(dir.path().join("g").to_str().unwrap()).unwrap();
+        project_pending(&pool, &graph).await.unwrap();
+
+        let edges = "MATCH (a:App)-[l:LAUNCHED]->(b:App) \
+                     RETURN a.id, l.count, l.first_seen, l.last_seen ORDER BY a.id";
+        let read = |g: &crate::graph::GraphHandle| {
+            let g = g.clone();
+            async move {
+                let rs = g.query_rows(edges.into()).await.unwrap();
+                rs.rows
+                    .iter()
+                    .map(|r| (r[0].as_str().to_string(), r[1].as_i64(), r[2].as_i64(), r[3].as_i64()))
+                    .collect::<Vec<_>>()
+            }
+        };
+        let before = read(&graph).await;
+        assert_eq!(
+            before,
+            vec![
+                ("shell".to_string(), 5, monday + 9 * hour, monday + 101 * 24 * hour),
+                ("term".to_string(), 1, monday + 10 * hour, monday + 10 * hour),
+            ]
+        );
+
+        // Everything older than day 50 folds: four rows of shell's (e2 twice)
+        // and term's one.
+        let cutoff = monday + 50 * 24 * hour;
+        assert_eq!(fold_occurrences(&pool, cutoff).await.unwrap(), 5);
+        project_pending(&pool, &graph).await.unwrap();
+        assert_eq!(read(&graph).await, before, "the fold changes no edge");
+
+        let left: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM facts WHERE op = 'occurrence' AND valid_at < ?")
+                .bind(cutoff)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(left.0, 0, "no dated row older than the cutoff is left");
+        let summaries: Vec<Fact> = read_since(&pool, 0, 100)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(_, f)| f)
+            .filter(|f| matches!(f, Fact::OccurrenceSummary { .. }))
+            .collect();
+        assert_eq!(summaries.len(), 2, "one summary per pair");
+        let Some(Fact::OccurrenceSummary { count, first, last, hours, .. }) = summaries
+            .iter()
+            .find(|f| matches!(f, Fact::OccurrenceSummary { from, .. } if from.1 == "shell"))
+        else {
+            panic!("shell's summary is there");
+        };
+        assert_eq!((*count, *first, *last), (3, monday + 9 * hour, monday + 33 * hour));
+        assert_eq!(hours[9], 2, "two launches on a Monday at nine");
+        assert_eq!(hours[24 + 9], 1, "one on a Tuesday at nine");
+        assert_eq!(hours.iter().sum::<u32>(), 3);
+
+        // A second fold a long time later adds the two newer launches to the
+        // summary that is already there.
+        assert_eq!(fold_occurrences(&pool, monday + 200 * 24 * hour).await.unwrap(), 3);
+        project_pending(&pool, &graph).await.unwrap();
+        assert_eq!(read(&graph).await, before, "nor does the second fold");
+        let all: (i64, i64) = sqlx::query_as(
+            "SELECT sum(op = 'occurrence'), sum(op = 'occurrence_summary') FROM facts",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(all, (0, 2), "two pairs, two rows, no launch on its own");
+
+        // A rebuild from what the journal holds now.
+        set_projected_seq(&pool, 0).await.unwrap();
+        let rebuilt = crate::graph::spawn(dir.path().join("g2").to_str().unwrap()).unwrap();
+        project_pending(&pool, &rebuilt).await.unwrap();
+        assert_eq!(read(&rebuilt).await, before, "the rebuild arrives at the same edges");
     }
 
     /// A launch journaled twice - the retry path does that - still counts once,

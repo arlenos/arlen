@@ -39,6 +39,10 @@ pub async fn run(pool: SqlitePool, graph: GraphHandle) -> Result<()> {
             error!("retention: purge_raw_events failed: {e}");
         }
 
+        if let Err(e) = fold_old_occurrences(&pool, &graph).await {
+            error!("retention: fold_old_occurrences failed: {e}");
+        }
+
         if let Err(e) = compact_semantic_nodes(&pool, &graph).await {
             error!("retention: compact_semantic_nodes failed: {e}");
         }
@@ -164,6 +168,25 @@ async fn purge_raw_events(pool: &SqlitePool) -> Result<()> {
         debug!("retention: no raw events to purge");
     }
 
+    Ok(())
+}
+
+/// Fold the journal's launch rows that are older than the raw log keeps events
+/// into one summary per pair of apps (`journal::fold_occurrences`).
+///
+/// The same age as [`purge_raw_events`], on purpose: once the event behind a
+/// launch is gone from the raw log, its dated row in the journal goes too. What
+/// stays is the count, the first and the last time and the spread over the week.
+/// The summary is projected straight away, which leaves the edge as it was.
+async fn fold_old_occurrences(pool: &SqlitePool, graph: &GraphHandle) -> Result<()> {
+    let cutoff = now_micros() - RAW_EVENT_TTL.as_micros() as i64;
+    let dropped = crate::journal::fold_occurrences(pool, cutoff).await?;
+    if dropped > 0 {
+        crate::journal::project_pending(pool, graph).await?;
+        info!(dropped, cutoff, "retention: folded old launches into summaries");
+    } else {
+        debug!("retention: no old launches to fold");
+    }
     Ok(())
 }
 
@@ -390,6 +413,48 @@ mod tests {
             crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         time::sleep(Duration::from_millis(500)).await;
         (graph, tmp)
+    }
+
+    /// The pass folds what is older than the raw log keeps and leaves the rest
+    /// dated, and the edge still counts both.
+    #[tokio::test]
+    async fn the_pass_folds_launches_older_than_the_raw_log_keeps() {
+        use crate::journal::{self, Fact, Origin};
+        let (graph, tmp) = setup().await;
+        let pool = crate::db::open(tmp.path().join("j.db").to_str().unwrap()).await.unwrap();
+        let day = 24 * 3600 * 1_000_000_i64;
+        let ttl_days = (RAW_EVENT_TTL.as_secs() / 86_400) as i64;
+        let now = now_micros();
+        let launch = |id: &str, at: i64| Fact::Occurrence {
+            rel: "LAUNCHED".into(),
+            id: id.into(),
+            from: ("App".into(), "shell".into()),
+            to: ("App".into(), "files".into()),
+            at,
+        };
+        let facts = vec![
+            Fact::node("App", "shell", &[]),
+            Fact::node("App", "files", &[]),
+            launch("old-1", now - (ttl_days + 5) * day),
+            launch("old-2", now - (ttl_days + 1) * day),
+            launch("new-1", now - (ttl_days - 1) * day),
+        ];
+        journal::commit_and_project(&pool, &graph, facts, &Origin::event("e1")).await.unwrap();
+
+        fold_old_occurrences(&pool, &graph).await.unwrap();
+
+        let kinds: Vec<(String, i64)> =
+            sqlx::query_as("SELECT op, count(*) FROM facts WHERE op LIKE 'occurrence%' GROUP BY op ORDER BY op")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            kinds,
+            vec![("occurrence".to_string(), 1), ("occurrence_summary".to_string(), 1)],
+            "the two old launches are one summary, the recent one keeps its row"
+        );
+        let rs = graph.query_rows("MATCH ()-[l:LAUNCHED]->() RETURN l.count".into()).await.unwrap();
+        assert_eq!(rs.rows[0][0].as_i64(), 3);
     }
 
     #[tokio::test]
