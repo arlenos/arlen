@@ -369,6 +369,7 @@ jobs:
           node dev/scripts/test-probe-verdict.mjs
           node dev/scripts/test-identity-verdict.mjs
           node dev/scripts/test-check-socket-servers.mjs
+          node dev/scripts/test-check-socket-grants.mjs
           node dev/scripts/test-pi-completion-shape.mjs
           node dev/scripts/test-check-shared-signature.mjs
           node dev/scripts/test-check-webview-sandbox.mjs
@@ -400,6 +401,7 @@ jobs:
           python3 dev/scripts/check-bus-names-covered.py
           python3 dev/scripts/check-inert-switches.py
           python3 dev/scripts/check-socket-servers.py
+          python3 dev/scripts/check-socket-grants.py
           python3 dev/scripts/check-runtime-dir-closed.py
           node dev/scripts/test-check-runtime-dir-closed.mjs
           node dev/scripts/test-check-inert-switches.mjs

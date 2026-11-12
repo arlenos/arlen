@@ -47,3 +47,42 @@ fn the_fence_permits_a_granted_write_and_denies_one_outside() {
     );
     assert!(inside.exists(), "the granted write landed on disk");
 }
+
+/// The socket half of the fence, on the kernel: with `--dial <one socket>` the
+/// program connects to that socket and is refused on the one bound beside it,
+/// and with no `--dial` it reaches both. Needs Landlock ABI 9 (`RESOLVE_UNIX`).
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "needs Linux with Landlock ABI 9"]
+fn the_fence_opens_a_listed_socket_and_refuses_the_one_beside_it() {
+    use std::os::unix::net::UnixListener;
+    use std::process::Command;
+
+    let bin = env!("CARGO_BIN_EXE_arlen-run");
+    // Not under `/tmp`: the fence makes that writable for every app, and a
+    // writable dir carries the right to dial what is bound in it.
+    let dir = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("a runtime dir");
+    let granted = dir.path().join("granted.sock");
+    let other = dir.path().join("other.sock");
+    let _a = UnixListener::bind(&granted).expect("the granted socket is bound");
+    let _b = UnixListener::bind(&other).expect("the other socket is bound");
+
+    // Exit 0 when the connect succeeds, 7 when the kernel refuses it.
+    let connect = "import socket,sys\n\
+                   s=socket.socket(socket.AF_UNIX)\n\
+                   try:\n s.connect(sys.argv[1])\n\
+                   except PermissionError:\n sys.exit(7)\n";
+    let run = |dial: Option<&std::path::Path>, target: &std::path::Path| {
+        let mut cmd = Command::new(bin);
+        cmd.arg("--landlock-exec");
+        if let Some(socket) = dial {
+            cmd.arg("--dial").arg(socket);
+        }
+        cmd.args(["--", "/usr/bin/python3", "-c", connect]).arg(target);
+        cmd.status().expect("spawn arlen-run --landlock-exec").code()
+    };
+
+    assert_eq!(run(Some(&granted), &granted), Some(0), "the listed socket is reachable");
+    assert_eq!(run(Some(&granted), &other), Some(7), "the socket beside it is refused");
+    assert_eq!(run(None, &other), Some(0), "without --dial connecting is not fenced");
+}

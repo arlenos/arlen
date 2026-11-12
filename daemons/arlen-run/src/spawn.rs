@@ -110,6 +110,10 @@ fn unescape_mountinfo(field: &str) -> String {
 /// 11 Aug, `app-enrollment-plan.md`. A socket whose mere reachability is
 /// sensitive may still be withheld individually; none of these is.
 ///
+/// Since 12 November the Landlock fence narrows this again: the directory is
+/// bound whole, and `connect()` reaches only the sockets the profile's sections
+/// call for ([`crate::sockets`]).
+///
 /// **Read-write rather than read-only, and that is measured too.** A read-only
 /// bind still permits `connect()` (checked under bwrap: a client connected to a
 /// socket inside a `--ro-bind` directory), which would have been the tighter
@@ -500,7 +504,7 @@ unsafe fn child_pre_exec(
     // read-only `/` denies); that launch's fs confinement is bwrap's own mount
     // namespace instead. See `spawn_filtered_and_wait`.
     if let Some(writable) = landlock_writable {
-        crate::landlock_apply::apply_landlock(writable)?;
+        crate::landlock_apply::apply_landlock(writable, None::<&[PathBuf]>)?;
     }
     Ok(())
 }
@@ -1368,6 +1372,7 @@ mod tests {
         let program = crate::landlock_exec::landlock_exec_program(
             &arlen_run.to_string_lossy(),
             &[std::path::PathBuf::from(&granted)],
+            None,
             &["/bin/sh".to_string(), "-c".to_string(), script],
         );
         let mut argv: Vec<String> = [

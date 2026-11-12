@@ -154,6 +154,9 @@ def shipped_binaries():
     return names
 
 
+GRANT_TABLE = "daemons/arlen-run/src/sockets.rs"
+
+
 def referenced():
     """socket name -> {crate dirs referencing it}, excluding test code.
 
@@ -174,6 +177,12 @@ def referenced():
         except ValueError:
             continue
         if "/target/" in rel or "mkosi.builddir" in rel or "/tests/" in rel:
+            continue
+        # The launcher's grant table names every socket in order to say who may
+        # dial it, and dials none of them. `check-socket-grants.py` holds it to
+        # the table above; read as a caller it would make arlen-run depend on
+        # every daemon in the tree.
+        if rel == GRANT_TABLE:
             continue
         path = REPO / rel
         if path not in cache:

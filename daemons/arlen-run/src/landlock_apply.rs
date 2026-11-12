@@ -40,21 +40,34 @@ fn ll_err(e: impl std::error::Error + Send + Sync + 'static) -> io::Error {
 /// under each path in `writable`. Everything outside the writable set is
 /// read-only (and everything outside the bwrap mount view is absent entirely).
 ///
+/// `dial` decides whether connecting to a path socket is fenced as well. With
+/// `Some`, `RESOLVE_UNIX` is handled: the process may connect only to the
+/// sockets listed and to a socket under one of its writable directories, which
+/// is one it or its children made. With `None` the right is left unhandled and
+/// connecting stays as the mount view and the socket's own peer check leave it;
+/// that is the launch with no profile to name sockets from.
+///
 /// Returns `Err` only on a ruleset failure or a kernel that did not enforce the
-/// ruleset; a single unopenable writable path is skipped (fail-safe), because a
-/// dropped write rule reduces access rather than widening it.
-pub fn apply_landlock(writable: &[impl AsRef<Path>]) -> io::Result<()> {
+/// ruleset; a single unopenable path is skipped (fail-safe), because a dropped
+/// rule reduces access rather than widening it. For a socket that means one
+/// that is not bound yet when the app starts stays out of reach for that run,
+/// and so does one whose daemon binds it again: the rule is on the file, and a
+/// new bind is a new file.
+pub fn apply_landlock(
+    writable: &[impl AsRef<Path>],
+    dial: Option<&[impl AsRef<Path>]>,
+) -> io::Result<()> {
     // ABI 9, best effort: an older kernel drops what it does not know rather than
-    // failing the call (the NotEnforced check below is the floor). Every
-    // filesystem right is handled EXCEPT `ResolveUnix` (ABI 9): handling it would
-    // need a grant per socket the process may dial, and which sockets those are
-    // per grant is not decided yet (coder report of 8 October), so connecting
-    // stays as bwrap's mount view and the socket's own peer check leave it.
-    // The two ABI 6 scopes are taken: a process may signal and dial abstract
-    // Unix sockets only inside its own Landlock domain.
+    // failing the call (the NotEnforced check below is the floor). The two ABI 6
+    // scopes are taken: a process may signal and dial abstract Unix sockets only
+    // inside its own Landlock domain.
     let abi = ABI::V9;
+    let handled = match dial {
+        Some(_) => AccessFs::from_all(abi),
+        None => AccessFs::from_all(abi) & !AccessFs::ResolveUnix,
+    };
     let mut ruleset = Ruleset::default()
-        .handle_access(AccessFs::from_all(abi) & !AccessFs::ResolveUnix)
+        .handle_access(handled)
         .map_err(ll_err)?
         .scope(Scope::from_all(abi))
         .map_err(ll_err)?
@@ -79,7 +92,20 @@ pub fn apply_landlock(writable: &[impl AsRef<Path>]) -> io::Result<()> {
             Err(_) => continue,
         };
         ruleset = ruleset
-            .add_rule(PathBeneath::new(fd, AccessFs::from_all(abi) & !AccessFs::ResolveUnix))
+            .add_rule(PathBeneath::new(fd, handled))
+            .map_err(ll_err)?;
+    }
+
+    // One rule per socket the app may dial, on the socket itself. The runtime
+    // directories hold every daemon's socket side by side, so a rule on the
+    // directory would open all of them.
+    for socket in dial.unwrap_or_default() {
+        let fd = match PathFd::new(socket.as_ref()) {
+            Ok(fd) => fd,
+            Err(_) => continue,
+        };
+        ruleset = ruleset
+            .add_rule(PathBeneath::new(fd, AccessFs::ResolveUnix))
             .map_err(ll_err)?;
     }
 
@@ -114,7 +140,7 @@ mod tests {
         // ignored test. The child only issues syscalls below before _exit.
         let pid = unsafe { libc::fork() };
         if pid == 0 {
-            if apply_landlock(&[dir.path()]).is_err() {
+            if apply_landlock(&[dir.path()], None::<&[&Path]>).is_err() {
                 unsafe { libc::_exit(10) };
             }
             // open(O_WRONLY|O_CREAT) inside the grant must succeed,

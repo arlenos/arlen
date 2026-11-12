@@ -52,6 +52,8 @@ mod stamp;
 // cBPF and handed to bwrap via --seccomp in `spawn`.
 #[cfg(target_os = "linux")]
 mod seccomp;
+#[cfg(target_os = "linux")]
+mod sockets;
 mod spawn;
 
 /// The fail-closed exit-code contract. Any setup failure means the app never
@@ -279,7 +281,7 @@ fn run_ephemeral(app_id: &str, file: &std::path::Path, program: &[String]) -> Ex
     let exe = std::env::current_exe().ok();
     let program = match exe.as_deref().map(|e| e.to_string_lossy().into_owned()) {
         Some(exe) if exe.starts_with("/usr/") => {
-            landlock_exec::landlock_exec_program(&exe, &writable, program)
+            landlock_exec::landlock_exec_program(&exe, &writable, None, program)
         }
         _ => program.to_vec(),
     };
@@ -568,6 +570,11 @@ fn main() -> ExitCode {
     // from the program, so no writable dir may itself be `--`; `build_confinement`
     // above already rejected any non-absolute app_dir, so this holds by
     // construction (asserted against a future refactor).
+    // The sockets the fence lets the app connect to: the session plumbing and
+    // the Arlen sockets its profile's sections call for. Everything else in the
+    // two runtime directories stays visible and cannot be dialled.
+    let dialable =
+        sockets::dialable(&profile, runtime_dir.as_deref(), wayland_display.as_deref());
     debug_assert!(
         !inputs.app_dirs.iter().any(|d| d.as_os_str() == "--"),
         "an app writable dir must never be the wrapper delimiter"
@@ -576,6 +583,7 @@ fn main() -> ExitCode {
         Some(exe) => landlock_exec::landlock_exec_program(
             &exe.to_string_lossy(),
             &inputs.app_dirs,
+            Some(&dialable),
             &args.program,
         ),
         None => {
