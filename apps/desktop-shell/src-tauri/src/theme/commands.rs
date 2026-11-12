@@ -786,9 +786,12 @@ mod tests {
         // cursor redirect rather than an icon theme, so `installed_icon_theme`
         // correctly leaves the key out on most machines. This asserted it until
         // that gate landed on 8 September, and the assertion was demanding the
-        // bug back. The cursor and the font are the two that are always there.
+        // bug back. NOT the font either, for the same reason: the key is left
+        // out when the theme's font is not installed, which is every CI runner.
+        // This asserted it until the first run of these tests on a runner, on
+        // 12 November, where it failed on a machine with no such font. The
+        // cursor is the one key that is always there.
         assert!(text.contains("gtk-cursor-theme-name="), "{text}");
-        assert!(text.contains("gtk-font-name="), "{text}");
         assert!(tmp.path().join("gtk-3.0/gtk.css").is_file());
         assert!(tmp.path().join("gtk-4.0/gtk.css").is_file());
     }

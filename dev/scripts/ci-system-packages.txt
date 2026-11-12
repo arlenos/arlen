@@ -25,9 +25,11 @@ libdbus-1-dev
 # Two Tauri hosts link more than the webview. The shell is a layer-shell
 # surface; Settings reads devices through udev. Found by the first run of the
 # `tauri` job (43102769309): fifteen hosts green, these two stopped in a build
-# script at pkg-config.
+# script at pkg-config. The second run got Settings past that and stopped at the
+# linker, which wanted `-linput` for the same device code.
 libgtk-layer-shell-dev
 libudev-dev
+libinput-dev
 
 # The timeline mount.
 fuse3
