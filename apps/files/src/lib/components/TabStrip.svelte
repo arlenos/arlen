@@ -88,6 +88,10 @@
   .ts-tab {
     display: inline-flex;
     align-items: center;
+    /* An explicit floor is what lets a tab shrink at all: without one a flex
+       item is as wide as its label at least, and the strip cut the last tab
+       mid-letter and took its close button with it. The label ellipsizes. */
+    min-width: 3.5rem;
     height: var(--height-control, 30px);
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
@@ -103,6 +107,8 @@
   }
 
   .ts-label {
+    flex: 1 1 auto;
+    min-width: 0;
     height: 100%;
     max-width: 12rem;
     padding: 0 4px 0 10px;
@@ -120,6 +126,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     width: 1.25rem;
     height: 1.25rem;
     margin-inline-end: 4px;
@@ -131,8 +138,29 @@
     transition: opacity var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .ts-tab:hover .ts-close,
+  .ts-tab:focus-within .ts-close,
   .ts-tab.active .ts-close {
     opacity: 1;
+  }
+  /* A tab that is not the open one shows no close button until it is pointed
+     at, and used to keep 24 px free for it all the same. In a narrow window
+     that was the room its own name needed. There the button lies over the end
+     of the name instead and covers it only while it shows. */
+  .ts-tab:not(.active) {
+    position: relative;
+  }
+  .ts-tab:not(.active) .ts-label {
+    padding-inline-end: 10px;
+  }
+  .ts-tab:not(.active) .ts-close {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 50%;
+    translate: 0 -50%;
+    background: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  }
+  .ts-tab:not(.active) .ts-close:hover {
+    background: color-mix(in srgb, var(--foreground) 14%, var(--background));
   }
   .ts-close:hover {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);

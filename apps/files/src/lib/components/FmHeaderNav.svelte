@@ -92,9 +92,13 @@
     align-items: center;
     gap: 2px;
   }
+  /* A floor, so the tabs give way before the place does. With no floor the
+     crumb took only what the tab strip left, and at 720 px with two tabs
+     "Home" was four pixels short and read "H…" beside two full tab labels
+     that say less. The floor fits a short name; a long one still folds. */
   .hn-crumb {
     flex: 1;
-    min-width: 0;
+    min-width: 3rem;
     margin-inline-start: 4px;
   }
   .hn-asof {
