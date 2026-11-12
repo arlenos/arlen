@@ -537,9 +537,6 @@ DEAD_INVOKES: dict[str, str] = {
     # answer "nobody" to every address it was ever asked. It lands with the first
     # thing that puts a person in the graph - coder, contacts-decision.md
     "mail_sender_person": "shared.Person has a decided contract and no producer yet; the command would answer nobody to every address until contacts or the CardDAV bridge writes one",
-    # dictation has no backend at all yet; the badge was built against the intended contract - needs a decision on whether dictation is in scope
-    "dictation_status": "dictation has no backend at all yet; the badge was built against the intended contract",
-    "stop_dictation": "dictation has no backend at all yet; the badge was built against the intended contract",
     # `list_modules` and `get_module_errors` were here until 11 Aug, described as
     # a shape the panel and the daemon had to agree. Both are gone with the panel:
     # nothing mounted it and `modulesd_list_modules` had already replaced the

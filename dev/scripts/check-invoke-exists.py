@@ -450,12 +450,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "cancel_screencast": "cancelling a screencast (PipeWire producer)",
         "start_screencast": "starting a screencast (PipeWire producer)",
         "stop_capture": "stopping a capture (PipeWire producer)",
-        # Dictation needs a speech engine, which this system does not have and has
-        # not decided to have. Listed so it is not mistaken for plumbing.
-        # FALSE WHEN: a speech engine is provisioned on the image - a binary or
-        # model this tree ships and starts, not a crate somebody could add.
-        "dictation_status": "the dictation indicator (no speech engine)",
-        "stop_dictation": "stopping dictation (no speech engine)",
     },
     "store": {
         # The store app is arlen-ui's live surface, so these three are theirs to

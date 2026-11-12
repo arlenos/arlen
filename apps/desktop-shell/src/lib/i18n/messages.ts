@@ -715,9 +715,7 @@ const messages: Catalogs = {
     "sh.badge.errDictation": "Dictation did not stop. The microphone may still be listening.",
     "sh.badge.nightLight": "Night Light on. Click to disable.",
     "sh.badge.recording": "Recording in progress. Click to stop.",
-    "sh.badge.dictating": "Dictating",
     "sh.badge.capturing": "Screen",
-    "sh.badge.dictatingInto": "Dictating into {$target}. Click to stop.",
 
     // Tray, top bar, voice and workspace surfaces
     "sh.tray.title": "Background Apps",
@@ -1371,9 +1369,7 @@ const messages: Catalogs = {
     "sh.badge.errDictation": "Das Diktat wurde nicht beendet. Das Mikrofon hört vielleicht noch zu.",
     "sh.badge.nightLight": "Nachtlicht ist an. Zum Abschalten klicken.",
     "sh.badge.recording": "Aufnahme l\u00e4uft. Zum Stoppen klicken.",
-    "sh.badge.dictating": "Diktiert",
     "sh.badge.capturing": "Bildschirm",
-    "sh.badge.dictatingInto": "Diktiert in {$target}. Zum Stoppen klicken.",
 
     "sh.tray.title": "Hintergrund-Apps",
     "sh.tray.loading": "Wird geladen\u2026",

@@ -236,7 +236,7 @@
     //
     // Ordering alone did not settle it, and this comment used to claim it did.
     // A render of the bar at `?locale=de` came back with a German clock, a
-    // German dictation badge and that refusal in English: `initArlenLocale`
+    // German status badge and that refusal in English: `initArlenLocale`
     // awaits two dynamic imports before it sets the store, so the window is
     // wide enough for an init that fails at once. `applyDevLocale` is exported
     // for exactly this - to adopt the language WITHOUT waiting on a host - so a
