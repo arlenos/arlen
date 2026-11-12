@@ -43,7 +43,7 @@ const messages: Catalogs = {
     "f.prov.attested": "Verified as from {$actor}, {$when}, by a content credential.",
     "f.prov.downloadedFrom": "Downloaded from {$actor}, {$when}. Arlen did not verify this.",
     "f.prov.externalPlain": "Came from an external document, {$when}. Arlen did not verify this.",
-    "f.prov.model": "The assistant asserted this from its reasoning, {$when}.",
+    "f.prov.model": "Your assistant asserted this from its reasoning, {$when}.",
     "f.prov.agent": "The idle curator consolidated this, {$when}.",
     "f.prov.horizon": "Deeper history isn\u2019t available yet.",
     "f.prov.aProcess": "a process",
@@ -185,7 +185,7 @@ const messages: Catalogs = {
 
     // Ask banner
     "f.ask.draftedFrom": "Drafted from",
-    "f.ask.aiOff": "Asking about your files is off. Turn the assistant on in Settings.",
+    "f.ask.aiOff": "Asking about your files is off. Turn your assistant on in Settings.",
     "f.ask.unreachable": "Asking about your files isn't available right now.",
     "f.ask.readsFiles": P("count", "Read {$count} file in {$scope}", "Read {$count} files in {$scope}"),
     "f.ask.readsTags": P("count", "{$count} tag from your graph", "{$count} tags from your graph"),
@@ -304,8 +304,8 @@ const messages: Catalogs = {
 
     // Search bar
     "f.search.mode": "Search mode",
-    "f.search.askArlen": "Ask Arlen",
-    "f.search.askPlaceholder": "Ask Arlen to find something in this folder",
+    "f.search.askArlen": "Ask your assistant",
+    "f.search.askPlaceholder": "Ask your assistant to find something in this folder",
     "f.search.search": "Search",
     "f.search.searchPlaceholder": "Search this folder and everything inside it",
     "f.search.close": "Close search",
@@ -438,7 +438,7 @@ const messages: Catalogs = {
     "f.prov.attested": "Best\u00e4tigt als von {$actor}, {$when}, durch ein Inhaltszertifikat.",
     "f.prov.downloadedFrom": "Heruntergeladen von {$actor}, {$when}. Arlen hat das nicht gepr\u00fcft.",
     "f.prov.externalPlain": "Aus einem externen Dokument, {$when}. Arlen hat das nicht gepr\u00fcft.",
-    "f.prov.model": "Der Assistent hat das aus seiner Argumentation behauptet, {$when}.",
+    "f.prov.model": "Dein Assistent hat das aus seiner Argumentation behauptet, {$when}.",
     "f.prov.agent": "Der stille Kurator hat das zusammengef\u00fchrt, {$when}.",
     "f.prov.horizon": "Weitere Vorgeschichte ist noch nicht verf\u00fcgbar.",
     "f.prov.aProcess": "ein Prozess",
@@ -560,7 +560,7 @@ const messages: Catalogs = {
     "f.emptyTrash.body": "Alles darin ist von dieser Platte weg. Das lässt sich nicht rückgängig machen.",
 
     "f.ask.draftedFrom": "Entworfen aus",
-    "f.ask.aiOff": "Fragen zu deinen Dateien ist aus. Schalte den Assistenten in den Einstellungen ein.",
+    "f.ask.aiOff": "Fragen zu deinen Dateien ist aus. Schalte deinen Assistenten in den Einstellungen ein.",
     "f.ask.unreachable": "Fragen zu deinen Dateien ist gerade nicht verfügbar.",
     "f.ask.readsFiles": P("count", "{$count} Datei in {$scope} gelesen", "{$count} Dateien in {$scope} gelesen"),
     "f.ask.readsTags": P("count", "{$count} Tag aus deinem Graphen", "{$count} Tags aus deinem Graphen"),
@@ -663,8 +663,8 @@ const messages: Catalogs = {
     "f.perm.noAccess": "Kein Zugriff",
 
     "f.search.mode": "Suchmodus",
-    "f.search.askArlen": "Arlen fragen",
-    "f.search.askPlaceholder": "Arlen bitten, etwas in diesem Ordner zu finden",
+    "f.search.askArlen": "Deinen Assistenten fragen",
+    "f.search.askPlaceholder": "Deinen Assistenten bitten, etwas in diesem Ordner zu finden",
     "f.search.search": "Suchen",
     "f.search.searchPlaceholder": "Diesen Ordner und alles darin durchsuchen",
     "f.search.close": "Suche schließen",

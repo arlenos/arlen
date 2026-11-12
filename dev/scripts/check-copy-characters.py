@@ -63,6 +63,19 @@ SEPARATOR = re.compile(r"\s·\s")
 # starting with OS is not a finding.
 PRODUCT_NAME = re.compile(r"\bArlen\s+OS\b", re.I)
 
+# What the helper is called before a person names it: "your assistant", lower
+# case (design-system.md section 6.16). Three apps said three other things, and
+# each of these is one of them. Read on a catalogue VALUE only, so a comment
+# that discusses the agent is not a finding. "the background agent" is a
+# different thing and stays.
+VALUE = re.compile(r'^\s*"[^"]+":\s*"(.*)"\s*,?\s*$')
+HELPER_NAMES = [
+    (re.compile(r"\bAsk Arlen\b|\bArlen (fragen|bitten)\b"), "Arlen is the system, not the helper"),
+    (re.compile(r"\b[Tt]he (?!background )(agent|assistant)\b"), "the helper is \"your assistant\""),
+    (re.compile(r"\b([Dd]e[rnms]|beim|im) (Agent|Assistent)(en)?\b"), "the helper is \"dein Assistent\""),
+    (re.compile(r"\b[Yy]our Assistant\b|\b[Yy]our \{\$(name|assistant|companion)\b"), "lower case, and a name replaces the whole phrase"),
+]
+
 
 def catalogues() -> list[pathlib.Path]:
     """Every message catalogue under ROOT, the kit's included.
@@ -92,6 +105,11 @@ def findings(path: pathlib.Path) -> list[str]:
             found.append(f"{where}: a middot used as a separator. Use a comma or a new sentence.\n    {body}")
         if PRODUCT_NAME.search(line):
             found.append(f"{where}: the product is called Arlen, never \"Arlen OS\".\n    {body}")
+        value = VALUE.match(line)
+        if value:
+            for pattern, why in HELPER_NAMES:
+                if pattern.search(value.group(1)):
+                    found.append(f"{where}: {why} (design-system.md 6.16).\n    {body}")
     return found
 
 
@@ -105,7 +123,7 @@ def main() -> int:
     for f in bad:
         print(f)
     if bad:
-        print(f"\n{len(bad)} banned character(s) across {len(files)} catalogues")
+        print(f"\n{len(bad)} finding(s) across {len(files)} catalogues")
         return 1
     print(f"check-copy-characters: {len(files)} catalogues clean")
     return 0

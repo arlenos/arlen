@@ -85,19 +85,23 @@ function parseCeiling(json: string): Ceiling | null {
 
 // The AI principals read as actors; first-party apps get friendly names;
 // unknown ids pass through so nothing is silently mislabeled.
+const AI_PRINCIPAL_KEYS: Record<string, string> = {
+  "org.arlen.AI1": "s.priv.assistant",
+  "ai-daemon": "s.priv.assistant",
+  "org.arlen.AIAgent1": "s.priv.backgroundAgent",
+  "ai-agent": "s.priv.backgroundAgent",
+};
+
 const PRINCIPAL_LABELS: Record<string, string> = {
-  "org.arlen.AI1": "The assistant",
-  "ai-daemon": "The assistant",
-  "org.arlen.AIAgent1": "The background agent",
-  "ai-agent": "The background agent",
   "org.arlen.files": "Files",
   "org.arlen.terminal": "Terminal",
   "org.arlen.settings": "Settings",
 };
 
 /// A plain name for a principal; unknown ids pass through unchanged.
-export function principalLabel(appId: string): string {
-  return PRINCIPAL_LABELS[appId] ?? appId;
+export function principalLabel(t: Translate, appId: string): string {
+  const key = AI_PRINCIPAL_KEYS[appId];
+  return key ? t(key) : (PRINCIPAL_LABELS[appId] ?? appId);
 }
 
 // The AI principals are shown in their own group at the top: the assistant is
@@ -591,7 +595,7 @@ export function byApp(t: Translate, loc: string, list: GrantView[]): Principal[]
     if (!p) {
       p = {
         appId: g.app_id,
-        label: principalLabel(g.app_id),
+        label: principalLabel(t, g.app_id),
         assistant: isAssistant(g.app_id),
         identityVerified: g.identity_verified,
         lines: [],

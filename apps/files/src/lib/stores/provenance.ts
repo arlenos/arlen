@@ -135,7 +135,7 @@ const FIXTURES: Record<string, ProvenanceChain> = {
     steps: [
       {
         origin: "model",
-        actor: "the assistant",
+        actor: "",
         when_ms: SAMPLE_NOW - 10 * 60_000,
         fidelity: "resolved",
       },

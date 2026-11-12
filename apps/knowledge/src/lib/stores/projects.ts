@@ -9,7 +9,8 @@
 /// coder seam afterwards. Under vite the
 /// fixture stands in, with a genuinely different past state so the time
 /// travel shows real change, and `projectsMocked` says so.
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
+import { t } from "$lib/i18n/messages";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { BrowserAdapter, FileEntry } from "@arlen/ui-kit/components/browser";
@@ -51,6 +52,10 @@ interface ProjectFixture {
   pastMembers?: Record<string, string[]>;
 }
 
+/// Stands for the one example leaf that names the assistant. Its words are
+/// read from the catalogue when the example is listed.
+const TAGGED_BY_ASSISTANT = "k.sample.taggedByAssistant";
+
 const PROJECTS: ProjectFixture[] = [
   {
     name: "Arlen OS",
@@ -68,7 +73,7 @@ const PROJECTS: ProjectFixture[] = [
     name: "Thesis",
     detected: daysAgo(90),
     members: {
-      "chapter-3.md": ["edited in Text editor", "tagged by the assistant", "captured from activity"],
+      "chapter-3.md": ["edited in Text editor", TAGGED_BY_ASSISTANT, "captured from activity"],
       "Attention Is All You Need.pdf": ["imported by the Zotero bridge", "opened in Files"],
       "notes.md": ["edited in Text editor", "captured from activity"],
     },
@@ -111,7 +116,10 @@ function fixtureList(path: string, at: number | null): FileEntry[] {
     return Object.keys(members).map((m) => entry(m, "directory", project.detected));
   }
   const leaves = members[segs[1]] ?? [];
-  return leaves.map((l) => entry(l, "file", project.detected));
+  const say = get(t);
+  return leaves.map((l) =>
+    entry(l === TAGGED_BY_ASSISTANT ? say(l) : l, "file", project.detected),
+  );
 }
 
 let currentAsOf: number | null = null;

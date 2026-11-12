@@ -102,6 +102,21 @@ STORE_SET = re.compile(r"\b(?:" + NAME + r')\.set\(\s*"((?:[^"\\]|\\.){8,})"', r
 #: keys stay quiet.
 FIELD = re.compile(r"\b(?:" + NAME + r')\s*:\s*"((?:[^"\\]|\\.){8,})"', re.I)
 
+#: THE HELPER'S NAME, WRITTEN IN PLACE. Six of these stood outside every catalogue
+#: until 12 November: `"ai-daemon": "The assistant"` in a map of principal labels,
+#: `principal: "The assistant"` in a fixture, `actor:` and `subject:` in sample
+#: data. Each slipped past the patterns above twice over: two words where `prose`
+#: wants three, under a key (`"ai-daemon"`, `principal`, `actor`) that does not
+#: read as user-facing. So the name itself is the pattern. A literal of at most
+#: five words that names the helper is a label, wherever it is assigned; a longer
+#: one is sample prose and is left to the rules above.
+HELPER = re.compile(
+    r'"((?:[^"\\]|\\.)*\b(?:(?:[Yy]our|[Tt]he) assistant|[Tt]he background agent'
+    r'|[Dd]ein(?:em|en)? Assistent(?:en)?|[Dd]e[rnm] Hintergrund-Agent(?:en)?)\b(?:[^"\\]|\\.)*)"'
+)
+
+BLOCK_COMMENT = re.compile(r"<!--.*?-->|/\*.*?\*/", re.S)
+
 #: `$props()` destructuring, whose defaults are the kit's and not this check's.
 PROPS = re.compile(r"let\s*\{.*?\}\s*(?::[^=]*)?=\s*\$props\(\)", re.S)
 
@@ -168,6 +183,7 @@ def scan(path: Path) -> list[tuple[int, str]]:
     if FOREIGN.search(text):
         return []
     skip = [m.span() for m in PROPS.finditer(text)]
+    remarks = [m.span() for m in BLOCK_COMMENT.finditer(text)]
     found: list[tuple[int, str]] = []
     offset = 0
     for number, line in enumerate(text.splitlines(True), 1):
@@ -184,6 +200,14 @@ def scan(path: Path) -> list[tuple[int, str]]:
                 continue
             seen.add(value)
             found.append((number, value))
+        # A quoted name inside a block comment is somebody discussing it.
+        if any(a <= start < b for a, b in remarks):
+            continue
+        for match in HELPER.finditer(line):
+            value = match.group(1)
+            if value not in seen and len(value.split()) <= 5:
+                seen.add(value)
+                found.append((number, value))
     return found
 
 

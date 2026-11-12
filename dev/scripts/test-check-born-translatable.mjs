@@ -40,6 +40,37 @@ function run(root) {
 console.log("check-born-translatable:");
 
 {
+  // THE HELPER'S NAME under a key that reads as an id: two words, so `prose`
+  // lets it by, and `"ai-daemon"` is no user-facing name. Six of these stood in
+  // the tree until 12 November.
+  const root = tree({
+    "apps/thing/src/lib/who.ts":
+      'const LABELS: Record<string, string> = {\n  "ai-daemon": "The assistant",\n};\nexport const p = { principal: "Your assistant" };\n',
+  });
+  const r = run(root);
+  r.code === 1 && r.out.includes("The assistant") && r.out.includes("Your assistant")
+    ? ok("the helper's name written in place is caught")
+    : bad("the helper's name written in place is caught", `got ${r.code}: ${r.out}`);
+  cleanup(root);
+}
+
+{
+  // A block comment that quotes the name is discussing it, and a long sample
+  // sentence that mentions the helper is not a label.
+  const root = tree({
+    "apps/thing/src/lib/C.svelte":
+      '<!-- it rendered\n     "The assistant" one letter per line -->\n<style>\n  /* so did\n     "the assistant" here */\n</style>\n',
+    "apps/thing/src/lib/d.ts":
+      'export const lines = [["add", "a citizen of the graph, and the assistant is a bounded principal."]];\n',
+  });
+  const r = run(root);
+  r.code === 0
+    ? ok("a quoted name in a block comment and a long sample line are left alone")
+    : bad("a quoted name in a block comment and a long sample line are left alone", `got ${r.code}: ${r.out}`);
+  cleanup(root);
+}
+
+{
   // THE FAULT, as the Waypointer had it: a sentence written into the DOM.
   const root = tree({
     "apps/thing/src/lib/A.svelte":

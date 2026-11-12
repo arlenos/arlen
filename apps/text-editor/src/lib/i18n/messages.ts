@@ -68,7 +68,7 @@ const messages: Catalogs = {
     "te.pv.sample.startedBy": "Started by",
     "te.pv.sample.draftedBy": "A section drafted by",
     "te.pv.sample.you": "you",
-    "te.pv.sample.assistant": "the assistant",
+    "te.pv.sample.assistant": "your assistant",
     "te.pv.sample.process": "a process",
     "te.lens.related": "Related",
     "te.lens.related.empty": "Nothing references this file.",
@@ -82,9 +82,10 @@ const messages: Catalogs = {
     // reader is never left inferring which parts came from the graph.
     "te.lens.sampleSection": "Example section, not this file's real graph neighbourhood.",
     "te.review.undone": "Undone",
-    "te.review.sample": "Example proposal, the assistant has not edited this file.",
+    "te.review.who": "Your assistant",
+    "te.review.sample": "Example proposal, your assistant has not edited this file.",
     "te.demoDoc": "Example document, nothing on this machine has this name.",
-    "te.review.unavailable": "The assistant could not be reached, so there is nothing to review.",
+    "te.review.unavailable": "Your assistant could not be reached, so there is nothing to review.",
     // Written here rather than in the store, where they were English literals
     // with the host's error appended. Each says what is still true afterwards.
     "te.review.notApplied": "That change could not be applied, so the file is unchanged.",
@@ -99,7 +100,7 @@ const messages: Catalogs = {
     "te.review.reject": "Reject",
     "te.review.accept": "Accept",
     "te.review.undo": "Undo",
-    "te.review.foot": "Every change is logged, and you can undo any of it. Turn the assistant off in Settings.",
+    "te.review.foot": "Every change is logged, and you can undo any of it. Turn your assistant off in Settings.",
   },
   de: {
     "te.app.title": "Texteditor",
@@ -150,7 +151,7 @@ const messages: Catalogs = {
     "te.pv.sample.startedBy": "Begonnen von",
     "te.pv.sample.draftedBy": "Ein Abschnitt entworfen von",
     "te.pv.sample.you": "dir",
-    "te.pv.sample.assistant": "der Assistenz",
+    "te.pv.sample.assistant": "deinem Assistenten",
     "te.pv.sample.process": "einem Prozess",
     "te.lens.related": "Verwandt",
     "te.lens.related.empty": "Nichts verweist auf diese Datei.",
@@ -162,9 +163,10 @@ const messages: Catalogs = {
     "te.lens.sample.asOf": "Der gewählte Zeitpunkt gilt dafür nicht.",
     "te.lens.sampleSection": "Beispielabschnitt, nicht die echte Graph-Nachbarschaft dieser Datei.",
     "te.review.undone": "Rückgängig gemacht",
+    "te.review.who": "Dein Assistent",
     "te.review.sample": "Beispielvorschlag, die Assistenz hat diese Datei nicht bearbeitet.",
     "te.demoDoc": "Beispieldokument, auf dieser Maschine gibt es nichts mit diesem Namen.",
-    "te.review.unavailable": "Der Assistent war nicht erreichbar, es gibt also nichts zu pr\u00fcfen.",
+    "te.review.unavailable": "Dein Assistent war nicht erreichbar, es gibt also nichts zu pr\u00fcfen.",
     "te.review.notApplied": "Diese \u00c4nderung lie\u00df sich nicht anwenden, die Datei ist also unver\u00e4ndert.",
     "te.review.notRejected": "Diese \u00c4nderung lie\u00df sich nicht verwerfen, sie wartet also weiter.",
     "te.review.notUndone": "Diese \u00c4nderung lie\u00df sich nicht r\u00fcckg\u00e4ngig machen.",
@@ -177,7 +179,7 @@ const messages: Catalogs = {
     "te.review.reject": "Ablehnen",
     "te.review.accept": "Übernehmen",
     "te.review.undo": "Rückgängig",
-    "te.review.foot": "Jede Änderung wird protokolliert, und du kannst alles rückgängig machen. Schalte den Assistenten in den Einstellungen aus.",
+    "te.review.foot": "Jede Änderung wird protokolliert, und du kannst alles rückgängig machen. Schalte deinen Assistenten in den Einstellungen aus.",
   },
 };
 

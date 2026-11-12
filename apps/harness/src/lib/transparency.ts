@@ -9,6 +9,7 @@
 /// surface never renders an unmeasured zero as "never": until a feed
 /// exists it says "not measured yet."
 import { invoke } from "@tauri-apps/api/core";
+import type { Translate } from "@arlen/ui-kit/i18n";
 import { writable } from "svelte/store";
 
 /// One capability grant, mirroring `GrantView` in `sdk/os-sdk/src/graph.rs`
@@ -99,17 +100,18 @@ export async function readWorkingSet(): Promise<WorkingSet | null> {
 
 /// The two AI principals in plain words. The query assistant and the
 /// autonomous background agent read as two different actors to a person.
-const PRINCIPAL_LABELS: Record<string, string> = {
-  "ai-daemon": "The assistant",
-  "org.arlen.AI1": "The assistant",
-  "ai-agent": "The background agent",
-  "org.arlen.AIAgent1": "The background agent",
+const PRINCIPAL_KEYS: Record<string, string> = {
+  "ai-daemon": "h.who.assistant",
+  "org.arlen.AI1": "h.who.assistant",
+  "ai-agent": "h.who.backgroundAgent",
+  "org.arlen.AIAgent1": "h.who.backgroundAgent",
 };
 
 /// A plain name for an AI principal; unknown ids pass through so nothing
 /// is silently mislabeled.
-export function principalLabel(appId: string): string {
-  return PRINCIPAL_LABELS[appId] ?? appId;
+export function principalLabel(t: Translate, appId: string): string {
+  const key = PRINCIPAL_KEYS[appId];
+  return key ? t(key) : appId;
 }
 
 /// Plain plurals for the KG entity types a grant can reach. Unknown types

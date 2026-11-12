@@ -38,7 +38,7 @@
     const active = (grants ?? []).filter((g) => !g.revoked && !g.superseded);
     const byApp = new Map<string, { label: string; reach: string[] }>();
     for (const g of active) {
-      const entry = byApp.get(g.app_id) ?? { label: principalLabel(g.app_id), reach: [] };
+      const entry = byApp.get(g.app_id) ?? { label: principalLabel($t, g.app_id), reach: [] };
       for (const r of g.reach) if (!entry.reach.includes(r)) entry.reach.push(r);
       byApp.set(g.app_id, entry);
     }

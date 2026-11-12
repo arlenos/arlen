@@ -123,6 +123,28 @@ console.log("copy characters:");
   check("the kit's own catalogue is scanned", r.code === 1, r.out.trim().split("\n")[0]);
 }
 
+// What the helper is called (design-system.md 6.16). One case per thing an app
+// actually said before the ruling, in both languages.
+for (const [name, line] of [
+  ["\"Ask Arlen\"", `"t.fault": "Ask Arlen to find something",`],
+  ["\"the agent\"", `"t.fault": "Ask the agent about this block",`],
+  ["\"The assistant\"", `"t.fault": "The assistant did not open.",`],
+  ["the German article form", `"t.fault": "Den Agenten fragen",`],
+  ["a capitalised \"Your Assistant\"", `"t.fault": "Ask Your Assistant",`],
+  ["a possessive in front of the name", `"t.fault": "Ask your {$name}",`],
+]) {
+  const r = gateOver(line);
+  check(`${name} is caught`, r.code === 1 && r.out.includes("6.16"), r.out.trim().split("\n")[0]);
+}
+{
+  const r = gateOver(`"t.fine": "Ask your assistant, or the background agent",`);
+  check("\"your assistant\" and the background agent are left alone", r.code === 0, r.out.trim().split("\n")[0]);
+}
+{
+  const r = gateOver(`"t.fine": "your {$noun}",\n    // the agent is discussed in this comment`);
+  check("another possessive and a comment are left alone", r.code === 0, r.out.trim().split("\n")[0]);
+}
+
 // The deliberate non-bans. These are what keep the gate credible.
 {
   const r = gateOver(`"t.fine": "Open with…",`);
@@ -134,4 +156,4 @@ console.log("copy characters:");
 }
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
-console.log("the gate catches an m-dash, a middot separator and the wrong product name, and stays quiet on an ellipsis");
+console.log("the gate catches an m-dash, a middot separator, the wrong product name and the wrong name for the helper, and stays quiet on an ellipsis");

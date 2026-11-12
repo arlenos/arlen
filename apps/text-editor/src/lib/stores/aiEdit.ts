@@ -10,8 +10,9 @@
 /// + per-hunk apply/undo) is a coder seam behind pi's executor-live; under vite the
 /// store serves a fixture proposal.
 
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { t } from "$lib/i18n/messages";
 import { tauriAvailable } from "$lib/tauri";
 import type { DiffLine } from "@arlen/ui-kit/components/diff";
 
@@ -55,8 +56,9 @@ function hunk(
   };
 }
 
-const FIXTURE: AiEditProposal = {
-  principal: "The assistant",
+/// The example proposal, less the name of who proposes it: that is read from
+/// the catalogue when the example is shown.
+const FIXTURE: Omit<AiEditProposal, "principal"> = {
   scope: "Edit this file",
   prompt: FIXTURE_PROMPT,
   file: "the-kg-lens.md",
@@ -112,7 +114,11 @@ export async function proposeEdit(prompt: string): Promise<void> {
     unavailable.set(false);
   } catch {
     if (!tauriAvailable) {
-      proposal.set({ ...FIXTURE, prompt: prompt || FIXTURE_PROMPT });
+      proposal.set({
+        ...FIXTURE,
+        principal: get(t)("te.review.who"),
+        prompt: prompt || FIXTURE_PROMPT,
+      });
       mocked.set(true);
       unavailable.set(false);
       return;

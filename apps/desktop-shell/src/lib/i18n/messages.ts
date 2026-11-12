@@ -399,7 +399,7 @@ const messages: Catalogs = {
     // Waypointer. In the footer hints the leading sigil is a key the user actually
     // types (">", "#", "?", "p:", "Tab") and must survive translation unchanged;
     // only the word after it describes what the key does.
-    "sh.wp.agent": "Agent",
+    "sh.wp.agent": "Assistant",
     // The launcher's section headings, and the two applet tooltips beside them.
     // Every one was a component prop passed in markup, which the born-translatable
     // lint could not read until 23 August.
@@ -421,7 +421,7 @@ const messages: Catalogs = {
     // The cause travels verbatim as {$why}: the sentence is the reader's, the
     // cause is whatever the system said, and a translated system error stops
     // matching anything anyone can look up.
-    "sh.toast.assistantDidNotOpen": "The assistant did not open. {$why}",
+    "sh.toast.assistantDidNotOpen": "Your assistant did not open. {$why}",
     "sh.toast.commandDidNotRun": "The command did not run. {$why}",
     "sh.toast.launcherClosed": "The launcher did not open.",
     "sh.toast.windowNotRaised": "That window did not come forward.",
@@ -473,14 +473,15 @@ const messages: Catalogs = {
     // and the born-translatable lint could not read until it learned backticks.
     "sh.aria.clock": "Clock: {$weekday} {$time}",
     "sh.aria.project": "Project: {$name}. Right-click for options",
-    "sh.aria.sharing": "Your screen is being shared with {$app}. Click to stop.",
+    "sh.aria.sharing": "{$app} is capturing your screen. Click to stop.",
+    "sh.aria.sharingUnnamed": "Your screen is being captured. Click to stop.",
     "sh.aria.window": "{$window} on workspace {$n}",
     "sh.aria.windowMinimized": "Minimized: {$window} on workspace {$n}",
     "sh.wp.procDetail": "PID {$pid}, {$size}",
     "sh.wp.exitFocus": "Exit Focus: {$name}",
     "sh.ws.numbered": "Workspace {$n}",
     "sh.tip.recentActions": "Recent actions",
-    "sh.wp.askPlaceholder": "Ask the agent\u2026",
+    "sh.wp.askPlaceholder": "Ask your assistant\u2026",
     "sh.wp.searchPlaceholder": "Search\u2026",
     "sh.wp.noResults": "No results found.",
     "sh.wp.errCopy": "That could not be copied.",
@@ -504,12 +505,12 @@ const messages: Catalogs = {
     "sh.wp.manualHint": "Open the manual page.",
     "sh.wp.typeCommand": "Type a command\u2026",
     "sh.wp.typeTopic": "Type a topic\u2026",
-    "sh.wp.agentUnreachable": "Can't reach the assistant right now.",
+    "sh.wp.agentUnreachable": "Can't reach your assistant right now.",
     "sh.wp.agentOff": "AI is off.",
     "sh.wp.hintManual": "# manual",
     "sh.wp.hintWeb": "? web search",
     "sh.wp.hintProjects": "p: projects",
-    "sh.wp.hintAgent": "Tab ask the agent",
+    "sh.wp.hintAgent": "Tab ask your assistant",
     "sh.wp.qaFailed": "{$action} did not happen.",
 
     // User row and power flyout
@@ -550,11 +551,11 @@ const messages: Catalogs = {
     "sh.mods.errorInfo": ".input {$count :number}\n.match $count\none {{{$count} error | Last: {$last}}}\n*   {{{$count} errors | Last: {$last}}}",
 
     // Waypointer ask pane. The leading key names are typed, not translated.
-    "sh.ask.unreachable": "The agent isn't reachable right now.",
+    "sh.ask.unreachable": "Your assistant isn't reachable right now.",
     "sh.ask.escBackToSearch": "Esc back to search",
     "sh.ask.enterAsk": "Enter ask",
     "sh.ask.enterFollowUp": "Enter follow-up",
-    "sh.ask.ctrlJContinue": "Ctrl+J continue in agent",
+    "sh.ask.ctrlJContinue": "Ctrl+J continue with your assistant",
     "sh.ask.escBack": "Esc back",
 
     // Clipboard-history popover
@@ -574,7 +575,7 @@ const messages: Catalogs = {
 
     // Undo popover
     "sh.undo.title": "Recent actions",
-    "sh.undo.by.agent": "Agent",
+    "sh.undo.by.agent": "Assistant",
     "sh.undo.by.files": "Files",
     "sh.undo.by.terminal": "Terminal",
     "sh.undo.by.settings": "Settings",
@@ -715,6 +716,7 @@ const messages: Catalogs = {
     "sh.badge.nightLight": "Night Light on. Click to disable.",
     "sh.badge.recording": "Recording in progress. Click to stop.",
     "sh.badge.dictating": "Dictating",
+    "sh.badge.capturing": "Screen",
     "sh.badge.dictatingInto": "Dictating into {$target}. Click to stop.",
 
     // Tray, top bar, voice and workspace surfaces
@@ -1107,7 +1109,7 @@ const messages: Catalogs = {
     "sh.layout.smartGaps": "Kluge L\u00fccken",
     "sh.layout.titleBars": "Titelleisten",
 
-    "sh.wp.agent": "Agent",
+    "sh.wp.agent": "Assistent",
     "sh.wp.grp.system": "System",
     "sh.wp.grp.quickActions": "Schnellaktionen",
     "sh.wp.grp.recentApps": "Zuletzt benutzte Apps",
@@ -1117,7 +1119,7 @@ const messages: Catalogs = {
     "sh.wp.grp.applications": "Programme",
     "sh.wp.grp.extensions": "Erweiterungen",
     "sh.wp.grp.appActions": "App-Aktionen",
-    "sh.toast.assistantDidNotOpen": "Der Assistent hat nicht geöffnet. {$why}",
+    "sh.toast.assistantDidNotOpen": "Dein Assistent hat nicht geöffnet. {$why}",
     "sh.toast.commandDidNotRun": "Der Befehl ist nicht gelaufen. {$why}",
     "sh.toast.launcherClosed": "Der Starter ging nicht auf.",
     "sh.toast.windowNotRaised": "Das Fenster kam nicht in den Vordergrund.",
@@ -1158,14 +1160,15 @@ const messages: Catalogs = {
     "sh.consent.who.installd": "Software-Installation",
     "sh.aria.clock": "Uhr: {$weekday} {$time}",
     "sh.aria.project": "Projekt: {$name}. Rechtsklick für Optionen",
-    "sh.aria.sharing": "Dein Bildschirm wird mit {$app} geteilt. Zum Beenden klicken.",
+    "sh.aria.sharing": "{$app} nimmt deinen Bildschirm auf. Zum Beenden klicken.",
+    "sh.aria.sharingUnnamed": "Dein Bildschirm wird aufgenommen. Zum Beenden klicken.",
     "sh.aria.window": "{$window} auf Arbeitsfläche {$n}",
     "sh.aria.windowMinimized": "Minimiert: {$window} auf Arbeitsfläche {$n}",
     "sh.wp.procDetail": "PID {$pid}, {$size}",
     "sh.wp.exitFocus": "Fokus verlassen: {$name}",
     "sh.ws.numbered": "Arbeitsfläche {$n}",
     "sh.tip.recentActions": "Letzte Aktionen",
-    "sh.wp.askPlaceholder": "Den Agenten fragen\u2026",
+    "sh.wp.askPlaceholder": "Deinen Assistenten fragen\u2026",
     "sh.wp.searchPlaceholder": "Suchen\u2026",
     "sh.wp.noResults": "Keine Treffer.",
     "sh.wp.errCopy": "Das ließ sich nicht kopieren.",
@@ -1194,7 +1197,7 @@ const messages: Catalogs = {
     "sh.wp.hintManual": "# Handbuch",
     "sh.wp.hintWeb": "? Websuche",
     "sh.wp.hintProjects": "p: Projekte",
-    "sh.wp.hintAgent": "Tab fragt den Agenten",
+    "sh.wp.hintAgent": "Tab fragt deinen Assistenten",
     "sh.wp.qaFailed": "{$action} ist nicht passiert.",
 
     "sh.user.settings": "Einstellungen",
@@ -1228,11 +1231,11 @@ const messages: Catalogs = {
     "sh.mods.autoDisabled": ".input {$count :number}\n.match $count\none {{Automatisch deaktiviert: {$count} Fehler. Zuletzt: {$last}}}\n*   {{Automatisch deaktiviert: {$count} Fehler. Zuletzt: {$last}}}",
     "sh.mods.errorInfo": ".input {$count :number}\n.match $count\none {{{$count} Fehler | Zuletzt: {$last}}}\n*   {{{$count} Fehler | Zuletzt: {$last}}}",
 
-    "sh.ask.unreachable": "Der Agent ist gerade nicht erreichbar.",
+    "sh.ask.unreachable": "Dein Assistent ist gerade nicht erreichbar.",
     "sh.ask.escBackToSearch": "Esc zur\u00fcck zur Suche",
     "sh.ask.enterAsk": "Enter fragen",
     "sh.ask.enterFollowUp": "Enter nachfragen",
-    "sh.ask.ctrlJContinue": "Strg+J im Agenten fortsetzen",
+    "sh.ask.ctrlJContinue": "Strg+J mit deinem Assistenten fortsetzen",
     "sh.ask.escBack": "Esc zur\u00fcck",
 
     "sh.clip.title": "Zwischenablage",
@@ -1250,7 +1253,7 @@ const messages: Catalogs = {
     "sh.clip.clearConfirm": "Zum Löschen erneut klicken",
 
     "sh.undo.title": "Letzte Aktionen",
-    "sh.undo.by.agent": "Agent",
+    "sh.undo.by.agent": "Assistent",
     "sh.undo.by.files": "Dateien",
     "sh.undo.by.terminal": "Terminal",
     "sh.undo.by.settings": "Einstellungen",
@@ -1369,6 +1372,7 @@ const messages: Catalogs = {
     "sh.badge.nightLight": "Nachtlicht ist an. Zum Abschalten klicken.",
     "sh.badge.recording": "Aufnahme l\u00e4uft. Zum Stoppen klicken.",
     "sh.badge.dictating": "Diktiert",
+    "sh.badge.capturing": "Bildschirm",
     "sh.badge.dictatingInto": "Diktiert in {$target}. Zum Stoppen klicken.",
 
     "sh.tray.title": "Hintergrund-Apps",

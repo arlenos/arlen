@@ -9,6 +9,8 @@
 /// an unknown node gets ONLY its origin line - honestly thin, never invented
 /// rich.
 import { invoke } from "@tauri-apps/api/core";
+import { get } from "svelte/store";
+import { t } from "$lib/i18n/messages";
 import { tauriAvailable } from "$lib/tauri";
 
 /// One lineage hop, already phrased: quiet verb, emphasized subject, moment.
@@ -25,6 +27,10 @@ const daysAgo = (d: number, h = 12): number => {
   return Math.floor(dd.getTime() / 1000) - d * 86400;
 };
 
+/// Stands for the assistant in the example lineage. Its name is read from the
+/// catalogue when the example is shown.
+const ASSISTANT = "k.sample.assistant";
+
 const FIXTURE: Record<string, ProvenanceHop[]> = {
   "compositor.toml": [
     { verb: "created in", subject: "Text editor", when: daysAgo(160, 10) },
@@ -36,7 +42,7 @@ const FIXTURE: Record<string, ProvenanceHop[]> = {
   "chapter-3.md": [
     { verb: "created in", subject: "Text editor", when: daysAgo(40, 15) },
     { verb: "part of", subject: "Thesis", when: daysAgo(40, 15) },
-    { verb: "tagged by", subject: "the assistant", when: daysAgo(0, 10) },
+    { verb: "tagged by", subject: ASSISTANT, when: daysAgo(0, 10) },
     { verb: "edited in", subject: "Text editor", when: daysAgo(1, 11) },
   ],
   "Attention Is All You Need": [
@@ -79,7 +85,10 @@ export async function provenanceFor(name: string): Promise<ProvenanceHop[]> {
     return await invoke<ProvenanceHop[]>("knowledge_provenance", { node: name });
   } catch (e) {
     if (!tauriAvailable) {
-      return FIXTURE[keyFor(name)] ?? [];
+      const say = get(t);
+      return (FIXTURE[keyFor(name)] ?? []).map((h) =>
+        h.subject === ASSISTANT ? { ...h, subject: say(ASSISTANT) } : h,
+      );
     }
     throw e;
   }
