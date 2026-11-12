@@ -98,7 +98,7 @@
      that say less. The floor fits a short name; a long one still folds. */
   .hn-crumb {
     flex: 1;
-    min-width: 3rem;
+    min-width: 3.25rem;
     margin-inline-start: 4px;
   }
   .hn-asof {

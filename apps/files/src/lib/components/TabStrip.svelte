@@ -14,6 +14,31 @@
     return name ?? "/";
   };
 
+  /// The strip scrolls once the tabs are down to their floor, and the open tab
+  /// is brought into view whenever it changes or the strip is resized: with
+  /// five tabs at 720 px the open one was past the edge and nothing showed
+  /// which tab the pane below belonged to.
+  let strip = $state<HTMLElement | null>(null);
+  function showOpenTab() {
+    strip?.querySelector(".ts-tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+  $effect(() => {
+    void $activeTabId;
+    void $tabs.length;
+    if (!strip) return;
+    requestAnimationFrame(showOpenTab);
+    const ro = new ResizeObserver(showOpenTab);
+    ro.observe(strip);
+    return () => ro.disconnect();
+  });
+
+  /// A wheel has one axis and the strip has the other.
+  function wheel(e: WheelEvent) {
+    if (!strip || e.deltaX !== 0 || strip.scrollWidth <= strip.clientWidth) return;
+    strip.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }
+
   // Paths change as tabs navigate; the labels record is rebuilt from
   // a local accumulator so the effect never reads what it writes.
   let labels = $state<Record<number, string>>({});
@@ -52,7 +77,7 @@
      one. Same precedent as `MillerColumns` in the kit - a role that promises a
      structure and delivers none is worse than a modest one that is true. -->
 {#if $tabs.length > 1}
-  <div class="tab-strip" role="group" aria-label={$t("f.tab.strip")}>
+  <div class="tab-strip" role="group" aria-label={$t("f.tab.strip")} bind:this={strip} onwheel={wheel}>
     {#each $tabs as tab (tab.id)}
       <div class="ts-tab" class:active={tab.id === $activeTabId}>
         <button
@@ -80,7 +105,9 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
   }
 
   /* Every tab is a quiet pill: next to the breadcrumb in the merged
@@ -92,6 +119,7 @@
        item is as wide as its label at least, and the strip cut the last tab
        mid-letter and took its close button with it. The label ellipsizes. */
     min-width: 3.5rem;
+    flex-shrink: 1;
     height: var(--height-control, 30px);
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
@@ -101,7 +129,10 @@
   .ts-tab:hover {
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
+  /* The open tab keeps its name whole; the others give way and the strip
+     scrolls. */
   .ts-tab.active {
+    flex-shrink: 0;
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
   }
