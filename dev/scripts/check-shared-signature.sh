@@ -103,6 +103,8 @@ fi
 # themselves. A manifest names the dependency by relative path, so the crate's
 # directory name is what to look for - `sdk/permissions"` matches
 # `path = "../../sdk/permissions"` and not `sdk/permissions-extra`.
+# A copy of the tree under `.claude/` is not this tree: checking it compiled every
+# dependent twice and said nothing about the commit.
 declare -A to_check=()
 for crate in "${!shared[@]}"; do
     to_check["$crate"]=1
@@ -110,7 +112,7 @@ for crate in "${!shared[@]}"; do
         [ -n "$manifest" ] || continue
         to_check["$(dirname "$manifest")"]=1
     done < <(grep -rl "$crate\"" --include=Cargo.toml . 2>/dev/null \
-             | grep -vE '/target/|/mkosi\.builddir/|/node_modules/' | sed 's|^\./||')
+             | grep -vE '/target/|/mkosi\.builddir/|/node_modules/|/\.claude/' | sed 's|^\./||')
 
     # A manifest is not the only way to depend on a shared crate, and the one it
     # misses cost a day on 8 September: a WASM guest reaches the WIT with
@@ -135,7 +137,7 @@ for crate in "${!shared[@]}"; do
             dir=$(dirname "$dir")
         done
     done < <(grep -rl "$crate" --include='*.rs' . 2>/dev/null \
-             | grep -vE '/target/|/mkosi\.builddir/|/node_modules/' | sed 's|^\./||')
+             | grep -vE '/target/|/mkosi\.builddir/|/node_modules/|/\.claude/' | sed 's|^\./||')
 done
 
 if [ -n "$list_only" ]; then
