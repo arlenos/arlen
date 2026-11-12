@@ -104,12 +104,12 @@ SURFACES=(
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]|/?locale=de@@knowledge-refuses-pause|/?locale=de@@knowledge-refuses-search-save"
   "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick|/?locale=de@@system-monitor-refuses-stop"
   "text-editor /|/::.trigger|/?locale=de@@text-editor-refuses-save|/?locale=de@@text-editor-lens-part-sample"
-  "viewers /|/?demo=image|/?demo=video|/?locale=de@@viewers-refuses-decode"
+  "viewers /|/?demo=image|/?demo=video|/?locale=de@@viewers-refuses-decode|/?locale=de@@viewers-refuses-chooser"
   "screenshot /|/::.thumb-btn|/?locale=de@@screenshot-refuses-save"
   "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest|/?locale=de@@greeter-refuses-login"
-  "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash|/?locale=de@@mail-refuses-archive|/?locale=de@@mail-refuses-draft|/?locale=de@@mail-refuses-attachment-save"
+  "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash|/?locale=de@@mail-refuses-archive|/?locale=de@@mail-refuses-draft|/?locale=de@@mail-refuses-attachment-save|/?locale=de@@mail-refuses-chooser"
   "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event|/?locale=de@@calendar-refuses-recolour"
-  "pdf /"
+  "pdf /|/?locale=de@@pdf-refuses-chooser"
   # The three request shapes worth their own reading: a standard grant, the
   # permanent delete with its hold-to-confirm, and the external send with a
   # preview of what would leave the machine.

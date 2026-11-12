@@ -22,6 +22,9 @@
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { kt } from "@arlen/ui-kit/i18n/messages.kit";
+  import { pickOneFile } from "@arlen/ui-kit/pick-file";
   import { ChevronLeft, ChevronRight, FileText, Minus, Plus, PanelLeft, Scan, X } from "@lucide/svelte";
   import { tauriAvailable } from "$lib/tauri";
   import { t } from "$lib/i18n/messages";
@@ -33,6 +36,7 @@
     launchFailure,
     launchedPath,
     openLaunched,
+    openPath,
     renderer,
     search,
     type SearchOutcome,
@@ -246,6 +250,23 @@
     void publishPresence($doc?.path ?? null, $doc?.pages ?? 0);
   });
 
+  /// The chooser could not be shown. A closed chooser is not this: closing it
+  /// is an answer, and the empty window stands as it was.
+  let chooserFailed = $state(false);
+
+  async function choose(): Promise<void> {
+    chooserFailed = false;
+    let path: string | null;
+    try {
+      path = await pickOneFile([{ name: $t("pdf.kind"), globs: ["*.pdf"] }]);
+    } catch (e) {
+      console.warn("pdf: the file chooser could not be opened", e);
+      chooserFailed = true;
+      return;
+    }
+    if (path) await openPath(path);
+  }
+
   onMount(() => {
     void openLaunched();
     void initAppMenu();
@@ -430,6 +451,12 @@
           <div class="empty">
             <FileText size={28} strokeWidth={1.5} aria-hidden="true" />
             <p class="center-note">{$t("pdf.nothingOpen")}</p>
+            <Button id="pdf-open" variant="outline" size="sm" onclick={() => void choose()}>
+              {$t("pdf.open")}
+            </Button>
+            {#if chooserFailed}
+              <Notice tone="error" text={$kt("k.picker.unavailable")} />
+            {/if}
           </div>
         {:else}
           <!-- A scrolling region that nothing can focus is a document a keyboard

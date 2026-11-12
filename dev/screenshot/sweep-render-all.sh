@@ -112,9 +112,9 @@ SURFACES=(
   # they need no selector - and in a German run the sweep now requires the
   # sentence each one declares, which is what makes the row worth more than a
   # picture.
-  "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash|/@@mail-refuses-archive|/@@mail-refuses-draft|/@@mail-refuses-attachment-save"
+  "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash|/@@mail-refuses-archive|/@@mail-refuses-draft|/@@mail-refuses-attachment-save|/@@mail-refuses-chooser"
   "meetings /|/capture|/meeting/abc|/meeting/abc::#edit-notes|/capture@@meetings-refuses-stop"
-  "pdf /"
+  "pdf /|/@@pdf-refuses-chooser"
   # The landing page is the floating thumbnail, and the app's actual work
   # surface - the annotate stage with its palette, swatches and text tool - is
   # one click behind it (`phase` starts at "thumbnail" and only `onAnnotate`
@@ -136,7 +136,7 @@ SURFACES=(
   "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick|/@@system-monitor-refuses-stop"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/@@terminal-quick-connect|/::#terminal-history-open@@terminal-history-refused"
   "text-editor /|/::.trigger|/@@text-editor-refuses-save|/@@text-editor-lens-part-sample"
-  "viewers /|/?demo=image|/?demo=video|/@@viewers-refuses-decode"
+  "viewers /|/?demo=image|/?demo=video|/@@viewers-refuses-decode|/@@viewers-refuses-chooser"
 )
 
 # An app name that matches nothing sweeps nothing and would otherwise print a

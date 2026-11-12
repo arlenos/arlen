@@ -19,6 +19,7 @@
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { pickOneFile } from "@arlen/ui-kit/pick-file";
   import AudioPlayer from "$lib/components/AudioPlayer.svelte";
   import DetailsPanel, { type Fact } from "$lib/components/DetailsPanel.svelte";
   import ImageViewer from "$lib/components/ImageViewer.svelte";
@@ -264,6 +265,28 @@
   /// path, and `loaded` carries only what the surface renders (a name, a title) -
   /// which is not enough to find what is beside it on disk.
   let currentPath: string | null = $state(null);
+
+  /// The chooser could not be shown. A closed chooser is not this: closing it
+  /// is an answer, and the empty window stands as it was.
+  let chooserFailed = $state(false);
+
+  /// The empty window's one act: ask for a file and show it, by the same road a
+  /// launch takes.
+  async function choose(): Promise<void> {
+    chooserFailed = false;
+    let path: string | null;
+    try {
+      path = await pickOneFile();
+    } catch (e) {
+      console.warn("viewers: the file chooser could not be opened", e);
+      chooserFailed = true;
+      return;
+    }
+    if (!path) return;
+    noFile = false;
+    currentPath = path;
+    await openFile(path);
+  }
 
   /// Load one file into the viewer. Split out of `onMount` so a keypress can do
   /// what the launch does: the two paths must not drift, or arrowing to a picture
@@ -681,7 +704,15 @@
     <div class="winctl">
       <WindowButtons showMaximize={false} />
     </div>
-    {$t("v.nothingOpen")}
+    <div class="nothing">
+      <p>{$t("v.nothingOpen")}</p>
+      <Button id="viewer-open" variant="outline" size="sm" onclick={() => void choose()}>
+        {$t("v.open")}
+      </Button>
+      {#if chooserFailed}
+        <Notice tone="error" text={$kt("k.picker.unavailable")} />
+      {/if}
+    </div>
   </main>
 {:else if framed}
   <main class="frame" style="width:{w}px;height:{h}px">
@@ -801,6 +832,15 @@
     right: 8px;
   }
 
+  .nothing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .nothing p {
+    margin: 0;
+  }
   .err {
     position: relative;
     display: grid;

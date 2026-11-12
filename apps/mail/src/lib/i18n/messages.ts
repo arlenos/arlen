@@ -10,7 +10,9 @@ const messages: Catalogs = {
   en: {
     "ml.app.title": "Mail",
     "ml.nav.aria": "Mailboxes",
-    "ml.nothingOpen": "No message is open. Open a message from Files, or pass one on the command line.",
+    "ml.nothingOpen": "No message is open.",
+    "ml.open": "Open a message…",
+    "ml.kind": "Mail messages",
     // Two named causes rather than whatever the layer below said. `other` stays
     // for a failure the command cannot name, which today means the host itself
     // is absent - a state a person never meets.
@@ -126,7 +128,9 @@ const messages: Catalogs = {
   de: {
     "ml.app.title": "E-Mail",
     "ml.nav.aria": "Postfächer",
-    "ml.nothingOpen": "Keine Nachricht geöffnet. Öffne eine aus Dateien, oder übergib eine auf der Kommandozeile.",
+    "ml.nothingOpen": "Keine Nachricht geöffnet.",
+    "ml.open": "Nachricht öffnen…",
+    "ml.kind": "E-Mail-Nachrichten",
     "ml.failed.launch": "Dieses Fenster konnte nicht herausfinden, welche Nachricht es öffnen sollte.",
     "ml.failed.unreadable": "Diese Datei konnte nicht gelesen werden. {$why}",
     "ml.failed.notAMessage": "Diese Datei ist keine Nachricht. Eine Nachrichtendatei endet meist auf .eml.",

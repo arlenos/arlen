@@ -155,9 +155,15 @@ export async function openLaunched(): Promise<void> {
     return;
   }
   if (!launched) return;
-  launchedPath.set(launched);
+  await openPath(launched);
+}
+
+/// Open the document at `path`, whether the launch named it or the person
+/// chose it. One function so the two ways in cannot come to differ.
+export async function openPath(path: string): Promise<void> {
+  launchedPath.set(path);
   try {
-    doc.set(await invoke<DocumentInfo>("pdf_open", { path: launched }));
+    doc.set(await invoke<DocumentInfo>("pdf_open", { path }));
     failure.set(null);
   } catch (e) {
     failure.set(String(e));

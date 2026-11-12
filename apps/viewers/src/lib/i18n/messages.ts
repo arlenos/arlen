@@ -94,7 +94,8 @@ const messages: Catalogs = {
     "v.whyUnreadable": "It could not be read.",
     "v.whyNoDecoder": "This build has no decoder for that format.",
     "v.whyUnsupportedKind": "This kind of file is not one the viewer shows.",
-    "v.nothingOpen": "No file is open. Open one from Files, or pass one on the command line.",
+    "v.nothingOpen": "No file is open.",
+    "v.open": "Open a file…",
   },
   de: {
     "v.app.title": "Betrachter",
@@ -183,7 +184,8 @@ const messages: Catalogs = {
     "v.whyUnreadable": "Sie konnte nicht gelesen werden.",
     "v.whyNoDecoder": "Dieser Build hat keinen Dekoder für dieses Format.",
     "v.whyUnsupportedKind": "Diese Art von Datei zeigt der Betrachter nicht an.",
-    "v.nothingOpen": "Es ist keine Datei geöffnet. Öffne eine aus Dateien, oder übergib eine auf der Kommandozeile.",
+    "v.nothingOpen": "Es ist keine Datei geöffnet.",
+    "v.open": "Datei öffnen…",
   },
 };
 

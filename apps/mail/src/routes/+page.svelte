@@ -18,6 +18,7 @@
   import { initAppMenu, menuAction } from "$lib/menu";
   import { menuNoteFor, type MenuNote } from "$lib/menuGuard";
   import { kt } from "@arlen/ui-kit/i18n/messages.kit";
+  import { pickOneFile } from "@arlen/ui-kit/pick-file";
   import { displayName, hostWhy, threadKey } from "$lib/wording";
   import {
     SidebarProvider,
@@ -128,43 +129,65 @@
         failure = { problem: "launch" };
         return;
       }
-      if (!launched) return;
-      try {
-        const m = await invoke<Message>("mail_read", { path: launched });
-        openedFile.set(m);
-        fileOpen = true;
-        selected = new Set();
-        failure = null;
-      } catch (e) {
-        // The payload arrives as an OBJECT here, not as a string with JSON
-        // inside it - measured on the wine-manager window, which printed
-        // `[object Object]` until this accepted both shapes. `apps/viewers`
-        // documents the string form and is right about its own case.
-        const named =
-          e && typeof e === "object"
-            ? (e as Record<string, unknown>)
-            : (() => {
-                const raw = String(e);
-                const at = raw.indexOf("{");
-                try {
-                  return at >= 0 ? (JSON.parse(raw.slice(at)) as Record<string, unknown>) : null;
-                } catch {
-                  return null;
-                }
-              })();
-        if (named?.problem === "unreadable")
-          failure = { problem: "unreadable", why: String(named.why ?? "") };
-        else if (named?.problem === "not-a-message") failure = { problem: "not-a-message" };
-        else {
-          // Same rule as the two named cases above: the host's own words name a
-          // command and carry an errno, and they go where whoever debugs this
-          // will read them.
-          console.warn("mail: that message could not be read", e);
-          failure = { problem: "other" };
-        }
-      }
+      if (launched) await openMessageFile(launched);
     })();
   });
+
+  /// Read the message file at `path` into the window, whether the launch named
+  /// it or the person chose it. One function so the two ways in cannot differ.
+  async function openMessageFile(path: string): Promise<void> {
+    try {
+      const m = await invoke<Message>("mail_read", { path });
+      openedFile.set(m);
+      fileOpen = true;
+      selected = new Set();
+      failure = null;
+    } catch (e) {
+      // The payload arrives as an OBJECT here, not as a string with JSON
+      // inside it - measured on the wine-manager window, which printed
+      // `[object Object]` until this accepted both shapes. `apps/viewers`
+      // documents the string form and is right about its own case.
+      const named =
+        e && typeof e === "object"
+          ? (e as Record<string, unknown>)
+          : (() => {
+              const raw = String(e);
+              const at = raw.indexOf("{");
+              try {
+                return at >= 0 ? (JSON.parse(raw.slice(at)) as Record<string, unknown>) : null;
+              } catch {
+                return null;
+              }
+            })();
+      if (named?.problem === "unreadable")
+        failure = { problem: "unreadable", why: String(named.why ?? "") };
+      else if (named?.problem === "not-a-message") failure = { problem: "not-a-message" };
+      else {
+        // Same rule as the two named cases above: the host's own words name a
+        // command and carry an errno, and they go where whoever debugs this
+        // will read them.
+        console.warn("mail: that message could not be read", e);
+        failure = { problem: "other" };
+      }
+    }
+  }
+
+  /// The chooser could not be shown. A closed chooser is not this: closing it
+  /// is an answer, and the empty window stands as it was.
+  let chooserFailed = $state(false);
+
+  async function choose(): Promise<void> {
+    chooserFailed = false;
+    let path: string | null;
+    try {
+      path = await pickOneFile([{ name: $t("ml.kind"), globs: ["*.eml"] }]);
+    } catch (e) {
+      console.warn("mail: the file chooser could not be opened", e);
+      chooserFailed = true;
+      return;
+    }
+    if (path) await openMessageFile(path);
+  }
 
   /// The reading folders thread by subject ACROSS inbox/sent/archive, so your
   /// own reply sits in the conversation it answers. Drafts and trash list
@@ -451,6 +474,15 @@
   );
   const showBulkActions = $derived($mailboxWritable && !composing && !fileOpen && selected.size > 1);
 
+  /// The window holds nothing to read and there is nothing to try again: no
+  /// folders, no load under way. On a real machine that is the machine with no
+  /// mailbox, and a message file is the one thing this window can still show,
+  /// so that is where the offer to open one stands. An unreadable mailbox
+  /// keeps its single button, the retry.
+  const nothingOpen = $derived(
+    $mailboxState !== "loading" && $folders.length === 0 && $mailboxState !== "unreadable",
+  );
+
   /// The sentence for a launch that went wrong, one per named problem.
   const failureText = $derived.by(() => {
     if (!failure) return "";
@@ -689,6 +721,14 @@
               <Button variant="outline" size="sm" onclick={() => void loadMailbox()}>
                 {$t("ml.retry")}
               </Button>
+            {/if}
+            {#if nothingOpen}
+              <Button id="mail-open" variant="outline" size="sm" onclick={() => void choose()}>
+                {$t("ml.open")}
+              </Button>
+              {#if chooserFailed}
+                <Notice tone="error" text={$kt("k.picker.unavailable")} />
+              {/if}
             {/if}
           </div>
         {/if}

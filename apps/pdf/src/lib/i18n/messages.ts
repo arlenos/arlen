@@ -30,7 +30,9 @@ const messages: Catalogs = {
     "pdf.search.failed": "That search did not run. The document is still open.",
     "pdf.search.unsearchable":
       "{$count} pages could not be read, so anything on them is missing from these results.",
-    "pdf.nothingOpen": "No document is open. Open a PDF from Files, or pass one on the command line.",
+    "pdf.nothingOpen": "No document is open.",
+    "pdf.open": "Open a PDF…",
+    "pdf.kind": "PDF documents",
     "pdf.failed": "This document could not be opened.",
     "pdf.notFound": "There is no file at {$path}.",
     "pdf.noPermission": "This account may not read {$path}.",
@@ -81,8 +83,9 @@ const messages: Catalogs = {
     "pdf.search.failed": "Diese Suche wurde nicht ausgeführt. Das Dokument ist weiterhin offen.",
     "pdf.search.unsearchable":
       "{$count} Seiten konnten nicht gelesen werden, deshalb fehlt alles darauf in diesen Ergebnissen.",
-    "pdf.nothingOpen":
-      "Es ist kein Dokument geöffnet. Öffne ein PDF aus Dateien oder übergib eins auf der Kommandozeile.",
+    "pdf.nothingOpen": "Es ist kein Dokument geöffnet.",
+    "pdf.open": "PDF öffnen…",
+    "pdf.kind": "PDF-Dokumente",
     "pdf.failed": "Dieses Dokument konnte nicht geöffnet werden.",
     "pdf.notFound": "Unter {$path} liegt keine Datei.",
     "pdf.noPermission": "Dieses Konto darf {$path} nicht lesen.",
