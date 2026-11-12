@@ -27,6 +27,18 @@
   let naming = $state(false);
   let setName = $state("");
 
+  /// The calendar whose palette is open, or none. Held here so a pick can
+  /// close it: the palette covers the rows below, and a refused pick leaves
+  /// its sentence above the list, where an open palette would sit over it.
+  let paletteFor: string | null = $state(null);
+
+  /// A pick is the palette's whole errand, so it closes on one whether the
+  /// colour is kept or refused.
+  function pick(id: string, color: string): void {
+    paletteFor = null;
+    void setCalendarColor(id, color);
+  }
+
   function commitSet(): void {
     const name = setName.trim();
     if (name) saveSet(name);
@@ -68,7 +80,7 @@
     {#each $calendars as cal (cal.id)}
       {@const hidden = $hiddenCalendars.has(cal.id)}
       <li class="cal-row" class:hidden>
-        <Popover.Root>
+        <Popover.Root open={paletteFor === cal.id} onOpenChange={(open: boolean) => (paletteFor = open ? cal.id : null)}>
           <Popover.Trigger>
             {#snippet child({ props }: { props: Record<string, unknown> })}
               <button
@@ -89,7 +101,7 @@
                   color={c}
                   label={$t(`cal.color.name.${i}`)}
                   selected={c === cal.color}
-                  onclick={() => setCalendarColor(cal.id, c)}
+                  onclick={() => pick(cal.id, c)}
                 />
               {/each}
             </div>
