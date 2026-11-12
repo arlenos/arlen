@@ -618,24 +618,11 @@ async fn promote_file_opened(
     }
     crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await?;
 
-    // Session<->activity edge (KG-richness Thrust 1): link the file to the
-    // focus/activity session it was accessed in, so the graph can answer "which
-    // files did I touch in this session". The Session node is MERGEd (a
-    // window.focused promotion enriches it; here it may be a bare id) so the edge
-    // never dangles. Skipped when the event carries no session (e.g. a raw eBPF
-    // kernel open). The session id is metadata symmetric with the existing
-    // File/ACCESSED_BY promotion - no new hard-exclude surface: a private/
-    // incognito session is excluded upstream before promotion, like every other
-    // event, and Session nodes are already materialised by window.focused.
-    if !session_id.is_empty() {
-        let session_esc = escape_cypher(session_id);
-
-        // File<->file co-access (KG-richness Thrust 1): link this file to the
-        // most-recently-accessed other files in the same session, the strongest
-        // project-inference signal. Bounded to CO_ACCESS_FANOUT peers per
-        // promotion so a long session stays linear, not quadratic.
-        link_co_accessed(graph, &path, &session_esc, timestamp).await?;
-    }
+    // The `ACCESSED_IN` fact above carries two edges: its own, and the
+    // `CO_ACCESSED` edges to the files last opened in the same session, which the
+    // projection derives from it (`link_co_accessed`). Derived there and not
+    // here so a rebuild from the journal writes them too. An event with no
+    // session (a raw eBPF kernel open) gets neither.
 
     // Cross-content links (KG-richness Thrust 3c): if this is a markdown/wiki
     // document, record LINKS_TO edges to the target Files its `[text](path)` /
@@ -702,13 +689,9 @@ const CO_ACCESS_FANOUT: usize = 8;
 /// regardless of which file was accessed first. `last_seen` is refreshed on each
 /// co-access. The peer set is bounded to [`CO_ACCESS_FANOUT`] so the fan-out per
 /// promotion is constant.
-async fn link_co_accessed(
-    graph: &GraphHandle,
-    path: &str,
-    session_esc: &str,
-    timestamp: &i64,
-) -> Result<()> {
+pub(crate) async fn link_co_accessed(graph: &GraphHandle, path: &str, session: &str) -> Result<()> {
     let path_esc = escape_cypher(path);
+    let session_esc = escape_cypher(session);
     // The most-recently-accessed other files in this session (recency proxy for
     // "used close together"). Self is excluded by id.
     let peers = graph
@@ -720,6 +703,20 @@ async fn link_co_accessed(
              LIMIT {CO_ACCESS_FANOUT}"
         ))
         .await?;
+    if peers.rows.is_empty() {
+        return Ok(());
+    }
+    // When this open happened: the stamp the node fact just before this one set.
+    // A file whose stamp a hard delete removed has no access facts left either,
+    // so this is only ever absent on a graph somebody wrote by hand.
+    let stamp = graph
+        .query_rows(format!("MATCH (f:File {{id: '{path_esc}'}}) RETURN f.last_accessed"))
+        .await?
+        .rows
+        .first()
+        .and_then(|r| r.first())
+        .map(|v| v.as_i64())
+        .unwrap_or(0);
 
     for row in &peers.rows {
         let Some(peer) = row.first().map(|v| v.as_str()) else {
@@ -733,7 +730,7 @@ async fn link_co_accessed(
         let (from, to) = if path < peer { (path, peer) } else { (peer, path) };
         graph
             .write(format!(
-                "{} MERGE (a)-[c:CO_ACCESSED]->(b) SET c.last_seen = {timestamp}",
+                "{} MERGE (a)-[c:CO_ACCESSED]->(b) SET c.last_seen = {stamp}",
                 crate::cypher::match_two_nodes("a", "File", from, "b", "File", to)
             ))
             .await?;
@@ -893,7 +890,7 @@ async fn promote_file_written(
     // read in the last minute is named as a source of this write (foo.md ->
     // foo.pdf), record a DERIVED_FROM edge; a weak/unrelated read records nothing.
     // Best-effort: a derivation hiccup never fails the write promotion.
-    if let Err(e) = link_derived_from(graph, &path, &app_id, *timestamp).await {
+    if let Err(e) = link_derived_from(pool, graph, event_id, &path, &app_id, *timestamp).await {
         warn!(path = %path, error = %e, "derivation linking failed (non-fatal)");
     }
 
@@ -924,7 +921,9 @@ const DERIVATION_FANOUT: usize = 32;
 /// carries a `cgroup_id` (`file.written` has none today, unlike `file.opened`).
 /// Idempotent MERGE.
 async fn link_derived_from(
+    pool: &SqlitePool,
     graph: &GraphHandle,
+    event_id: &str,
     written_path: &str,
     written_app: &str,
     written_ts: i64,
@@ -945,20 +944,31 @@ async fn link_derived_from(
              RETURN src.id LIMIT {DERIVATION_FANOUT}"
         ))
         .await?;
-    for row in rs.rows.iter() {
-        let Some(cell) = row.first() else { continue };
-        let src_id = cell.as_str();
-        if !crate::derivation::is_name_derivation(src_id, written_path) {
-            continue;
-        }
-        graph
-            .write(format!(
-                "{} MERGE (w)-[:DERIVED_FROM {{confidence: 'strong'}}]->(s)",
-                crate::cypher::match_two_nodes("w", "File", written_path, "s", "File", src_id)
-            ))
-            .await?;
+    // Through the fact journal, unlike `CO_ACCESSED`: what decides this edge is
+    // WHEN the write came after the read, and no fact carries a write's time, so
+    // nothing in the journal could derive it again. It is rare (a strong name
+    // relation inside one minute), so it costs the journal next to nothing.
+    use crate::journal::{Fact, Origin};
+    use serde_json::json;
+    let facts: Vec<Fact> = rs
+        .rows
+        .iter()
+        .filter_map(|row| row.first())
+        .map(|cell| cell.as_str())
+        .filter(|src| crate::derivation::is_name_derivation(src, written_path))
+        .map(|src| {
+            Fact::link_with(
+                "DERIVED_FROM",
+                ("File", written_path),
+                ("File", src),
+                &[("confidence", json!("strong"))],
+            )
+        })
+        .collect();
+    if facts.is_empty() {
+        return Ok(());
     }
-    Ok(())
+    crate::journal::commit_and_project(pool, graph, facts, &Origin::event(event_id)).await
 }
 
 /// Promote a `network.connect` / `network.accept` event into the OS-observed
@@ -2089,6 +2099,59 @@ mod shell_event_tests {
             .unwrap();
         let c2 = rs2.rows.first().and_then(|r| r.first()).map(|v| v.as_i64()).unwrap();
         assert_eq!(c2, 0, "a session-less event creates no session edge");
+    }
+
+    #[tokio::test]
+    async fn a_rebuild_past_the_retention_keeps_co_access_and_derivation() {
+        // Activity from 2020: the raw log dropped these events years ago, so the
+        // journal is all a rebuild has. Nothing here writes an `events` row at
+        // all, which is that state.
+        let tmp = TempDir::new().unwrap();
+        let pool = crate::db::open(tmp.path().join("j.db").to_str().unwrap()).await.unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g1").to_str().unwrap()).unwrap();
+        let then: i64 = 1_600_000_000_000_000;
+
+        let open = |path: &str| {
+            FileOpenedPayload { path: path.into(), app_id: "pandoc".into(), flags: 0, cgroup_id: 0 }
+                .encode_to_vec()
+        };
+        for (i, path) in ["/p/notes.txt", "/p/foo.md"].iter().enumerate() {
+            let at = then + i as i64 * 1_000_000;
+            promote_file_opened(&pool, &graph, &format!("o{i}"), &at, "ebpf", &1, "s-2020", &open(path))
+                .await
+                .unwrap();
+        }
+        let written = FileWrittenPayload { path: "/p/foo.pdf".into(), app_id: "pandoc".into(), bytes: 9, cgroup_id: 0 }
+            .encode_to_vec();
+        promote_file_written(&pool, &graph, "w0", &(then + 5_000_000), "ebpf", &1, &written)
+            .await
+            .unwrap();
+
+        let fresh = crate::graph::spawn(tmp.path().join("g2").to_str().unwrap()).unwrap();
+        crate::journal::set_projected_seq(&pool, 0).await.unwrap();
+        crate::journal::project_pending(&pool, &fresh).await.expect("rebuild");
+
+        for (name, g) in [("live", &graph), ("rebuilt", &fresh)] {
+            let co = g
+                .query_rows(
+                    "MATCH (:File {id:'/p/foo.md'})-[c:CO_ACCESSED]->(:File {id:'/p/notes.txt'}) \
+                     RETURN c.last_seen"
+                        .into(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(co.rows.len(), 1, "{name}: the two files opened together are linked");
+            assert_eq!(co.rows[0][0].as_i64(), then + 1_000_000, "{name}: at the time of the second open");
+            let derived = g
+                .query_rows(
+                    "MATCH (:File {id:'/p/foo.pdf'})-[d:DERIVED_FROM]->(s:File) RETURN s.id, d.confidence".into(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(derived.rows.len(), 1, "{name}: the written file has one source");
+            assert_eq!(derived.rows[0][0].as_str(), "/p/foo.md", "{name}: the source it was made from");
+            assert_eq!(derived.rows[0][1].as_str(), "strong", "{name}: with its confidence");
+        }
     }
 
     #[tokio::test]

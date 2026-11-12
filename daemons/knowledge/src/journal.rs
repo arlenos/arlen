@@ -636,6 +636,25 @@ async fn statement(pool: &SqlitePool, seq: i64, fact: &Fact) -> Result<String> {
     }
 }
 
+/// What a fact makes true beyond its own statement.
+///
+/// A file opened in a session is linked to the files last opened in that
+/// session (`CO_ACCESSED`). Those edges are in no fact: they follow from the
+/// `ACCESSED_IN` facts in the order the journal holds them, so they are derived
+/// here, where a live write and a rebuild both pass, and the journal stays the
+/// size it was. Runs after the fact's own statement and reads only what earlier
+/// facts projected, so a replay sees what the first run saw.
+async fn derive(graph: &crate::graph::GraphHandle, fact: &Fact) -> Result<()> {
+    match fact {
+        Fact::Edge { rel, from, to, .. }
+            if rel == "ACCESSED_IN" && from.0 == "File" && to.0 == "Session" =>
+        {
+            crate::promotion::link_co_accessed(graph, &from.1, &to.1).await
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Apply every fact after the projected mark to `graph`, in order. Returns how
 /// many facts were applied.
 ///
@@ -654,7 +673,11 @@ pub async fn project_pending(pool: &SqlitePool, graph: &crate::graph::GraphHandl
         }
         let mut last = from;
         for (seq, fact) in batch {
-            if let Err(e) = async { graph.write(statement(pool, seq, &fact).await?).await }.await {
+            let landed = async {
+                graph.write(statement(pool, seq, &fact).await?).await?;
+                derive(graph, &fact).await
+            };
+            if let Err(e) = landed.await {
                 if last > from {
                     set_projected_seq(pool, last).await?;
                 }
