@@ -34,6 +34,50 @@ use crate::error::{Result, SignerError};
 /// test, which noticed the binary had no app id at all.
 pub const ADMITTED: &[&str] = &["ai-agent", "undod"];
 
+/// The app ids that may hand the signer a receipt and do nothing else.
+///
+/// Files and `trash-rm` journal a person's own delete so it can be put back.
+/// Both submitted to this socket from the day they were written and neither was
+/// on [`ADMITTED`], which a developer build hid: nothing here admitted them in
+/// debug either, but their submit is best-effort and reports a refusal on
+/// stderr, so the delete worked and the durable record was silently missing.
+///
+/// Submit only, because that is all either does. They have no reason to read
+/// what the agent did or to move another producer's entry to a new state, and
+/// the socket should not offer it to them.
+///
+/// The ids are the ones the install paths resolve to: Files under
+/// `/usr/lib/arlen/apps/dev.arlen.files/`, `trash-rm` as `/usr/bin/arlen-trash-rm`.
+pub const SUBMITTERS: &[&str] = &["dev.arlen.files", "trash-rm"];
+
+/// The submitters' exact cargo-run ids, admitted only in debug builds.
+#[cfg(debug_assertions)]
+const DEV_SUBMITTERS: &[&str] = &["dev.arlen-files", "dev.trash-rm"];
+
+/// Whether `app_id` is one of the submit-only producers.
+fn is_submitter(app_id: &str) -> bool {
+    if SUBMITTERS.contains(&app_id) {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    {
+        DEV_SUBMITTERS.contains(&app_id)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
+    }
+}
+
+/// Whether a caller that reached the socket may send this request. The agent
+/// and the undo service may send any; a submitter may only seal a new entry.
+pub fn may_send(app_id: &str, request: &arlen_ai_undo_proto::Request) -> bool {
+    if is_submitter(app_id) {
+        return matches!(request, arlen_ai_undo_proto::Request::SubmitCreated(_));
+    }
+    true
+}
+
 /// The agent's exact cargo-run `dev.*` id, admitted only in debug
 /// builds. An exact match, not a broad `dev.` prefix: any locally-built
 /// crate resolves to some `dev.<bin>`, so a prefix would let any
@@ -46,7 +90,7 @@ const DEV_ADMITTED: &[&str] = &["dev.arlen-ai-agent", "dev.arlen-undod"];
 /// agent (from a `target/` tree) can be exercised, matching the
 /// audit-daemon's convention.
 pub fn caller_is_admitted(app_id: &str) -> bool {
-    if ADMITTED.contains(&app_id) {
+    if ADMITTED.contains(&app_id) || is_submitter(app_id) {
         return true;
     }
     #[cfg(debug_assertions)]
@@ -92,6 +136,35 @@ mod tests {
         for other in ["ai-daemon", "ai-proxy", "knowledge", "com.attacker", ""] {
             assert!(!caller_is_admitted(other), "{other} must not be admitted");
         }
+    }
+
+    /// Nothing here is behind `debug_assertions`, so this holds in the profile
+    /// the image is built with: the ids come from the install paths, and those
+    /// ids are admitted.
+    #[test]
+    fn a_persons_own_delete_is_journaled_from_the_installed_binaries() {
+        use arlen_permissions::identity::path_to_app_id;
+        use std::path::Path;
+        for path in [
+            "/usr/lib/arlen/apps/dev.arlen.files/bin/arlen-files",
+            "/usr/bin/arlen-trash-rm",
+        ] {
+            let id = path_to_app_id(Path::new(path)).unwrap();
+            assert!(SUBMITTERS.contains(&id.as_str()), "{path} resolves to {id}");
+            assert!(caller_is_admitted(&id), "{id} must reach the signer");
+        }
+    }
+
+    #[test]
+    fn a_submitter_seals_an_entry_and_does_nothing_else() {
+        use arlen_ai_undo_proto::Request;
+        for id in SUBMITTERS {
+            assert!(!may_send(id, &Request::LiveEntries));
+            assert!(!may_send(id, &Request::ListRecent { limit: 5 }));
+            assert!(!may_send(id, &Request::LookupEntry { op_id: "x".into() }));
+        }
+        assert!(may_send("ai-agent", &Request::LiveEntries));
+        assert!(may_send("undod", &Request::ListRecent { limit: 5 }));
     }
 
     #[test]

@@ -94,6 +94,9 @@ pub async fn serve_requests(
             Err(_elapsed) => return Ok(()),
         };
         let response = match request.validate() {
+            Ok(()) if !crate::auth::may_send(auth.app_id(), &request) => {
+                Response::Error("this caller may only submit an entry".into())
+            }
             Ok(()) => {
                 let mut guard = store.lock().await;
                 dispatch(&mut guard, request)
