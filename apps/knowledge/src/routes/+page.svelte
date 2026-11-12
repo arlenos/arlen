@@ -14,6 +14,7 @@
   import ProjectsView from "$lib/components/ProjectsView.svelte";
   import SearchView from "$lib/components/SearchView.svelte";
   import LibraryView from "$lib/components/LibraryView.svelte";
+  import ReviewView from "$lib/components/ReviewView.svelte";
   import { onMount } from "svelte";
   import { knowledgeAdapter, mocked, unavailable } from "$lib/adapter";
   import { labelKeyFor, emptyKeyFor } from "$lib/locations";
@@ -175,6 +176,8 @@
       <ProjectsView onselect={onProjectsSelect} />
     {:else if $path === "library"}
       <LibraryView onselect={onLibrarySelect} />
+    {:else if $path === "review"}
+      <ReviewView />
     {:else}
       <div class="kn-browser">
         <!-- "nothing here" and "could not read" are the same empty browser, so

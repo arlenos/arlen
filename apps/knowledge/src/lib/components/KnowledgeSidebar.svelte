@@ -4,7 +4,7 @@
   /// explore places over the graph plus the rows that link out to
   /// Settings/Privacy (knowledge-app.md decision 6 - a surface that owns a
   /// capability is not re-hosted here).
-  import { Clock, FolderGit2, Search, Library, Package, ShieldCheck, ChevronRight } from "lucide-svelte";
+  import { Clock, FolderGit2, Search, Library, Package, ShieldCheck, ChevronRight, GitMerge } from "lucide-svelte";
   import {
     Sidebar,
     SidebarContent,
@@ -17,6 +17,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { t } from "$lib/i18n/messages";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
+  import { tauriAvailable } from "$lib/tauri";
 
   let {
     activeLocation,
@@ -38,6 +39,9 @@
     { id: "projects", labelKey: "k.place.projects", icon: FolderGit2 },
     { id: "searches", labelKey: "k.place.searches", icon: Search },
     { id: "library", labelKey: "k.place.library", icon: Library },
+    // The review list runs on its fixture until the host can read suggestions
+    // out, so it is offered under vite and in no real window.
+    ...(tauriAvailable ? [] : [{ id: "review", labelKey: "k.place.review", icon: GitMerge }]),
   ];
 
   // The rows that leave for Settings rather than being re-hosted here (decision 6).
