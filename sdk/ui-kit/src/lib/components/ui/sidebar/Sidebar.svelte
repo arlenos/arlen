@@ -45,10 +45,16 @@
       className
     )}
   >
+    <!-- Slid off the canvas, the rail's controls are hidden and not merely out
+         of sight: a button at x = -41 still took Tab and a click, so the keyboard
+         walked through a sidebar nobody could see. `visibility` flips at the END
+         of a transition to hidden and at the START of one to visible, so the
+         slide still shows both ways. The rail re-shows itself; it is how a
+         pointer brings the sidebar back. -->
     <div
       data-sidebar="sidebar"
       data-slot="sidebar-inner"
-      class="flex h-full w-full flex-col bg-sidebar"
+      class="flex h-full w-full flex-col bg-sidebar transition-[visibility] duration-200 group-data-[collapsible=offcanvas]:invisible"
     >
       {@render children?.()}
     </div>
