@@ -82,7 +82,7 @@
       </Row>
     </Section>
 
-    <Section label={$t("s.about.services")}>
+    <Section label={$t("s.about.services")} id="about-services">
       {#if info}
         {#each info.daemons as d (d.name)}
           <Row

@@ -67,7 +67,7 @@
          (design-system.md §6.10). The preview stays, since it is the one thing
          that is true. -->
     <Notice tone="neutral" class="span-full" text={$t("s.geom.notApplied")} />
-    <div class="preview span-full">
+    <div class="preview span-full" id="geom-preview">
       <span class="preview-label">{$t("s.geom.preview")}</span>
       <div style={previewRadiusVars($effective)}>
         <ThemePreview colors={$colorsEffective} />

@@ -84,7 +84,7 @@
     // DOM element with that id and adds `.setting-highlight`,
     // which pulses for 3 s. The user lands on the panel with the
     // matching control already drawing the eye.
-    navigateTo(r.setting.panel, r.setting.anchor);
+    navigateTo(r.setting.panel, r.setting.anchor, r.setting.page);
     query = "";
     activeIndex = 0;
   }

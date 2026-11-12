@@ -316,7 +316,7 @@
   {:else}
     <div class="groups">
       <!-- ── DO NOT DISTURB ────────────────────────────────── -->
-      <Section label={$t("s.notif.dnd")}>
+      <Section label={$t("s.notif.dnd")} id="dnd-mode">
         <div class="dnd-section">
           <ChoiceList
             ariaLabel={$t("s.notif.dnd")}

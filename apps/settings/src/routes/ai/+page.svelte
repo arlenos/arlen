@@ -376,7 +376,7 @@
       </LinkCard>
     </Section>
 
-    <Section label={$t("s.ai.health")}>
+    <Section label={$t("s.ai.health")} id="ai-health">
       {#if statusError}
         <!-- The Row draws the sentence; this speaks it. Refresh is a button, so
              a failure here is an answer to a press, and `Row` takes fixed props

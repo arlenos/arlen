@@ -142,7 +142,7 @@
       <Notice tone="error" class="span-full" text={$t("s.config.unavailable")} />
     {/if}
     <fieldset class="unreadable-gate" disabled={$graph.error !== null}>
-    <Section label={$t("s.know.status")}>
+    <Section label={$t("s.know.status")} id="kg-status">
       {#if error}
         <!-- Same as the AI page: Refresh is a button, and the Row it draws into
              has no attribute to carry the announcement. -->

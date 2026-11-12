@@ -288,7 +288,7 @@
     <Notice tone="error" class="span-full" text={$t("s.kbd.saveFailed")} />
   {/if}
 
-  <Section label={$t("s.kbd.layouts")}>
+  <Section label={$t("s.kbd.layouts")} id="kbd-layouts">
     <div class="flex flex-col divide-y divide-border">
       {#each layouts as layout, i (layout + ":" + i)}
         <div class="flex items-center gap-2 px-4 py-2.5">
@@ -414,7 +414,7 @@
     {/each}
   </Section>
 
-  <Section label={$t("s.kbd.keyRepeat")}>
+  <Section label={$t("s.kbd.keyRepeat")} id="kbd-key-repeat">
     <!-- Both rows share the same NumberInput width so their triggers
          form a clean vertical grid. 180px fits the longer unit label
          ("chars/s") plus a four-digit value without cropping, and

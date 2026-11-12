@@ -211,7 +211,7 @@
     {#if !tauriAvailable}
       <Notice tone="neutral" class="span-full" text={$t("s.prov.sample")} />
     {/if}
-    <Section class="span-full">
+    <Section class="span-full" id="ai-providers">
       {#each $providers as p (p.id)}
         {@render row(p)}
       {/each}

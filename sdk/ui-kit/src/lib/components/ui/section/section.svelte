@@ -9,12 +9,21 @@
     label,
     children,
     class: className,
-  }: { label?: string; children?: Snippet; class?: string } = $props();
+    id,
+  }: {
+    label?: string;
+    children?: Snippet;
+    class?: string;
+    /// An element id for the whole section, so a jump from a search result can
+    /// land on it. A section is always there; a row inside it may not be, when
+    /// it only appears once a service answered.
+    id?: string;
+  } = $props();
 </script>
 
 <!-- `class` is forwarded to the root so a section can opt into the SectionGrid
      `span-full` escape hatch via `<Section class="span-full">`. -->
-<div class="section {className ?? ''}">
+<div class="section {className ?? ''}" {id}>
   {#if label}
     <div class="section-label">{label}</div>
   {/if}

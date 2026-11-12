@@ -138,7 +138,14 @@ export const breadcrumbs = derived(navigation, ($nav) => {
 });
 
 /// Navigate to a panel. Updates both the store and the router.
-export async function navigateTo(panel: PanelId, scrollTarget?: string): Promise<void> {
+///
+/// `page` is a route below the panel's own, for a scroll target that lives on a
+/// sub-page; without it the panel's page opens.
+export async function navigateTo(
+  panel: PanelId,
+  scrollTarget?: string,
+  page?: string,
+): Promise<void> {
   const meta = PANELS.find((p) => p.id === panel);
   if (!meta || !meta.enabled) return;
   navigation.update((s) => ({
@@ -146,7 +153,7 @@ export async function navigateTo(panel: PanelId, scrollTarget?: string): Promise
     currentPanel: panel,
     scrollTarget: scrollTarget ?? null,
   }));
-  await goto(meta.href);
+  await goto(page ?? meta.href);
 }
 
 /// Called from +layout.svelte when the route changes, to sync the store.

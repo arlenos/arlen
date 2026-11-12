@@ -14,6 +14,7 @@
     SidebarProvider,
     SidebarInset,
   } from "@arlen/ui-kit/components/ui/sidebar";
+  import { pageOf } from "$lib/search/settings-registry";
   import {
     syncFromRoute,
     breadcrumbs,
@@ -184,7 +185,8 @@
         void goto(`/apps/${encodeURIComponent(target.app)}`);
         return;
       }
-      navigateTo(target.panel as PanelId).then(() => {
+      const page = target.anchor ? pageOf(target.panel, target.anchor) : undefined;
+      navigateTo(target.panel as PanelId, undefined, page).then(() => {
         if (!target.anchor) return;
         pollForElement(target.anchor, 2000).then((el) => {
           if (el) {

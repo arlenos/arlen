@@ -122,7 +122,7 @@
   description={$t("s.appr.desc")}
 >
   <SectionGrid>
-    <div class="theme-label span-full">{$t("s.appr.theme")}</div>
+    <div class="theme-label span-full" id="theme-mode">{$t("s.appr.theme")}</div>
     {#if $themesError}
       <!-- No cards rather than five named themes we could not confirm are
            installed: the cards are clickable, so an invented one is a theme the

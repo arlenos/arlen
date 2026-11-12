@@ -150,7 +150,7 @@
          The pane keeps a line because a reader looking at an empty pane looks at
          the pane (the rule knowledge settled); what it does not need is the
          cause a second and third time. -->
-    <Section label={$t("s.pr.printers")}>
+    <Section label={$t("s.pr.printers")} id="printers-list">
       {#if $printers.printers.length === 0}
         <p class="empty">{$printers.unavailable ? $t("s.pr.noneUnknown") : $t("s.pr.none")}</p>
       {:else}
@@ -171,7 +171,7 @@
       {/each}
     </Section>
 
-    <Section label={$t("s.pr.queue")}>
+    <Section label={$t("s.pr.queue")} id="print-queue">
       {#if $printers.queue.length === 0}
         <p class="empty">{$printers.unavailable ? $t("s.pr.queueUnknown") : $t("s.pr.queueEmpty")}</p>
       {:else}

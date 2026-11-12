@@ -61,6 +61,11 @@ export interface SettingDefinition {
   /// Anchor fragment used in deep links. The frontend scrolls to the
   /// DOM element with `id={anchor}` and briefly highlights it.
   anchor: string;
+  /// The route the anchor is on, when that is a page below the panel's own
+  /// (`/appearance/geometry` under `appearance`). Absent means the panel's page.
+  /// The deep link still names the panel only; whoever follows one resolves the
+  /// page here, through `pageOf`.
+  page?: string;
   inlineAction?: InlineAction;
 }
 
@@ -95,7 +100,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.appearance.accent.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.theme",
-    anchor: "accent-color",
+    anchor: "quick-accent",
   },
 
   // ── Quick Settings: layout ────────────────────────────────────────
@@ -149,7 +154,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.appearance.overrides.radius.intensity.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.window",
-    anchor: "radius-intensity",
+    anchor: "quick-roundness",
     inlineAction: {
       type: "slider",
       configFile: "appearance",
@@ -167,7 +172,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.appearance.window.border.width.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.window",
-    anchor: "border-width",
+    // The geometry page offers no control and says so; the jump lands on
+    // what it does show.
+    anchor: "geom-preview",
+    page: "/appearance/geometry",
     inlineAction: {
       type: "slider",
       configFile: "appearance",
@@ -183,9 +191,9 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     titleKey: "s.idx.appearance.window.gaps.title",
     descKey: "s.idx.appearance.window.gaps.desc",
     keywordsKey: "s.idx.appearance.window.gaps.keywords",
-    panel: "appearance",
+    panel: "workspaces",
     sectionKey: "s.idx.section.window",
-    anchor: "gaps",
+    anchor: "inner-gap",
     inlineAction: {
       type: "slider",
       configFile: "compositor",
@@ -201,7 +209,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     titleKey: "s.idx.appearance.window.smart.gaps.title",
     descKey: "s.idx.appearance.window.smart.gaps.desc",
     keywordsKey: "s.idx.appearance.window.smart.gaps.keywords",
-    panel: "appearance",
+    panel: "workspaces",
     sectionKey: "s.idx.section.window",
     anchor: "smart-gaps",
     inlineAction: {
@@ -209,26 +217,6 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
       configFile: "compositor",
       configKey: "layout.smart_gaps",
     },
-  },
-
-  // ── Appearance: Window Borders ─────────────────────────────────────
-  {
-    id: "appearance.window.border.focused",
-    titleKey: "s.idx.appearance.window.border.focused.title",
-    descKey: "s.idx.appearance.window.border.focused.desc",
-    keywordsKey: "s.idx.appearance.window.border.focused.keywords",
-    panel: "appearance",
-    sectionKey: "s.idx.section.windowborders",
-    anchor: "border-focused",
-  },
-  {
-    id: "appearance.window.border.unfocused",
-    titleKey: "s.idx.appearance.window.border.unfocused.title",
-    descKey: "s.idx.appearance.window.border.unfocused.desc",
-    keywordsKey: "s.idx.appearance.window.border.unfocused.keywords",
-    panel: "appearance",
-    sectionKey: "s.idx.section.windowborders",
-    anchor: "border-unfocused",
   },
 
   // ── Appearance: Typography ─────────────────────────────────────────
@@ -239,7 +227,8 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.appearance.fonts.interface.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.typography",
-    anchor: "font-interface",
+    anchor: "typo-fontSans",
+    page: "/appearance/typography",
   },
   {
     id: "appearance.fonts.monospace",
@@ -248,7 +237,8 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.appearance.fonts.monospace.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.typography",
-    anchor: "font-monospace",
+    anchor: "typo-fontMono",
+    page: "/appearance/typography",
   },
   {
     id: "appearance.fonts.size",
@@ -257,7 +247,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.appearance.fonts.size.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.typography",
-    anchor: "font-size",
+    anchor: "quick-textsize",
     inlineAction: {
       type: "slider",
       configFile: "appearance",
@@ -449,7 +439,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.keyboard.layout.keywords",
     panel: "keyboard",
     sectionKey: "s.idx.section.layout",
-    anchor: "search",
+    anchor: "kbd-layouts",
   },
   {
     id: "keyboard.repeat",
@@ -458,7 +448,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.keyboard.repeat.keywords",
     panel: "keyboard",
     sectionKey: "s.idx.section.keyrepeat",
-    anchor: "search",
+    anchor: "kbd-key-repeat",
   },
 
   // ── Keyboard: shortcuts ────────────────────────────────────────────
@@ -469,7 +459,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.shortcuts.all.keywords",
     panel: "shortcuts",
     sectionKey: "s.idx.section.shortcuts",
-    anchor: "search",
+    anchor: "shortcut-search",
   },
   {
     id: "shortcuts.reset_all",
@@ -478,7 +468,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.shortcuts.reset.all.keywords",
     panel: "shortcuts",
     sectionKey: "s.idx.section.shortcuts",
-    anchor: "search",
+    anchor: "shortcut-search",
   },
   {
     id: "shortcuts.workspace",
@@ -554,7 +544,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.touchpad.tap.to.click.keywords",
     panel: "touchpad",
     sectionKey: "s.idx.section.clicking",
-    anchor: "touchpad-tap",
+    anchor: "touchpad-tap-to-click",
     inlineAction: {
       type: "toggle",
       configFile: "compositor",
@@ -582,7 +572,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.touchpad.two.finger.scroll.keywords",
     panel: "touchpad",
     sectionKey: "s.idx.section.scrolling",
-    anchor: "touchpad-two-finger",
+    anchor: "touchpad-two-finger-scroll",
     inlineAction: {
       type: "toggle",
       configFile: "compositor",
@@ -596,7 +586,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.touchpad.disable.while.typing.keywords",
     panel: "touchpad",
     sectionKey: "s.idx.section.clicking",
-    anchor: "touchpad-dwt",
+    anchor: "touchpad-disable-while-typing",
     inlineAction: {
       type: "toggle",
       configFile: "compositor",
@@ -927,7 +917,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.knowledge.stats.keywords",
     panel: "knowledge",
     sectionKey: "s.idx.section.stats",
-    anchor: "kg-daemon-status",
+    anchor: "kg-status",
   },
 
   // ── Display (Sprint D coverage) ────────────────────────────────────
@@ -999,7 +989,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.about.daemons.keywords",
     panel: "about",
     sectionKey: "s.idx.section.daemons",
-    anchor: "daemon-knowledge-graph",
+    anchor: "about-services",
   },
 
   // ── AI (Phase 9-α S7) ──────────────────────────────────────────────
@@ -1019,7 +1009,8 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.ai.provider.keywords",
     panel: "ai",
     sectionKey: "s.idx.section.provider",
-    anchor: "ai-provider",
+    anchor: "ai-providers",
+    page: "/ai/providers",
   },
   {
     id: "ai.status",
@@ -1028,7 +1019,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     keywordsKey: "s.idx.ai.status.keywords",
     panel: "ai",
     sectionKey: "s.idx.section.status",
-    anchor: "ai-daemon-status",
+    anchor: "ai-health",
   },
   {
     id: "ai.behaviours",
@@ -1055,3 +1046,12 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // would point to non-existent ids on the existing pages. Drop
   // the broken extras until the pages opt into id={anchor}.
 ];
+
+/// The route a panel's anchor is on, when it is not the panel's own page.
+///
+/// A deep link carries a panel and an anchor and no route, so this is how its
+/// reader finds the sub-page; the in-app search has the entry and reads `page`
+/// off it directly.
+export function pageOf(panel: string, anchor: string): string | undefined {
+  return SETTINGS_REGISTRY.find((s) => s.panel === panel && s.anchor === anchor)?.page;
+}
