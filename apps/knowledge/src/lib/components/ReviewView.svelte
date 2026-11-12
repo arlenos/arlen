@@ -91,7 +91,7 @@
 
   <div class="rv-scroll">
     {#if groups.length === 0}
-      <p class="rv-empty">{$t(show === "decided" ? "k.rv.emptyDecided" : "k.rv.emptyOpen")}</p>
+      <p class="rv-empty">{$t(show === "decided" ? "k.rv.emptyDecided" : "k.empty.review")}</p>
     {:else}
       {#each groups as g (g.entry.id)}
         {@const EntryIcon = ICON[g.entry.kind]}

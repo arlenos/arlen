@@ -20,7 +20,7 @@ export const EXPLORE_PLACES: KnowledgePlace[] = [
   { id: "projects", labelKey: "k.place.projects", emptyKey: "k.empty.projects" },
   { id: "searches", labelKey: "k.place.searches", emptyKey: "k.empty.searches" },
   { id: "library", labelKey: "k.place.library", emptyKey: "k.empty.library" },
-  { id: "review", labelKey: "k.place.review", emptyKey: "k.rv.emptyOpen" },
+  { id: "review", labelKey: "k.place.review", emptyKey: "k.empty.review" },
 ];
 
 /// The place whose base location a saved search / project refines (search:<q>,

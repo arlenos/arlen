@@ -17,6 +17,7 @@ describe("knowledge places", () => {
       "projects",
       "searches",
       "library",
+      "review",
     ]);
   });
 
@@ -30,6 +31,8 @@ describe("knowledge places", () => {
   it("resolves a place to its own words", () => {
     expect(labelKeyFor("projects")).toBe("k.place.projects");
     expect(emptyKeyFor("library")).toBe("k.empty.library");
+    expect(labelKeyFor("review")).toBe("k.place.review");
+    expect(emptyKeyFor("review")).toBe("k.empty.review");
   });
 
   it("resolves a refinement back to the place it refines", () => {
