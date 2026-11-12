@@ -222,6 +222,22 @@ pub fn plumbing_binds(
     binds
 }
 
+/// Point the compositor bind at the socket made for this launch. The app still
+/// finds it at `raw`, where `$WAYLAND_DISPLAY` says the compositor is; what is
+/// mounted there is `own`, the security-context socket. Without a bind for
+/// `raw` there is nothing to change: the compositor's socket was not there to
+/// bind, and the app has no display either way.
+pub fn rebind_display(binds: &mut [Bind], raw: &Path, own: &Path) {
+    let (Some(raw), Some(own)) = (raw.to_str(), own.to_str()) else {
+        return;
+    };
+    for bind in binds.iter_mut() {
+        if matches!(bind, Bind::ReadWrite(src, dst) if src == raw && dst == raw) {
+            *bind = Bind::ReadWrite(own.to_string(), raw.to_string());
+        }
+    }
+}
+
 /// Build the runnable confinement from the profile-derived writable set and
 /// network policy plus the universal plumbing: construct the app-runtime
 /// skeleton (`/usr` read-only, the app dirs writable, the network policy) and
@@ -631,6 +647,30 @@ fn exit_code(code: Option<i32>, signal: Option<i32>) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_display_bind_is_pointed_at_the_launchs_own_socket() {
+        let mut binds = vec![
+            Bind::ReadWrite("/run/user/1000/wayland-0".into(), "/run/user/1000/wayland-0".into()),
+            Bind::ReadWrite("/run/user/1000/bus".into(), "/run/user/1000/bus".into()),
+        ];
+        rebind_display(
+            &mut binds,
+            Path::new("/run/user/1000/wayland-0"),
+            Path::new("/run/user/1000/arlen-run/77.wayland"),
+        );
+        assert_eq!(
+            binds,
+            vec![
+                Bind::ReadWrite(
+                    "/run/user/1000/arlen-run/77.wayland".into(),
+                    "/run/user/1000/wayland-0".into()
+                ),
+                Bind::ReadWrite("/run/user/1000/bus".into(), "/run/user/1000/bus".into()),
+            ],
+            "the app finds the compositor where it looks, and it is the marked socket"
+        );
+    }
 
     #[test]
     fn plumbing_binds_only_what_exists() {

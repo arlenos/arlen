@@ -53,6 +53,8 @@ mod stamp;
 #[cfg(target_os = "linux")]
 mod seccomp;
 #[cfg(target_os = "linux")]
+mod security_context;
+#[cfg(target_os = "linux")]
 mod sockets;
 mod spawn;
 
@@ -455,6 +457,41 @@ fn main() -> ExitCode {
         }
         None => Vec::new(),
     };
+    // The app connects to the compositor through a socket of its own, so the
+    // compositor knows it by app id and treats it as sandboxed. A compositor
+    // that does not offer the protocol has no way to tell clients apart, and the
+    // app gets its socket as before; one that offers it and then fails is a
+    // failed launch, never a quiet fall back to the unmarked socket.
+    let app_display = match (&runtime_dir, wayland_display.as_deref()) {
+        (Some(rt), Some(wl)) => {
+            let raw = if std::path::Path::new(wl).is_absolute() {
+                PathBuf::from(wl)
+            } else {
+                rt.join(wl)
+            };
+            // SAFETY: getpid only reads the launcher's pid.
+            let pid = unsafe { libc::getpid() } as u32;
+            match security_context::open(&raw, rt, &args.app_id, pid) {
+                Ok(Some(display)) => {
+                    spawn::rebind_display(&mut plumbing, &raw, display.path());
+                    Some(display)
+                }
+                Ok(None) => {
+                    eprintln!(
+                        "arlen-run: {}: the compositor offers no security context; \
+                         the app connects unmarked",
+                        args.app_id
+                    );
+                    None
+                }
+                Err(e) => {
+                    eprintln!("arlen-run: {}: {e}", args.app_id);
+                    return ExitCode::from(exit::CONFINE_SETUP);
+                }
+            }
+        }
+        _ => None,
+    };
     // Bind arlen-run itself read-only into the sandbox so the direct-launch fence
     // can self-invoke `--landlock-exec` inside it. If arlen-run is already under
     // `/usr` (the ro-bound base), it is reachable without an extra bind.
@@ -613,6 +650,9 @@ fn main() -> ExitCode {
             &args.app_id,
         )
     };
+
+    // The app is gone, so the compositor can stop listening for it.
+    drop(app_display);
 
     // Reap the subtree (kills any process the app left behind), then the leaf is
     // removed when `cgroup` drops.

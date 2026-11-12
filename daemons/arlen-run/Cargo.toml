@@ -31,5 +31,9 @@ landlock = "0.4"
 # cBPF and handed to bwrap via --seccomp (the ai-sandbox idiom). 0.5 matches the
 # ai-sandbox pin so the workspace shares one build.
 seccompiler = "0.5"
+# The launcher asks the compositor for a socket of the app's own
+# (`wp_security_context_v1`), which is a staging protocol.
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 
 [workspace]
