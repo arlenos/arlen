@@ -302,6 +302,12 @@
   .qs-grid-cell.full-row {
     grid-column: span 2;
   }
+  /* A tile that has nothing to show renders nothing (Bluetooth on a machine
+     with no adapter), and its cell must not keep the place: the grid drew a
+     hole beside the network tile. */
+  .qs-grid-cell:empty {
+    display: none;
+  }
   /* The tile components own their inner padding; the grid-cell wrapper
      only positions them. The :global is needed because tiles render in
      ui-kit's scope, not desktop-shell's. */
